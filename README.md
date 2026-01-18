@@ -31,7 +31,7 @@ Quantum-Go is a production-ready, quantum-resistant VPN encryption library imple
 ### Installation
 
 ```bash
-go get github.com/quantum-go/quantum-go
+go get github.com/pzverkov/quantum-go
 ```
 
 **Requirements:** Go 1.24 or later (for native `crypto/mlkem` support)
@@ -43,7 +43,7 @@ package main
 
 import (
     "fmt"
-    "github.com/quantum-go/quantum-go/pkg/tunnel"
+    "github.com/pzverkov/quantum-go/pkg/tunnel"
 )
 
 func main() {
@@ -77,7 +77,7 @@ package main
 
 import (
     "fmt"
-    "github.com/quantum-go/quantum-go/pkg/chkem"
+    "github.com/pzverkov/quantum-go/pkg/chkem"
 )
 
 func main() {
