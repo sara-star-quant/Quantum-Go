@@ -158,6 +158,80 @@ Run benchmarks:
 go test -bench=. -benchmem ./test/benchmark/
 ```
 
+## Command-Line Tool
+
+The `quantum-vpn` tool provides interactive demos and benchmarking:
+
+### Installation
+
+```bash
+go install github.com/pzverkov/quantum-go/cmd/quantum-vpn@latest
+```
+
+Or build from source:
+
+```bash
+git clone https://github.com/pzverkov/quantum-go
+cd quantum-go
+go build -o quantum-vpn ./cmd/quantum-vpn/
+```
+
+### Demo Mode
+
+Run an interactive client/server demo:
+
+```bash
+# Terminal 1: Start server
+quantum-vpn demo --mode server --addr :8443
+
+# Terminal 2: Connect client
+quantum-vpn demo --mode client --addr localhost:8443
+
+# Interactive mode (type messages)
+quantum-vpn demo --mode client --addr localhost:8443 --message "-"
+
+# Verbose output (show handshake details)
+quantum-vpn demo --mode server --addr :8443 --verbose
+```
+
+### Benchmark Mode
+
+Performance testing:
+
+```bash
+# Benchmark 100 handshakes
+quantum-vpn bench --handshakes 100
+
+# Benchmark throughput for 30 seconds
+quantum-vpn bench --throughput --duration 30s
+
+# Benchmark 1GB data transfer with ChaCha20-Poly1305
+quantum-vpn bench --throughput --size 1GB --cipher chacha20
+
+# Run all benchmarks
+quantum-vpn bench --handshakes 100 --throughput --size 500MB
+```
+
+Expected performance on modern hardware:
+- **Handshakes**: 600-800/sec (~1.5ms each)
+- **Throughput**: 200-500 MB/s (hardware dependent)
+
+### Example Mode
+
+View interactive code examples:
+
+```bash
+quantum-vpn example
+```
+
+Shows examples for:
+- Basic client/server setup
+- Low-level CH-KEM API
+- Custom configuration
+- Session management
+- Error handling
+- Security best practices
+
 ## Testing
 
 ```bash
