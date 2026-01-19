@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+quantum-vpn
+
+# Test artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+testdata/fuzz/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# CI/CD
+.github/
+
+# Development
+.claude/
+tmp/
+temp/
+*.tmp
+*.log
