@@ -33,6 +33,7 @@ package tunnel
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 
 	"github.com/quantum-go/quantum-go/internal/constants"
@@ -490,6 +491,42 @@ func (h *Handshake) IsComplete() bool {
 	return h.state == HandshakeStateComplete
 }
 
+// writeEncryptedRecord writes an encrypted record with length framing.
+// Format: [4-byte big-endian length][ciphertext]
+func writeEncryptedRecord(w io.Writer, ciphertext []byte) error {
+	// Write length prefix
+	lenBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(ciphertext)))
+	if _, err := w.Write(lenBuf); err != nil {
+		return err
+	}
+	// Write ciphertext
+	_, err := w.Write(ciphertext)
+	return err
+}
+
+// readEncryptedRecord reads an encrypted record with length framing.
+func readEncryptedRecord(r io.Reader) ([]byte, error) {
+	// Read length prefix
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(r, lenBuf); err != nil {
+		return nil, err
+	}
+	length := binary.BigEndian.Uint32(lenBuf)
+
+	// Sanity check on length
+	if length > protocol.MaxMessageSize {
+		return nil, qerrors.ErrMessageTooLarge
+	}
+
+	// Read ciphertext
+	ciphertext := make([]byte, length)
+	if _, err := io.ReadFull(r, ciphertext); err != nil {
+		return nil, err
+	}
+	return ciphertext, nil
+}
+
 // --- High-Level API ---
 
 // InitiatorHandshake performs the complete handshake as initiator.
@@ -514,17 +551,17 @@ func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
 		return err
 	}
 
-	// Send ClientFinished
+	// Send ClientFinished (encrypted, with length framing)
 	clientFinished, err := h.CreateClientFinished()
 	if err != nil {
 		return err
 	}
-	if _, err := rw.Write(clientFinished); err != nil {
+	if err := writeEncryptedRecord(rw, clientFinished); err != nil {
 		return err
 	}
 
-	// Receive ServerFinished
-	serverFinished, err := h.codec.ReadMessage(rw)
+	// Receive ServerFinished (encrypted, with length framing)
+	serverFinished, err := readEncryptedRecord(rw)
 	if err != nil {
 		return err
 	}
@@ -557,8 +594,8 @@ func ResponderHandshake(session *Session, rw io.ReadWriter) error {
 		return err
 	}
 
-	// Receive ClientFinished
-	clientFinished, err := h.codec.ReadMessage(rw)
+	// Receive ClientFinished (encrypted, with length framing)
+	clientFinished, err := readEncryptedRecord(rw)
 	if err != nil {
 		return err
 	}
@@ -566,12 +603,12 @@ func ResponderHandshake(session *Session, rw io.ReadWriter) error {
 		return err
 	}
 
-	// Send ServerFinished
+	// Send ServerFinished (encrypted, with length framing)
 	serverFinished, err := h.CreateServerFinished()
 	if err != nil {
 		return err
 	}
-	if _, err := rw.Write(serverFinished); err != nil {
+	if err := writeEncryptedRecord(rw, serverFinished); err != nil {
 		return err
 	}
 

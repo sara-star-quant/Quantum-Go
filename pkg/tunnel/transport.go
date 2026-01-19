@@ -254,18 +254,20 @@ func (t *Transport) Close() error {
 	t.closed = true
 	t.closedMu.Unlock()
 
-	// Send close notification
+	// Send close notification with short timeout (best effort)
 	closeMsg := t.encodeClose()
 
 	t.writeMu.Lock()
-	if t.writeTimeout > 0 {
-		t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
-	}
-	t.conn.Write(closeMsg) // Best effort
+	// Use a short timeout for close notification to avoid blocking
+	t.conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+	t.conn.Write(closeMsg) // Best effort, ignore errors
 	t.writeMu.Unlock()
 
 	// Close session
 	t.session.Close()
+
+	// Close the underlying connection
+	t.conn.Close()
 
 	return nil
 }

@@ -109,6 +109,12 @@ func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 		return nil, qerrors.ErrInvalidMessage
 	}
 
+	// Minimum payload: version(2) + random(32) + sessionIDLen(1) + publicKey(1600) + cipherSuiteCount(2) + minCipherSuite(2) = 1639
+	minPayloadLen := 2 + 32 + 1 + constants.CHKEMPublicKeySize + 2 + 2
+	if int(payloadLen) < minPayloadLen {
+		return nil, qerrors.ErrInvalidMessage
+	}
+
 	offset := HeaderSize
 	m := &ClientHello{}
 
@@ -210,6 +216,12 @@ func (c *Codec) DecodeServerHello(data []byte) (*ServerHello, error) {
 		return nil, qerrors.ErrInvalidMessage
 	}
 
+	// Minimum payload: version(2) + random(32) + sessionID(16) + ciphertext(1600) + cipherSuite(2) = 1652
+	minPayloadLen := 2 + 32 + constants.SessionIDSize + constants.CHKEMCiphertextSize + 2
+	if int(payloadLen) < minPayloadLen {
+		return nil, qerrors.ErrInvalidMessage
+	}
+
 	offset := HeaderSize
 	m := &ServerHello{}
 
@@ -308,8 +320,9 @@ func (c *Codec) DecodeData(data []byte) (uint64, []byte, error) {
 
 // EncodeAlert serializes an alert message.
 func (c *Codec) EncodeAlert(code AlertCode, description string) []byte {
-	if len(description) > 256 {
-		description = description[:256]
+	// Description length is stored in a single byte (max 255)
+	if len(description) > 255 {
+		description = description[:255]
 	}
 
 	payloadSize := 1 + 1 + len(description)
