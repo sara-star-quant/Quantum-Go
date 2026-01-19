@@ -10,7 +10,7 @@ import (
 	"crypto/rand"
 	"io"
 
-	qerrors "github.com/quantum-go/quantum-go/internal/errors"
+	qerrors "github.com/pzverkov/quantum-go/internal/errors"
 )
 
 // SecureRandom reads cryptographically secure random bytes into the provided slice.

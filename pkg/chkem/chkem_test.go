@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/quantum-go/quantum-go/internal/constants"
-	"github.com/quantum-go/quantum-go/pkg/chkem"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	"github.com/pzverkov/quantum-go/pkg/chkem"
 )
 
 func TestKeyPairGeneration(t *testing.T) {

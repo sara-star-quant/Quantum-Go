@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/quantum-go/quantum-go/internal/constants"
-	"github.com/quantum-go/quantum-go/pkg/crypto"
-	"github.com/quantum-go/quantum-go/pkg/tunnel"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	"github.com/pzverkov/quantum-go/pkg/crypto"
+	"github.com/pzverkov/quantum-go/pkg/tunnel"
 )
 
 func TestSessionCreation(t *testing.T) {

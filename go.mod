@@ -1,8 +1,6 @@
-module github.com/quantum-go/quantum-go
+module github.com/pzverkov/quantum-go
 
-go 1.22.0
-
-toolchain go1.22.1
+go 1.24.0
 
 require (
 	github.com/cloudflare/circl v1.6.2

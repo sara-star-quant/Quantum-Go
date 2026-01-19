@@ -36,11 +36,11 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/quantum-go/quantum-go/internal/constants"
-	qerrors "github.com/quantum-go/quantum-go/internal/errors"
-	"github.com/quantum-go/quantum-go/pkg/chkem"
-	"github.com/quantum-go/quantum-go/pkg/crypto"
-	"github.com/quantum-go/quantum-go/pkg/protocol"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	qerrors "github.com/pzverkov/quantum-go/internal/errors"
+	"github.com/pzverkov/quantum-go/pkg/chkem"
+	"github.com/pzverkov/quantum-go/pkg/crypto"
+	"github.com/pzverkov/quantum-go/pkg/protocol"
 )
 
 // HandshakeState represents the current state of the handshake.

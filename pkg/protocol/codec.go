@@ -30,8 +30,8 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/quantum-go/quantum-go/internal/constants"
-	qerrors "github.com/quantum-go/quantum-go/internal/errors"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	qerrors "github.com/pzverkov/quantum-go/internal/errors"
 )
 
 // Codec provides message serialization and deserialization.

@@ -30,8 +30,8 @@ import (
 
 	"golang.org/x/crypto/sha3"
 
-	"github.com/quantum-go/quantum-go/internal/constants"
-	qerrors "github.com/quantum-go/quantum-go/internal/errors"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	qerrors "github.com/pzverkov/quantum-go/internal/errors"
 )
 
 // DeriveKey derives a key using SHAKE-256 with domain separation.

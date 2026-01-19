@@ -22,8 +22,8 @@ package crypto
 import (
 	"github.com/cloudflare/circl/kem/mlkem/mlkem1024"
 
-	"github.com/quantum-go/quantum-go/internal/constants"
-	qerrors "github.com/quantum-go/quantum-go/internal/errors"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	qerrors "github.com/pzverkov/quantum-go/internal/errors"
 )
 
 // MLKEMPublicKey wraps an ML-KEM-1024 public key

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/quantum-go/quantum-go/internal/constants"
-	"github.com/quantum-go/quantum-go/pkg/crypto"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	"github.com/pzverkov/quantum-go/pkg/crypto"
 )
 
 // --- Random Tests ---

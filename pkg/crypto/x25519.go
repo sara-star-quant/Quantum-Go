@@ -23,8 +23,8 @@ package crypto
 import (
 	"crypto/ecdh"
 
-	"github.com/quantum-go/quantum-go/internal/constants"
-	qerrors "github.com/quantum-go/quantum-go/internal/errors"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	qerrors "github.com/pzverkov/quantum-go/internal/errors"
 )
 
 // X25519KeyPair represents an X25519 key pair for classical ECDH.

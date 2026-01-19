@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/quantum-go/quantum-go/internal/constants"
-	"github.com/quantum-go/quantum-go/pkg/tunnel"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	"github.com/pzverkov/quantum-go/pkg/tunnel"
 )
 
 // TestFullHandshakeAndDataTransfer verifies the complete tunnel establishment and data transfer.

@@ -18,8 +18,8 @@
 package protocol
 
 import (
-	"github.com/quantum-go/quantum-go/internal/constants"
-	qerrors "github.com/quantum-go/quantum-go/internal/errors"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	qerrors "github.com/pzverkov/quantum-go/internal/errors"
 )
 
 // MessageType identifies the type of protocol message.

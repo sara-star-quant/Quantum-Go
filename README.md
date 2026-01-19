@@ -3,6 +3,7 @@
 **Quantum-Resistant VPN Encryption using Cascaded Hybrid KEM (CH-KEM)**
 
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev)
+[![Go Reference](https://pkg.go.dev/badge/github.com/pzverkov/quantum-go.svg)](https://pkg.go.dev/github.com/pzverkov/quantum-go)
 [![Security Level](https://img.shields.io/badge/Security-NIST%20Category%205-green)](https://csrc.nist.gov/projects/post-quantum-cryptography)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
@@ -34,7 +35,7 @@ Quantum-Go is a production-ready, quantum-resistant VPN encryption library imple
 go get github.com/pzverkov/quantum-go
 ```
 
-**Requirements:** Go 1.24 or later (for native `crypto/mlkem` support)
+**Requirements:** Go 1.24 or later
 
 ### Basic Usage
 
@@ -141,7 +142,7 @@ Initiator                              Responder
 
 ## Performance
 
-Typical benchmarks on modern hardware (Intel i7, Go 1.24):
+Typical benchmarks on modern hardware (Intel i7, Go 1.24+):
 
 | Operation | Time | Throughput |
 |-----------|------|------------|

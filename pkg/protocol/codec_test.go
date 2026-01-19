@@ -6,11 +6,11 @@ import (
 	"io"
 	"testing"
 
-	"github.com/quantum-go/quantum-go/internal/constants"
-	qerrors "github.com/quantum-go/quantum-go/internal/errors"
-	"github.com/quantum-go/quantum-go/pkg/chkem"
-	"github.com/quantum-go/quantum-go/pkg/crypto"
-	"github.com/quantum-go/quantum-go/pkg/protocol"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	qerrors "github.com/pzverkov/quantum-go/internal/errors"
+	"github.com/pzverkov/quantum-go/pkg/chkem"
+	"github.com/pzverkov/quantum-go/pkg/crypto"
+	"github.com/pzverkov/quantum-go/pkg/protocol"
 )
 
 // --- ClientHello Tests ---
