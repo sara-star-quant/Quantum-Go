@@ -147,7 +147,7 @@ func BenchmarkCHKEMFullKeyExchange(b *testing.B) {
 		ct, _, _ := chkem.Encapsulate(recipientKP.PublicKey())
 
 		// Decapsulate
-		chkem.Decapsulate(ct, recipientKP)
+		_, _ = chkem.Decapsulate(ct, recipientKP)
 	}
 }
 
@@ -334,9 +334,9 @@ func BenchmarkSessionDecrypt(b *testing.B) {
 	responder, _ := tunnel.NewSession(tunnel.RoleResponder)
 
 	masterSecret := make([]byte, 32)
-	crypto.SecureRandom(masterSecret)
-	initiator.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
-	responder.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = crypto.SecureRandom(masterSecret)
+	_ = initiator.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = responder.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	plaintext := make([]byte, 1400)
 	ciphertexts := make([][]byte, 1000)

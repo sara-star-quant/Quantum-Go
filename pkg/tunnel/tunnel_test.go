@@ -128,11 +128,11 @@ func TestReplayProtection(t *testing.T) {
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
 	crypto.SecureRandom(masterSecret)
-	session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	// Create a second session to decrypt (simulating receiver)
 	receiver, _ := tunnel.NewSession(tunnel.RoleResponder)
-	receiver.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = receiver.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	plaintext := []byte("test message")
 	ciphertext, seq, err := session.Encrypt(plaintext)
@@ -189,7 +189,7 @@ func TestSessionClose(t *testing.T) {
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
 	crypto.SecureRandom(masterSecret)
-	session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	session.Close()
 
@@ -206,7 +206,7 @@ func TestSessionStats(t *testing.T) {
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
 	crypto.SecureRandom(masterSecret)
-	session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	// Encrypt some data
 	for i := 0; i < 10; i++ {
@@ -465,7 +465,7 @@ func TestNeedsRekey(t *testing.T) {
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
 	crypto.SecureRandom(masterSecret)
-	session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	// Initially should not need rekey
 	if session.NeedsRekey() {

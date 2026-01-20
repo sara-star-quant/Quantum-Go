@@ -391,20 +391,20 @@ func (l *Listener) Accept() (*Tunnel, error) {
 	// Create session as responder
 	session, err := NewSession(RoleResponder)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
 	// Perform handshake
 	if err := ResponderHandshake(session, conn); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
 	// Create transport
 	transport, err := NewTransport(session, conn, l.config)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 

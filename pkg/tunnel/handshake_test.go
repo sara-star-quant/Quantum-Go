@@ -14,8 +14,8 @@ import (
 // TestHandshakeStateMachine verifies the handshake state transitions.
 func TestHandshakeStateMachine(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, err := tunnel.NewSession(tunnel.RoleInitiator)
 	if err != nil {
@@ -82,8 +82,8 @@ func TestHandshakeStateMachine(t *testing.T) {
 // TestHandshakeTimeout verifies that handshake respects timeouts.
 func TestHandshakeTimeout(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 
@@ -100,8 +100,8 @@ func TestHandshakeTimeout(t *testing.T) {
 // TestHandshakeWithData verifies data can be sent immediately after handshake.
 func TestHandshakeWithData(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -111,12 +111,12 @@ func TestHandshakeWithData(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -126,13 +126,13 @@ func TestHandshakeWithData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTransport (client) failed: %v", err)
 	}
-	defer clientTransport.Close()
+	defer func() { _ = clientTransport.Close() }()
 
 	serverTransport, err := tunnel.NewTransport(serverSession, serverConn, tunnel.DefaultTransportConfig())
 	if err != nil {
 		t.Fatalf("NewTransport (server) failed: %v", err)
 	}
-	defer serverTransport.Close()
+	defer func() { _ = serverTransport.Close() }()
 
 	// Send data immediately after handshake
 	testData := []byte("First message after handshake!")
@@ -144,7 +144,7 @@ func TestHandshakeWithData(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		clientTransport.Send(testData)
+		_ = clientTransport.Send(testData)
 	}()
 
 	go func() {
@@ -177,7 +177,7 @@ func TestMultipleHandshakes(t *testing.T) {
 
 		go func() {
 			defer wg.Done()
-			defer clientConn.Close()
+			defer func() { _ = clientConn.Close() }()
 
 			clientSession, err := tunnel.NewSession(tunnel.RoleInitiator)
 			if err != nil {
@@ -197,7 +197,7 @@ func TestMultipleHandshakes(t *testing.T) {
 
 		go func() {
 			defer wg.Done()
-			defer serverConn.Close()
+			defer func() { _ = serverConn.Close() }()
 
 			serverSession, err := tunnel.NewSession(tunnel.RoleResponder)
 			if err != nil {
@@ -230,8 +230,8 @@ func TestHandshakeEncryptedRecordFraming(t *testing.T) {
 	// are properly framed with length prefixes for encrypted data.
 
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -273,8 +273,8 @@ func TestHandshakeEncryptedRecordFraming(t *testing.T) {
 // TestSessionKeyAgreement verifies both sides derive the same keys.
 func TestSessionKeyAgreement(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -284,12 +284,12 @@ func TestSessionKeyAgreement(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -333,8 +333,8 @@ func TestSessionKeyAgreement(t *testing.T) {
 // TestTransportCloseNonBlocking verifies Close() doesn't block indefinitely.
 func TestTransportCloseNonBlocking(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)

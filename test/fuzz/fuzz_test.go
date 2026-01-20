@@ -96,7 +96,7 @@ func FuzzDecodeClientHello(f *testing.F) {
 		CHKEMPublicKey: kp.PublicKey().Bytes(),
 		CipherSuites:   []constants.CipherSuite{constants.CipherSuiteAES256GCM},
 	}
-	crypto.SecureRandom(validHello.Random)
+	_ = crypto.SecureRandom(validHello.Random)
 	encoded, _ := codec.EncodeClientHello(validHello)
 	f.Add(encoded)
 
@@ -131,7 +131,7 @@ func FuzzDecodeServerHello(f *testing.F) {
 	kp, _ := chkem.GenerateKeyPair()
 	ct, _, _ := chkem.Encapsulate(kp.PublicKey())
 	sessionID := make([]byte, constants.SessionIDSize)
-	crypto.SecureRandom(sessionID)
+	_ = crypto.SecureRandom(sessionID)
 
 	validHello := &protocol.ServerHello{
 		Version:         protocol.Current,
@@ -140,7 +140,7 @@ func FuzzDecodeServerHello(f *testing.F) {
 		CHKEMCiphertext: ct.Bytes(),
 		CipherSuite:     constants.CipherSuiteAES256GCM,
 	}
-	crypto.SecureRandom(validHello.Random)
+	_ = crypto.SecureRandom(validHello.Random)
 	encoded, _ := codec.EncodeServerHello(validHello)
 	f.Add(encoded)
 

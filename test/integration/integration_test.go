@@ -71,13 +71,13 @@ func TestFullHandshakeAndDataTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client transport: %v", err)
 	}
-	defer clientTransport.Close()
+	defer func() { _ = clientTransport.Close() }()
 
 	serverTransport, err := tunnel.NewTransport(serverSession, serverConn, config)
 	if err != nil {
 		t.Fatalf("Failed to create server transport: %v", err)
 	}
-	defer serverTransport.Close()
+	defer func() { _ = serverTransport.Close() }()
 
 	// Test data transfer: client -> server
 	testData := []byte("Hello from quantum-resistant client!")
@@ -390,8 +390,8 @@ func TestDifferentCipherSuites(t *testing.T) {
 	for _, suite := range suites {
 		t.Run(suite.String(), func(t *testing.T) {
 			clientConn, serverConn := net.Pipe()
-			defer clientConn.Close()
-			defer serverConn.Close()
+			defer func() { _ = clientConn.Close() }()
+			defer func() { _ = serverConn.Close() }()
 
 			clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 			serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -401,12 +401,12 @@ func TestDifferentCipherSuites(t *testing.T) {
 
 			go func() {
 				defer wg.Done()
-				tunnel.InitiatorHandshake(clientSession, clientConn)
+				_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 			}()
 
 			go func() {
 				defer wg.Done()
-				tunnel.ResponderHandshake(serverSession, serverConn)
+				_ = tunnel.ResponderHandshake(serverSession, serverConn)
 			}()
 
 			wg.Wait()
@@ -420,8 +420,8 @@ func TestDifferentCipherSuites(t *testing.T) {
 			config := tunnel.DefaultTransportConfig()
 			clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
 			serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
-			defer clientTransport.Close()
-			defer serverTransport.Close()
+			defer func() { _ = clientTransport.Close() }()
+			defer func() { _ = serverTransport.Close() }()
 
 			// Test data transfer
 			testData := []byte("Test with " + suite.String())
@@ -433,7 +433,7 @@ func TestDifferentCipherSuites(t *testing.T) {
 
 			go func() {
 				defer wg.Done()
-				clientTransport.Send(testData)
+				_ = clientTransport.Send(testData)
 			}()
 
 			go func() {

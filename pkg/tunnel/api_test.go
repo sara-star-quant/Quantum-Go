@@ -17,7 +17,7 @@ func TestDialAndListen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr().String()
 
@@ -57,7 +57,7 @@ func TestDialAndListen(t *testing.T) {
 			clientErr = fmt.Errorf("Dial failed: %w", err)
 			return
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		if err := client.Send(testData); err != nil {
 			clientErr = fmt.Errorf("Send failed: %w", err)
@@ -85,7 +85,7 @@ func TestDialWithConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr().String()
 
@@ -112,7 +112,7 @@ func TestDialWithConfig(t *testing.T) {
 			t.Errorf("DialWithConfig failed: %v", err)
 			return
 		}
-		client.Close()
+		_ = client.Close()
 	}()
 
 	wg.Wait()
@@ -141,7 +141,7 @@ func TestListenerSetConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	config := tunnel.DefaultTransportConfig()
 	config.WriteTimeout = 5 * time.Second
@@ -159,7 +159,7 @@ func TestListenerAddr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr()
 	if addr == nil {
@@ -195,7 +195,7 @@ func TestMultipleClients(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr().String()
 	numClients := 5
@@ -243,7 +243,7 @@ func TestMultipleClients(t *testing.T) {
 				errors <- fmt.Errorf("Client %d dial failed: %w", clientID, err)
 				return
 			}
-			defer client.Close()
+			defer func() { _ = client.Close() }()
 
 			msg := []byte(fmt.Sprintf("Message from client %d", clientID))
 			if err := client.Send(msg); err != nil {
@@ -289,7 +289,7 @@ func TestBidirectionalCommunication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr().String()
 
@@ -337,7 +337,7 @@ func TestBidirectionalCommunication(t *testing.T) {
 			clientErr = fmt.Errorf("Dial failed: %w", err)
 			return
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		// Send to server
 		if err := client.Send(clientMsg); err != nil {
@@ -372,7 +372,7 @@ func TestTunnelGetters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr().String()
 
