@@ -215,7 +215,7 @@ func TestEncodeDecodeFinished(t *testing.T) {
 	codec := protocol.NewCodec()
 
 	verifyData := make([]byte, 32)
-	crypto.SecureRandom(verifyData)
+	_ = crypto.SecureRandom(verifyData)
 
 	// Test ClientFinished
 	encoded, err := codec.EncodeFinished(protocol.MessageTypeClientFinished, verifyData)
@@ -299,7 +299,7 @@ func TestEncodeDecodeData(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			if len(tc.payload) > 0 && tc.payload[0] == 0 {
-				crypto.SecureRandom(tc.payload)
+				_ = crypto.SecureRandom(tc.payload)
 			}
 
 			encoded, err := codec.EncodeData(tc.seq, tc.payload)
@@ -627,7 +627,7 @@ func TestClientHelloValidation(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			random := make([]byte, 32)
-			crypto.SecureRandom(random)
+			_ = crypto.SecureRandom(random)
 
 			msg := &protocol.ClientHello{
 				Version:        protocol.Current,

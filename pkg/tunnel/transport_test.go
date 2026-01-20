@@ -340,7 +340,7 @@ func TestTransportConcurrentSendReceive(t *testing.T) {
 			errors <- err
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Concurrent receives and sends
 		var serverWg sync.WaitGroup
