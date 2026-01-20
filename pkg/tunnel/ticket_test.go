@@ -62,7 +62,9 @@ func TestTicketManagerKeyRotation(t *testing.T) {
 
 	// Rotate key
 	key2 := bytes.Repeat([]byte{0x02}, 32)
-	tm.RotateKey(key2)
+	if err := tm.RotateKey(key2); err != nil {
+		t.Fatalf("Failed to rotate key: %v", err)
+	}
 
 	// Should still be able to decrypt with previous key
 	decrypted, err := tm.DecryptTicket(encrypted1)
