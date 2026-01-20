@@ -102,8 +102,8 @@ func FuzzDecodeClientHello(f *testing.F) {
 
 	// Edge cases
 	f.Add([]byte{})
-	f.Add([]byte{0x01})                    // Just message type
-	f.Add([]byte{0x01, 0, 0, 0, 0})        // Header only
+	f.Add([]byte{0x01})                         // Just message type
+	f.Add([]byte{0x01, 0, 0, 0, 0})             // Header only
 	f.Add([]byte{0x01, 0xff, 0xff, 0xff, 0xff}) // Huge length
 
 	f.Fuzz(func(t *testing.T, data []byte) {

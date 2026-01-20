@@ -8,9 +8,9 @@ import (
 
 // Build-time variables (set via -ldflags)
 var (
-	version   = "0.0.4"        // Set via -ldflags "-X main.version=x.y.z"
-	buildTime = "unknown"      // Set via -ldflags "-X main.buildTime=..."
-	gitCommit = "unknown"      // Set via -ldflags "-X main.gitCommit=..."
+	version   = "0.0.4"   // Set via -ldflags "-X main.version=x.y.z"
+	buildTime = "unknown" // Set via -ldflags "-X main.buildTime=..."
+	gitCommit = "unknown" // Set via -ldflags "-X main.gitCommit=..."
 )
 
 func main() {

@@ -97,21 +97,23 @@ func benchHandshakes(count int) {
 	wg.Wait()
 	totalTime := time.Since(startTime)
 
-	// Calculate statistics
-	if errors == count {
+	successCount := count - errors
+	printHandshakeResults(count, successCount, errors, totalTime, durations)
+}
+
+func printHandshakeResults(total, successful, failed int, totalTime time.Duration, durations []time.Duration) {
+	if failed == total {
 		fmt.Fprintf(os.Stderr, "All handshakes failed\n")
 		os.Exit(1)
 	}
 
 	var sum, min, max time.Duration
 	min = time.Hour // Initialize to large value
-	successCount := 0
 
 	for _, d := range durations {
 		if d == 0 {
 			continue
 		}
-		successCount++
 		sum += d
 		if d < min {
 			min = d
@@ -121,22 +123,25 @@ func benchHandshakes(count int) {
 		}
 	}
 
-	avg := sum / time.Duration(successCount)
+	avg := sum / time.Duration(successful)
 
 	fmt.Println("\nResults:")
-	fmt.Printf("  Total handshakes: %d\n", count)
-	fmt.Printf("  Successful: %d\n", successCount)
-	fmt.Printf("  Failed: %d\n", errors)
+	fmt.Printf("  Total handshakes: %d\n", total)
+	fmt.Printf("  Successful: %d\n", successful)
+	fmt.Printf("  Failed: %d\n", failed)
 	fmt.Printf("  Total time: %v\n", totalTime)
 	fmt.Println()
 	fmt.Println("Handshake Performance:")
 	fmt.Printf("  Average: %v\n", avg)
 	fmt.Printf("  Minimum: %v\n", min)
 	fmt.Printf("  Maximum: %v\n", max)
-	fmt.Printf("  Throughput: %.2f handshakes/sec\n", float64(successCount)/totalTime.Seconds())
+	fmt.Printf("  Throughput: %.2f handshakes/sec\n", float64(successful)/totalTime.Seconds())
 	fmt.Println()
 
-	// Performance rating
+	printHandshakeRating(avg)
+}
+
+func printHandshakeRating(avg time.Duration) {
 	if avg < 2*time.Millisecond {
 		fmt.Println("✓ Performance: Excellent (< 2ms avg)")
 	} else if avg < 5*time.Millisecond {
@@ -241,6 +246,10 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 
 	wg.Wait()
 
+	printThroughputResults(totalSent, totalReceived, sendDuration, receiveDuration)
+}
+
+func printThroughputResults(totalSent, totalReceived int64, sendDuration, receiveDuration time.Duration) {
 	fmt.Println()
 	fmt.Println("\nResults:")
 	fmt.Printf("  Data sent: %s\n", formatSize(totalSent))
@@ -259,9 +268,11 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 		fmt.Printf("Receive Throughput: %.2f MB/s (%.2f Mbps)\n", recvMBps, recvMBps*8)
 	}
 
-	// Performance rating
 	avgMBps := (float64(totalSent)/sendDuration.Seconds() + float64(totalReceived)/receiveDuration.Seconds()) / 2 / 1024 / 1024
+	printThroughputRating(avgMBps)
+}
 
+func printThroughputRating(avgMBps float64) {
 	fmt.Println()
 	if avgMBps > 500 {
 		fmt.Println("✓ Performance: Excellent (> 500 MB/s)")

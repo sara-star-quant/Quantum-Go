@@ -323,7 +323,7 @@ func TestKATAEADRoundtrip(t *testing.T) {
 		plaintext string
 		aad       string
 	}{
-		{"small", "48656c6c6f", ""}, // "Hello"
+		{"small", "48656c6c6f", ""},                        // "Hello"
 		{"with aad", "48656c6c6f", "6164646974696f6e616c"}, // "Hello", "additional"
 		{"single byte", "00", ""},
 		{"1KB", "", ""}, // Will be filled with pattern
@@ -376,12 +376,12 @@ func TestKATAEADRoundtrip(t *testing.T) {
 func TestKATX25519(t *testing.T) {
 	// RFC 7748 test vectors
 	testCases := []struct {
-		name          string
-		alicePrivate  string
-		alicePublic   string
-		bobPrivate    string
-		bobPublic     string
-		sharedSecret  string
+		name         string
+		alicePrivate string
+		alicePublic  string
+		bobPrivate   string
+		bobPublic    string
+		sharedSecret string
 	}{
 		{
 			name: "RFC 7748 Test Vector",
@@ -389,8 +389,8 @@ func TestKATX25519(t *testing.T) {
 			alicePrivate: "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
 			alicePublic:  "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
 			// Bob's private key
-			bobPrivate:   "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
-			bobPublic:    "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+			bobPrivate: "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
+			bobPublic:  "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
 			// Shared secret
 			sharedSecret: "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742",
 		},
