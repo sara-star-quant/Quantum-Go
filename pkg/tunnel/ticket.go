@@ -64,7 +64,12 @@ func (tm *TicketManager) EncryptTicket(ticket *SessionTicket) ([]byte, error) {
 	plaintext[0] = ticket.Version
 	binary.BigEndian.PutUint16(plaintext[1:3], uint16(ticket.CipherSuite))
 	copy(plaintext[3:35], ticket.MasterSecret)
-	binary.BigEndian.PutUint64(plaintext[35:43], uint64(ticket.CreatedAt.Unix()))
+
+	unixTime := ticket.CreatedAt.Unix()
+	if unixTime < 0 {
+		return nil, qerrors.ErrInvalidMessage
+	}
+	binary.BigEndian.PutUint64(plaintext[35:43], uint64(unixTime))
 
 	// Encrypt
 	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
@@ -98,11 +103,16 @@ func (tm *TicketManager) DecryptTicket(data []byte) (*SessionTicket, error) {
 		return nil, qerrors.ErrInvalidTicket
 	}
 
+	unixTime := binary.BigEndian.Uint64(plaintext[35:43])
+	if unixTime > 0x7FFFFFFFFFFFFFFF {
+		return nil, qerrors.ErrInvalidTicket
+	}
+
 	ticket := &SessionTicket{
 		Version:      plaintext[0],
 		CipherSuite:  constants.CipherSuite(binary.BigEndian.Uint16(plaintext[1:3])),
 		MasterSecret: make([]byte, 32),
-		CreatedAt:    time.Unix(int64(binary.BigEndian.Uint64(plaintext[35:43])), 0),
+		CreatedAt:    time.Unix(int64(unixTime), 0),
 	}
 	copy(ticket.MasterSecret, plaintext[3:35])
 
