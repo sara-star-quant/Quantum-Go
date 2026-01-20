@@ -165,7 +165,7 @@ func (c *Codec) EncodeServerHello(m *ServerHello) ([]byte, error) {
 
 	payloadSize := 2 + // version
 		32 + // random
-		constants.SessionIDSize + // session ID
+		1 + len(m.SessionID) + // session ID length + data
 		constants.CHKEMCiphertextSize + // ciphertext
 		2 // cipher suite
 
@@ -187,9 +187,11 @@ func (c *Codec) EncodeServerHello(m *ServerHello) ([]byte, error) {
 	copy(buf[offset:], m.Random)
 	offset += 32
 
-	// SessionID
+	// SessionID (length-prefixed)
+	buf[offset] = byte(len(m.SessionID))
+	offset++
 	copy(buf[offset:], m.SessionID)
-	offset += constants.SessionIDSize
+	offset += len(m.SessionID)
 
 	// CH-KEM ciphertext
 	copy(buf[offset:], m.CHKEMCiphertext)
@@ -216,8 +218,8 @@ func (c *Codec) DecodeServerHello(data []byte) (*ServerHello, error) {
 		return nil, qerrors.ErrInvalidMessage
 	}
 
-	// Minimum payload: version(2) + random(32) + sessionID(16) + ciphertext(1600) + cipherSuite(2) = 1652
-	minPayloadLen := 2 + 32 + constants.SessionIDSize + constants.CHKEMCiphertextSize + 2
+	// Minimum payload: version(2) + random(32) + sessionIDLen(1) + ciphertext(1600) + cipherSuite(2) = 1637
+	minPayloadLen := 2 + 32 + 1 + constants.CHKEMCiphertextSize + 2
 	if int(payloadLen) < minPayloadLen {
 		return nil, qerrors.ErrInvalidMessage
 	}
@@ -235,9 +237,13 @@ func (c *Codec) DecodeServerHello(data []byte) (*ServerHello, error) {
 	offset += 32
 
 	// SessionID
-	m.SessionID = make([]byte, constants.SessionIDSize)
-	copy(m.SessionID, data[offset:offset+constants.SessionIDSize])
-	offset += constants.SessionIDSize
+	sessionIDLen := int(data[offset])
+	offset++
+	if sessionIDLen > 0 {
+		m.SessionID = make([]byte, sessionIDLen)
+		copy(m.SessionID, data[offset:offset+sessionIDLen])
+		offset += sessionIDLen
+	}
 
 	// CH-KEM ciphertext
 	m.CHKEMCiphertext = make([]byte, constants.CHKEMCiphertextSize)

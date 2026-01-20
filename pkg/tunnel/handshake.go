@@ -74,6 +74,12 @@ type Handshake struct {
 
 	// Transcript for verify_data computation
 	transcript bytes.Buffer
+
+	// Resumption state
+	ticket        []byte         // Client ticket to send
+	ticketSecret  []byte         // Initiator's secret for the ticket
+	ticketManager *TicketManager // Server ticket manager to verify
+	resumed       bool           // Whether this is a resumed session
 }
 
 // NewHandshake creates a new handshake for the given session.
@@ -83,6 +89,17 @@ func NewHandshake(session *Session) *Handshake {
 		codec:   protocol.NewCodec(),
 		state:   HandshakeStateInitial,
 	}
+}
+
+// SetTicket sets the session ticket for resumption (initiator).
+func (h *Handshake) SetTicket(ticket, secret []byte) {
+	h.ticket = ticket
+	h.ticketSecret = secret
+}
+
+// SetTicketManager sets the ticket manager for resumption (responder).
+func (h *Handshake) SetTicketManager(tm *TicketManager) {
+	h.ticketManager = tm
 }
 
 // --- Initiator Functions ---
@@ -99,7 +116,7 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 	msg := &protocol.ClientHello{
 		Version:        protocol.Current,
 		Random:         h.clientRandom,
-		SessionID:      nil, // New session
+		SessionID:      h.ticket,
 		CHKEMPublicKey: h.session.LocalKeyPair.PublicKey().Bytes(),
 		CipherSuites:   protocol.SupportedCipherSuites(),
 	}
@@ -134,19 +151,30 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 		return qerrors.ErrUnsupportedVersion
 	}
 
+	// Check if server accepted resumption
+	if len(msg.SessionID) > 0 && h.ticket != nil && bytes.Equal(msg.SessionID, h.ticket) {
+		h.resumed = true
+	}
+
 	// Store server random
 	h.serverRandom = msg.Random
 
-	// Parse ciphertext
-	ct, err := chkem.ParseCiphertext(msg.CHKEMCiphertext)
-	if err != nil {
-		return err
-	}
+	if h.resumed {
+		// Use the MasterSecret from the ticket
+		h.sharedSecret = make([]byte, len(h.ticketSecret))
+		copy(h.sharedSecret, h.ticketSecret)
+	} else {
+		// Parse ciphertext
+		ct, err := chkem.ParseCiphertext(msg.CHKEMCiphertext)
+		if err != nil {
+			return err
+		}
 
-	// Decapsulate to get shared secret
-	h.sharedSecret, err = chkem.Decapsulate(ct, h.session.LocalKeyPair)
-	if err != nil {
-		return err
+		// Decapsulate to get shared secret
+		h.sharedSecret, err = chkem.Decapsulate(ct, h.session.LocalKeyPair)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Add to transcript
@@ -268,12 +296,24 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	// Store client random
 	h.clientRandom = msg.Random
 
-	// Parse client's public key
-	clientPublicKey, err := chkem.ParsePublicKey(msg.CHKEMPublicKey)
-	if err != nil {
-		return err
+	// Check for resumption
+	if len(msg.SessionID) > 0 && h.ticketManager != nil {
+		secret, err := h.session.Resume(msg.SessionID, h.ticketManager)
+		if err == nil {
+			h.resumed = true
+			h.sharedSecret = secret
+			h.session.ID = msg.SessionID
+		}
 	}
-	h.session.RemotePublicKey = clientPublicKey
+
+	if !h.resumed {
+		// Parse client's public key
+		clientPublicKey, err := chkem.ParsePublicKey(msg.CHKEMPublicKey)
+		if err != nil {
+			return err
+		}
+		h.session.RemotePublicKey = clientPublicKey
+	}
 
 	// Select cipher suite (first mutually supported)
 	h.session.CipherSuite = selectCipherSuite(msg.CipherSuites)
@@ -292,25 +332,32 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 
 // CreateServerHello generates the ServerHello message.
 func (h *Handshake) CreateServerHello() ([]byte, error) {
-	if h.session.RemotePublicKey == nil {
+	if !h.resumed && h.session.RemotePublicKey == nil {
 		return nil, qerrors.ErrInvalidState
 	}
 
 	// Generate server random
 	h.serverRandom = crypto.MustSecureRandomBytes(32)
 
-	// Encapsulate with client's public key
-	ct, sharedSecret, err := chkem.Encapsulate(h.session.RemotePublicKey)
-	if err != nil {
-		return nil, err
+	var ctBytes []byte
+	if h.resumed {
+		// Send empty/zero ciphertext if resuming
+		ctBytes = make([]byte, constants.CHKEMCiphertextSize)
+	} else {
+		// Encapsulate with client's public key
+		ct, sharedSecret, err := chkem.Encapsulate(h.session.RemotePublicKey)
+		if err != nil {
+			return nil, err
+		}
+		h.sharedSecret = sharedSecret
+		ctBytes = ct.Bytes()
 	}
-	h.sharedSecret = sharedSecret
 
 	msg := &protocol.ServerHello{
 		Version:         protocol.Current,
 		Random:          h.serverRandom,
 		SessionID:       h.session.ID,
-		CHKEMCiphertext: ct.Bytes(),
+		CHKEMCiphertext: ctBytes,
 		CipherSuite:     h.session.CipherSuite,
 	}
 
@@ -575,6 +622,94 @@ func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
 // ResponderHandshake performs the complete handshake as responder.
 func ResponderHandshake(session *Session, rw io.ReadWriter) error {
 	h := NewHandshake(session)
+
+	// Receive ClientHello
+	clientHello, err := h.codec.ReadMessage(rw)
+	if err != nil {
+		return err
+	}
+	if err := h.ProcessClientHello(clientHello); err != nil {
+		return err
+	}
+
+	// Send ServerHello
+	serverHello, err := h.CreateServerHello()
+	if err != nil {
+		return err
+	}
+	if _, err := rw.Write(serverHello); err != nil {
+		return err
+	}
+
+	// Receive ClientFinished (encrypted, with length framing)
+	clientFinished, err := readEncryptedRecord(rw)
+	if err != nil {
+		return err
+	}
+	if err := h.ProcessClientFinished(clientFinished); err != nil {
+		return err
+	}
+
+	// Send ServerFinished (encrypted, with length framing)
+	serverFinished, err := h.CreateServerFinished()
+	if err != nil {
+		return err
+	}
+	if err := writeEncryptedRecord(rw, serverFinished); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// InitiatorResumptionHandshake performs the complete handshake as initiator with resumption.
+func InitiatorResumptionHandshake(session *Session, rw io.ReadWriter, ticket, secret []byte) error {
+	h := NewHandshake(session)
+	h.SetTicket(ticket, secret)
+
+	// Send ClientHello
+	clientHello, err := h.CreateClientHello()
+	if err != nil {
+		return err
+	}
+	if _, err := rw.Write(clientHello); err != nil {
+		return err
+	}
+
+	// Receive ServerHello
+	serverHello, err := h.codec.ReadMessage(rw)
+	if err != nil {
+		return err
+	}
+	if err := h.ProcessServerHello(serverHello); err != nil {
+		return err
+	}
+
+	// Send ClientFinished (encrypted, with length framing)
+	clientFinished, err := h.CreateClientFinished()
+	if err != nil {
+		return err
+	}
+	if err := writeEncryptedRecord(rw, clientFinished); err != nil {
+		return err
+	}
+
+	// Receive ServerFinished (encrypted, with length framing)
+	serverFinished, err := readEncryptedRecord(rw)
+	if err != nil {
+		return err
+	}
+	if err := h.ProcessServerFinished(serverFinished); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ResponderResumptionHandshake performs the complete handshake as responder with resumption.
+func ResponderResumptionHandshake(session *Session, rw io.ReadWriter, tm *TicketManager) error {
+	h := NewHandshake(session)
+	h.SetTicketManager(tm)
 
 	// Receive ClientHello
 	clientHello, err := h.codec.ReadMessage(rw)
