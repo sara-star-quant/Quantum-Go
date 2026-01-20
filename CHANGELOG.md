@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-01-20
+
+### Added
+- **Expanded test coverage** across core packages
+  - pkg/crypto: 66.9% -> 86.4% (+19.5%)
+  - pkg/protocol: 89.8% -> 96.0% (+6.2%)
+  - pkg/tunnel: 73.2% -> 75.0% (+1.8%)
+- **New crypto tests**: AEAD methods (SetCounter, NeedsRekey, Suite, Overhead, NonceSize, SealWithNonce/OpenWithNonce), ML-KEM (NewMLKEMKeyPairFromSeed, ParseMLKEMPublicKey, Zeroize), X25519 (NewX25519KeyPairFromBytes, Zeroize), random utilities (MustSecureRandom, MustSecureRandomBytes)
+- **New protocol tests**: Version serialization (Bytes, Uint16, ParseVersion, String), cipher suite helpers (SupportedCipherSuites, PreferredCipherSuite), Finished message validation (ClientFinished, ServerFinished)
+- **New tunnel tests**: SessionState.String(), role constants, session state edge cases (encrypt/decrypt before established, invalid cipher suite)
+- **CodeQL Advanced Security Analysis** for deep semantic code analysis
+
+### Fixed
+- **Data race in Session**: Fixed concurrent access to `LastActivity` field in Encrypt/Decrypt methods by adding proper mutex synchronization
+- **CI compatibility**: Fixed test runner for cross-platform execution
+- **Code quality**: Resolved all static analysis warnings in test files
+
 ## [0.0.3] - 2026-01-19
 
 ### Added
@@ -86,7 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.3...HEAD
+[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.4...HEAD
+[0.0.4]: https://github.com/pzverkov/quantum-go/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/pzverkov/quantum-go/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/pzverkov/quantum-go/compare/v0.0.1...v0.0.2
 [0.0.1]: https://github.com/pzverkov/quantum-go/releases/tag/v0.0.1
