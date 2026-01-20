@@ -288,7 +288,9 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 
 	s.BytesSent.Add(uint64(len(plaintext)))
 	s.PacketsSent.Add(1)
+	s.mu.Lock()
 	s.LastActivity = time.Now()
+	s.mu.Unlock()
 
 	return ciphertext, seq, nil
 }
@@ -323,7 +325,9 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 
 	s.BytesReceived.Add(uint64(len(plaintext)))
 	s.PacketsRecv.Add(1)
+	s.mu.Lock()
 	s.LastActivity = time.Now()
+	s.mu.Unlock()
 
 	return plaintext, nil
 }
