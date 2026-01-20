@@ -230,6 +230,8 @@ func TestSessionStats(t *testing.T) {
 // --- Integration Tests ---
 
 // mockConn implements net.Conn for testing
+//
+//nolint:unused // Reserved for future use
 type mockConn struct {
 	readBuf  *bytes.Buffer
 	writeBuf *bytes.Buffer
@@ -237,6 +239,7 @@ type mockConn struct {
 	mu       sync.Mutex
 }
 
+//nolint:unused // Reserved for future use
 func newMockConnPair() (*mockConn, *mockConn) {
 	buf1 := &bytes.Buffer{}
 	buf2 := &bytes.Buffer{}
@@ -253,6 +256,7 @@ func newMockConnPair() (*mockConn, *mockConn) {
 	return conn1, conn2
 }
 
+//nolint:unused // Reserved for future use
 func (c *mockConn) Read(b []byte) (n int, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -262,6 +266,7 @@ func (c *mockConn) Read(b []byte) (n int, err error) {
 	return c.readBuf.Read(b)
 }
 
+//nolint:unused // Reserved for future use
 func (c *mockConn) Write(b []byte) (n int, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -271,6 +276,7 @@ func (c *mockConn) Write(b []byte) (n int, err error) {
 	return c.writeBuf.Write(b)
 }
 
+//nolint:unused // Reserved for future use
 func (c *mockConn) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -278,10 +284,19 @@ func (c *mockConn) Close() error {
 	return nil
 }
 
-func (c *mockConn) LocalAddr() net.Addr                { return nil }
-func (c *mockConn) RemoteAddr() net.Addr               { return nil }
-func (c *mockConn) SetDeadline(t time.Time) error      { return nil }
-func (c *mockConn) SetReadDeadline(t time.Time) error  { return nil }
+//nolint:unused // Reserved for future use
+func (c *mockConn) LocalAddr() net.Addr { return nil }
+
+//nolint:unused // Reserved for future use
+func (c *mockConn) RemoteAddr() net.Addr { return nil }
+
+//nolint:unused // Reserved for future use
+func (c *mockConn) SetDeadline(t time.Time) error { return nil }
+
+//nolint:unused // Reserved for future use
+func (c *mockConn) SetReadDeadline(t time.Time) error { return nil }
+
+//nolint:unused // Reserved for future use
 func (c *mockConn) SetWriteDeadline(t time.Time) error { return nil }
 
 func TestHandshake(t *testing.T) {

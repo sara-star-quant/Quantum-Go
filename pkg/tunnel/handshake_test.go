@@ -88,7 +88,7 @@ func TestHandshakeTimeout(t *testing.T) {
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 
 	// Set a very short deadline
-	clientConn.SetDeadline(time.Now().Add(10 * time.Millisecond))
+	_ = clientConn.SetDeadline(time.Now().Add(10 * time.Millisecond))
 
 	// Handshake should fail because no responder
 	err := tunnel.InitiatorHandshake(clientSession, clientConn)

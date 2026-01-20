@@ -99,7 +99,7 @@ type Session struct {
 
 	// Sequence numbers
 	sendSeq atomic.Uint64
-	recvSeq atomic.Uint64
+	recvSeq atomic.Uint64 //nolint:unused // Reserved for future bidirectional validation
 
 	// Replay protection window
 	replayWindow *ReplayWindow
@@ -116,7 +116,7 @@ type Session struct {
 	PacketsRecv   atomic.Uint64
 
 	// Handshake transcript for key derivation
-	transcriptHash []byte
+	transcriptHash []byte //nolint:unused // Reserved for future session verification
 
 	// Mutex for state changes
 	mu sync.RWMutex

@@ -44,7 +44,7 @@ func benchHandshakes(count int) {
 		fmt.Fprintf(os.Stderr, "Error: Failed to start listener: %v\n", err)
 		os.Exit(1)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr().String()
 	fmt.Printf("Test setup: %s\n\n", addr)
@@ -64,7 +64,7 @@ func benchHandshakes(count int) {
 				errors++
 				continue
 			}
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
@@ -81,7 +81,7 @@ func benchHandshakes(count int) {
 		}
 
 		durations[i] = time.Since(handshakeStart)
-		client.Close()
+		_ = client.Close()
 
 		// Progress indicator every 10% (or every iteration if count < 10)
 		step := count / 10
@@ -159,7 +159,7 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 		fmt.Fprintf(os.Stderr, "Error: Failed to start listener: %v\n", err)
 		os.Exit(1)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr().String()
 
@@ -184,7 +184,7 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 			fmt.Fprintf(os.Stderr, "Accept error: %v\n", err)
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		receiveStart := time.Now()
 		for {
@@ -214,7 +214,7 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 			fmt.Fprintf(os.Stderr, "Dial error: %v\n", err)
 			return
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		sendStart := time.Now()
 		bytesToSend := totalBytes
@@ -278,7 +278,7 @@ func parseSize(s string) int64 {
 	// Simple parser for sizes like "100MB", "1GB"
 	var value int64
 	var unit string
-	fmt.Sscanf(s, "%d%s", &value, &unit)
+	_, _ = fmt.Sscanf(s, "%d%s", &value, &unit)
 
 	switch unit {
 	case "KB", "kb", "K", "k":

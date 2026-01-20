@@ -217,7 +217,7 @@ func TestMultipleClients(t *testing.T) {
 			}
 
 			go func(c *tunnel.Tunnel) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				data, err := c.Receive()
 				if err != nil {
 					errors <- fmt.Errorf("Receive failed: %w", err)
@@ -403,8 +403,8 @@ func TestTunnelGetters(t *testing.T) {
 	if serverTunnel == nil || clientTunnel == nil {
 		t.Fatal("Failed to establish tunnels")
 	}
-	defer serverTunnel.Close()
-	defer clientTunnel.Close()
+	defer func() { _ = serverTunnel.Close() }()
+	defer func() { _ = clientTunnel.Close() }()
 
 	// Test Session getter
 	if serverTunnel.Session() == nil {

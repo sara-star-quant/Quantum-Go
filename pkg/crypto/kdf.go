@@ -75,7 +75,7 @@ func DeriveKey(domain string, input []byte, outputLen int) ([]byte, error) {
 
 	// Extract output
 	output := make([]byte, outputLen)
-	h.Read(output)
+	_, _ = h.Read(output) // SHAKE256.Read never fails
 
 	return output, nil
 }
@@ -123,7 +123,7 @@ func DeriveKeyMultiple(domain string, inputs [][]byte, outputLen int) ([]byte, e
 
 	// Extract output
 	output := make([]byte, outputLen)
-	h.Read(output)
+	_, _ = h.Read(output) // SHAKE256.Read never fails
 
 	return output, nil
 }

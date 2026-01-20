@@ -97,7 +97,7 @@ func (t *Transport) Send(data []byte) error {
 	defer t.writeMu.Unlock()
 
 	if t.writeTimeout > 0 {
-		t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
+		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
 	}
 
 	_, err = t.conn.Write(msg)
@@ -107,8 +107,9 @@ func (t *Transport) Send(data []byte) error {
 
 	// Check if rekey is needed
 	if t.session.NeedsRekey() {
-		// In production, this would trigger rekeying
+		// TODO: In production, this would trigger rekeying
 		// For now, we just note that rekey is needed
+		_ = t.session // Acknowledge but don't act yet
 	}
 
 	return nil
@@ -125,7 +126,7 @@ func (t *Transport) Receive() ([]byte, error) {
 
 	// Read with timeout
 	if t.readTimeout > 0 {
-		t.conn.SetReadDeadline(time.Now().Add(t.readTimeout))
+		_ = t.conn.SetReadDeadline(time.Now().Add(t.readTimeout))
 	}
 
 	// Read message
@@ -206,7 +207,7 @@ func (t *Transport) SendPing() error {
 	defer t.writeMu.Unlock()
 
 	if t.writeTimeout > 0 {
-		t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
+		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
 	}
 
 	_, err := t.conn.Write(msg)
@@ -221,7 +222,7 @@ func (t *Transport) sendPong() error {
 	defer t.writeMu.Unlock()
 
 	if t.writeTimeout > 0 {
-		t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
+		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
 	}
 
 	_, err := t.conn.Write(msg)
@@ -259,15 +260,15 @@ func (t *Transport) Close() error {
 
 	t.writeMu.Lock()
 	// Use a short timeout for close notification to avoid blocking
-	t.conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
-	t.conn.Write(closeMsg) // Best effort, ignore errors
+	_ = t.conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+	_, _ = t.conn.Write(closeMsg) // Best effort, ignore errors
 	t.writeMu.Unlock()
 
 	// Close session
 	t.session.Close()
 
 	// Close the underlying connection
-	t.conn.Close()
+	_ = t.conn.Close()
 
 	return nil
 }
@@ -341,20 +342,20 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 	// Create session as initiator
 	session, err := NewSession(RoleInitiator)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
 	// Perform handshake
 	if err := InitiatorHandshake(session, conn); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 
 	// Create transport
 	transport, err := NewTransport(session, conn, config)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, err
 	}
 

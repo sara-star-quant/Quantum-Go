@@ -48,7 +48,7 @@ func runDemoServer(addr string, verbose bool) {
 		fmt.Fprintf(os.Stderr, "Error: Failed to start listener: %v\n", err)
 		os.Exit(1)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	actualAddr := listener.Addr().String()
 	fmt.Printf("✓ Server listening on %s\n", actualAddr)
@@ -152,7 +152,7 @@ func runDemoClient(addr, message string, verbose bool) {
 		fmt.Fprintf(os.Stderr, "Error: Failed to connect: %v\n", err)
 		os.Exit(1)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	handshakeDuration := time.Since(startHandshake)
 

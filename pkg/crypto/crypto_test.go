@@ -296,7 +296,7 @@ func TestTranscriptHash(t *testing.T) {
 
 func TestAEADAES256GCM(t *testing.T) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 
 	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
 	if err != nil {
@@ -325,7 +325,7 @@ func TestAEADAES256GCM(t *testing.T) {
 
 func TestAEADChaCha20Poly1305(t *testing.T) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 
 	aead, err := crypto.NewAEAD(constants.CipherSuiteChaCha20Poly1305, key)
 	if err != nil {
@@ -354,7 +354,7 @@ func TestAEADChaCha20Poly1305(t *testing.T) {
 
 func TestAEADTamperedCiphertext(t *testing.T) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 
 	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
 	if err != nil {
@@ -381,7 +381,7 @@ func TestAEADTamperedCiphertext(t *testing.T) {
 
 func TestAEADWrongAAD(t *testing.T) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 
 	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
 	if err != nil {
@@ -406,7 +406,7 @@ func TestAEADWrongAAD(t *testing.T) {
 
 func TestAEADNonceCounter(t *testing.T) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 
 	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
 	if err != nil {

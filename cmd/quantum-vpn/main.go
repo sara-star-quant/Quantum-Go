@@ -110,7 +110,7 @@ EXAMPLES:
     quantum-vpn demo --mode server --addr :8443 --verbose`)
 	}
 
-	fs.Parse(os.Args[2:])
+	_ = fs.Parse(os.Args[2:])
 
 	runDemo(*mode, *addr, *message, *verbose)
 }
@@ -145,7 +145,7 @@ EXAMPLES:
     quantum-vpn bench --handshakes 100 --throughput --size 500MB`)
 	}
 
-	fs.Parse(os.Args[2:])
+	_ = fs.Parse(os.Args[2:])
 
 	runBench(*handshakes, *throughput, *size, *duration, *cipherSuite)
 }

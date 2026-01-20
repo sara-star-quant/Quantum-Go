@@ -18,8 +18,8 @@ import (
 func TestFullHandshakeAndDataTransfer(t *testing.T) {
 	// Create network pipes
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	// Create sessions
 	clientSession, err := tunnel.NewSession(tunnel.RoleInitiator)
@@ -113,8 +113,8 @@ func TestFullHandshakeAndDataTransfer(t *testing.T) {
 // TestBidirectionalDataTransfer verifies data can flow both directions.
 func TestBidirectionalDataTransfer(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -124,12 +124,12 @@ func TestBidirectionalDataTransfer(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -137,8 +137,8 @@ func TestBidirectionalDataTransfer(t *testing.T) {
 	config := tunnel.DefaultTransportConfig()
 	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
 	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
-	defer clientTransport.Close()
-	defer serverTransport.Close()
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
 
 	// Test multiple messages in both directions
 	messages := []string{
@@ -165,7 +165,7 @@ func TestBidirectionalDataTransfer(t *testing.T) {
 
 		go func() {
 			defer wg.Done()
-			sender.Send([]byte(msg))
+			_ = sender.Send([]byte(msg))
 		}()
 
 		go func() {
@@ -188,8 +188,8 @@ func TestBidirectionalDataTransfer(t *testing.T) {
 // TestLargeDataTransfer verifies handling of larger payloads.
 func TestLargeDataTransfer(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -199,12 +199,12 @@ func TestLargeDataTransfer(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -212,8 +212,8 @@ func TestLargeDataTransfer(t *testing.T) {
 	config := tunnel.DefaultTransportConfig()
 	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
 	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
-	defer clientTransport.Close()
-	defer serverTransport.Close()
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
 
 	// Test with various payload sizes
 	sizes := []int{100, 1000, 10000, 60000}
@@ -231,7 +231,7 @@ func TestLargeDataTransfer(t *testing.T) {
 
 		go func() {
 			defer wg.Done()
-			clientTransport.Send(testData)
+			_ = clientTransport.Send(testData)
 		}()
 
 		go func() {
@@ -255,8 +255,8 @@ func TestLargeDataTransfer(t *testing.T) {
 // TestConcurrentTransfers verifies multiple concurrent transfers.
 func TestConcurrentTransfers(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -266,12 +266,12 @@ func TestConcurrentTransfers(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -279,8 +279,8 @@ func TestConcurrentTransfers(t *testing.T) {
 	config := tunnel.DefaultTransportConfig()
 	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
 	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
-	defer clientTransport.Close()
-	defer serverTransport.Close()
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
 
 	// Send multiple messages concurrently
 	messageCount := 10
@@ -292,7 +292,7 @@ func TestConcurrentTransfers(t *testing.T) {
 	// Sender goroutine
 	go func() {
 		for _, msg := range messages {
-			clientTransport.Send(msg)
+			_ = clientTransport.Send(msg)
 		}
 	}()
 
@@ -315,8 +315,8 @@ func TestConcurrentTransfers(t *testing.T) {
 // TestSessionStatistics verifies statistics tracking.
 func TestSessionStatistics(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -326,12 +326,12 @@ func TestSessionStatistics(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -339,8 +339,8 @@ func TestSessionStatistics(t *testing.T) {
 	config := tunnel.DefaultTransportConfig()
 	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
 	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
-	defer clientTransport.Close()
-	defer serverTransport.Close()
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
 
 	// Send some messages
 	messageCount := 5
@@ -352,12 +352,12 @@ func TestSessionStatistics(t *testing.T) {
 
 		go func() {
 			defer wg.Done()
-			clientTransport.Send(msg)
+			_ = clientTransport.Send(msg)
 		}()
 
 		go func() {
 			defer wg.Done()
-			serverTransport.Receive()
+			_, _ = serverTransport.Receive()
 		}()
 
 		wg.Wait()
@@ -457,8 +457,8 @@ func TestDifferentCipherSuites(t *testing.T) {
 // TestTunnelTimeout verifies timeout handling.
 func TestTunnelTimeout(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -468,12 +468,12 @@ func TestTunnelTimeout(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -486,8 +486,8 @@ func TestTunnelTimeout(t *testing.T) {
 
 	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
 	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
-	defer clientTransport.Close()
-	defer serverTransport.Close()
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
 
 	// Attempt to receive without any data being sent (should timeout)
 	_, err := serverTransport.Receive()
