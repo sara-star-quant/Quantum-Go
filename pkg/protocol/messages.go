@@ -173,6 +173,9 @@ func (m *ClientHello) Validate() error {
 	if len(m.CHKEMPublicKey) != constants.CHKEMPublicKeySize {
 		return qerrors.ErrInvalidPublicKey
 	}
+	if len(m.SessionID) > 2048 {
+		return qerrors.ErrInvalidMessage
+	}
 	if len(m.CipherSuites) == 0 {
 		return qerrors.ErrInvalidMessage
 	}

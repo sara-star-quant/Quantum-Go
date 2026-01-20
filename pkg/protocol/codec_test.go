@@ -265,7 +265,7 @@ func TestDecodeFinishedInvalidInputs(t *testing.T) {
 		data []byte
 	}{
 		{"empty", []byte{}},
-		{"too short", []byte{0x03, 0, 0, 0, 32}}, // Claims 32 bytes but has none
+		{"too short", []byte{0x03, 0, 0, 0, 32}},          // Claims 32 bytes but has none
 		{"wrong message type", []byte{0x10, 0, 0, 0, 32}}, // Data message type
 	}
 
@@ -671,9 +671,9 @@ func TestServerHelloValidation(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "wrong session ID size",
+			name: "session ID too large",
 			modify: func(m *protocol.ServerHello) {
-				m.SessionID = make([]byte, 8)
+				m.SessionID = make([]byte, 2049)
 			},
 			wantErr: true,
 		},
