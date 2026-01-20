@@ -307,7 +307,7 @@ func TestBidirectionalCommunication(t *testing.T) {
 			serverErr = fmt.Errorf("Accept failed: %w", err)
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Receive from client
 		data, err := conn.Receive()

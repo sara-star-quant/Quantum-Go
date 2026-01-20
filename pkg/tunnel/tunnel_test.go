@@ -48,7 +48,7 @@ func TestSessionKeyInitialization(t *testing.T) {
 
 	// Generate a test master secret
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret)
+	_ = crypto.SecureRandom(masterSecret)
 
 	// Initialize keys
 	err = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
@@ -75,7 +75,7 @@ func TestSessionEncryptDecrypt(t *testing.T) {
 
 	// Same master secret for both
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret)
+	_ = crypto.SecureRandom(masterSecret)
 
 	err = initiator.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 	if err != nil {
@@ -127,7 +127,7 @@ func TestReplayProtection(t *testing.T) {
 	}
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret)
+	_ = crypto.SecureRandom(masterSecret)
 	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	// Create a second session to decrypt (simulating receiver)
@@ -188,7 +188,7 @@ func TestSessionClose(t *testing.T) {
 	}
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret)
+	_ = crypto.SecureRandom(masterSecret)
 	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	session.Close()
@@ -205,7 +205,7 @@ func TestSessionStats(t *testing.T) {
 	}
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret)
+	_ = crypto.SecureRandom(masterSecret)
 	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	// Encrypt some data
@@ -313,8 +313,8 @@ func TestHandshake(t *testing.T) {
 
 	// Create pipe for communication
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	// Run handshakes concurrently
 	var wg sync.WaitGroup
@@ -355,8 +355,8 @@ func TestHandshake(t *testing.T) {
 func TestFullTunnel(t *testing.T) {
 	// Create connected pair
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	// Create sessions
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
@@ -368,12 +368,12 @@ func TestFullTunnel(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -421,8 +421,8 @@ func TestFullTunnel(t *testing.T) {
 	}
 
 	// Clean up
-	clientTransport.Close()
-	serverTransport.Close()
+	_ = clientTransport.Close()
+	_ = serverTransport.Close()
 }
 
 func TestSessionRekey(t *testing.T) {
@@ -442,7 +442,7 @@ func TestSessionRekey(t *testing.T) {
 
 	// Rekey with new secret
 	masterSecret2 := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret2)
+	_ = crypto.SecureRandom(masterSecret2)
 	err = session.Rekey(masterSecret2)
 	if err != nil {
 		t.Fatalf("Rekey failed: %v", err)
@@ -464,11 +464,103 @@ func TestNeedsRekey(t *testing.T) {
 	}
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret)
+	_ = crypto.SecureRandom(masterSecret)
 	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	// Initially should not need rekey
 	if session.NeedsRekey() {
 		t.Error("Fresh session should not need rekey")
+	}
+}
+
+// --- SessionState Tests ---
+
+func TestSessionStateString(t *testing.T) {
+	tests := []struct {
+		state    tunnel.SessionState
+		expected string
+	}{
+		{tunnel.SessionStateNew, "New"},
+		{tunnel.SessionStateHandshaking, "Handshaking"},
+		{tunnel.SessionStateEstablished, "Established"},
+		{tunnel.SessionStateRekeying, "Rekeying"},
+		{tunnel.SessionStateClosed, "Closed"},
+		{tunnel.SessionState(99), "Unknown"},
+	}
+
+	for _, tc := range tests {
+		if tc.state.String() != tc.expected {
+			t.Errorf("SessionState(%d).String() = %q, want %q", tc.state, tc.state.String(), tc.expected)
+		}
+	}
+}
+
+// --- Role Tests ---
+
+func TestRoleConstants(t *testing.T) {
+	// Verify roles are distinct
+	if tunnel.RoleInitiator == tunnel.RoleResponder {
+		t.Error("RoleInitiator and RoleResponder should be distinct")
+	}
+
+	// Test creating sessions with both roles
+	initiator, err := tunnel.NewSession(tunnel.RoleInitiator)
+	if err != nil {
+		t.Fatalf("NewSession (initiator) failed: %v", err)
+	}
+	if initiator.Role != tunnel.RoleInitiator {
+		t.Errorf("Initiator role: got %d, want %d", initiator.Role, tunnel.RoleInitiator)
+	}
+
+	responder, err := tunnel.NewSession(tunnel.RoleResponder)
+	if err != nil {
+		t.Fatalf("NewSession (responder) failed: %v", err)
+	}
+	if responder.Role != tunnel.RoleResponder {
+		t.Errorf("Responder role: got %d, want %d", responder.Role, tunnel.RoleResponder)
+	}
+}
+
+// --- Session Edge Cases ---
+
+func TestSessionEncryptBeforeEstablished(t *testing.T) {
+	session, err := tunnel.NewSession(tunnel.RoleInitiator)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+
+	// Try to encrypt before session is established
+	_, _, err = session.Encrypt([]byte("test"))
+	if err == nil {
+		t.Error("Expected error when encrypting before session is established")
+	}
+}
+
+func TestSessionDecryptBeforeEstablished(t *testing.T) {
+	session, err := tunnel.NewSession(tunnel.RoleInitiator)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+
+	// Try to decrypt before session is established
+	_, err = session.Decrypt([]byte("test"), 0)
+	if err == nil {
+		t.Error("Expected error when decrypting before session is established")
+	}
+}
+
+func TestSessionInitializeKeysInvalidCipherSuite(t *testing.T) {
+	session, err := tunnel.NewSession(tunnel.RoleInitiator)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+
+	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
+	_ = crypto.SecureRandom(masterSecret)
+
+	// Try with invalid cipher suite
+	err = session.InitializeKeys(masterSecret, constants.CipherSuite(0xFF))
+	if err == nil {
+		t.Error("Expected error for invalid cipher suite")
 	}
 }

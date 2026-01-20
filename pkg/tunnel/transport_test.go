@@ -125,7 +125,7 @@ func TestTransportSendLargeMessage(t *testing.T) {
 			serverErr = err
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		data, err := conn.Receive()
 		if err != nil {
@@ -189,7 +189,7 @@ func TestTransportMultipleMessages(t *testing.T) {
 			serverErr = err
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		for i := 0; i < numMessages; i++ {
 			data, err := conn.Receive()
@@ -273,9 +273,9 @@ func TestTransportCloseBehavior(t *testing.T) {
 		t.Logf("Close returned error: %v", err)
 	}
 
-	serverTransport.Close()
-	serverConn.Close()
-	clientConn.Close()
+	_ = serverTransport.Close()
+	_ = serverConn.Close()
+	_ = clientConn.Close()
 }
 
 // TestTransportClosedConnection tests behavior when connection is closed.
@@ -313,8 +313,8 @@ func TestTransportClosedConnection(t *testing.T) {
 		t.Error("Expected error when receiving from closed connection, got nil")
 	}
 
-	serverTransport.Close()
-	serverConn.Close()
+	_ = serverTransport.Close()
+	_ = serverConn.Close()
 }
 
 // TestTransportConcurrentSendReceive tests concurrent Send and Receive operations.

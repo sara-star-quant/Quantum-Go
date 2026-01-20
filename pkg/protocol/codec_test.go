@@ -79,8 +79,8 @@ func TestClientHelloWithSessionID(t *testing.T) {
 
 	random := make([]byte, 32)
 	sessionID := make([]byte, 16)
-	crypto.SecureRandom(random)
-	crypto.SecureRandom(sessionID)
+	_ = crypto.SecureRandom(random)
+	_ = crypto.SecureRandom(sessionID)
 
 	original := &protocol.ClientHello{
 		Version:        protocol.Current,
@@ -139,8 +139,8 @@ func TestEncodeDecodeServerHello(t *testing.T) {
 
 	random := make([]byte, 32)
 	sessionID := make([]byte, constants.SessionIDSize)
-	crypto.SecureRandom(random)
-	crypto.SecureRandom(sessionID)
+	_ = crypto.SecureRandom(random)
+	_ = crypto.SecureRandom(sessionID)
 
 	original := &protocol.ServerHello{
 		Version:         protocol.Current,
@@ -810,5 +810,161 @@ func TestMessageTypeString(t *testing.T) {
 		if tc.mt.String() != tc.expected {
 			t.Errorf("MessageType(%d).String() = %q, want %q", tc.mt, tc.mt.String(), tc.expected)
 		}
+	}
+}
+
+// --- Version Tests ---
+
+func TestVersionBytes(t *testing.T) {
+	v := protocol.Version{Major: 1, Minor: 2}
+	b := v.Bytes()
+
+	if len(b) != 2 {
+		t.Errorf("Bytes length: got %d, want 2", len(b))
+	}
+	if b[0] != 1 || b[1] != 2 {
+		t.Errorf("Bytes: got %v, want [1, 2]", b)
+	}
+}
+
+func TestVersionUint16(t *testing.T) {
+	v := protocol.Version{Major: 1, Minor: 2}
+	u := v.Uint16()
+
+	expected := uint16(1)<<8 | uint16(2)
+	if u != expected {
+		t.Errorf("Uint16: got %d, want %d", u, expected)
+	}
+}
+
+func TestParseVersion(t *testing.T) {
+	tests := []struct {
+		name     string
+		data     []byte
+		expected protocol.Version
+	}{
+		{"valid", []byte{1, 2}, protocol.Version{Major: 1, Minor: 2}},
+		{"too short", []byte{1}, protocol.Version{}},
+		{"empty", []byte{}, protocol.Version{}},
+		{"with extra", []byte{3, 4, 5, 6}, protocol.Version{Major: 3, Minor: 4}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			v := protocol.ParseVersion(tc.data)
+			if v != tc.expected {
+				t.Errorf("ParseVersion(%v) = %v, want %v", tc.data, v, tc.expected)
+			}
+		})
+	}
+}
+
+func TestVersionString(t *testing.T) {
+	tests := []struct {
+		version  protocol.Version
+		expected string
+	}{
+		{protocol.Version{Major: 1, Minor: 0}, "1.0"},
+		{protocol.Version{Major: 2, Minor: 5}, "2.5"},
+		{protocol.Version{Major: 0, Minor: 9}, "0.9"},
+	}
+
+	for _, tc := range tests {
+		if tc.version.String() != tc.expected {
+			t.Errorf("Version%v.String() = %q, want %q", tc.version, tc.version.String(), tc.expected)
+		}
+	}
+}
+
+func TestSupportedCipherSuites(t *testing.T) {
+	suites := protocol.SupportedCipherSuites()
+
+	if len(suites) != 2 {
+		t.Errorf("SupportedCipherSuites length: got %d, want 2", len(suites))
+	}
+
+	// Check that both supported suites are present
+	hasAES := false
+	hasChaCha := false
+	for _, s := range suites {
+		if s == constants.CipherSuiteAES256GCM {
+			hasAES = true
+		}
+		if s == constants.CipherSuiteChaCha20Poly1305 {
+			hasChaCha = true
+		}
+	}
+
+	if !hasAES {
+		t.Error("SupportedCipherSuites missing AES-256-GCM")
+	}
+	if !hasChaCha {
+		t.Error("SupportedCipherSuites missing ChaCha20-Poly1305")
+	}
+}
+
+func TestPreferredCipherSuite(t *testing.T) {
+	preferred := protocol.PreferredCipherSuite()
+
+	if preferred != constants.CipherSuiteAES256GCM {
+		t.Errorf("PreferredCipherSuite: got %d, want %d (AES-256-GCM)", preferred, constants.CipherSuiteAES256GCM)
+	}
+}
+
+// --- Finished Message Validation Tests ---
+
+func TestClientFinishedValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		verifyLen int
+		wantErr   bool
+	}{
+		{"valid", 32, false},
+		{"too short", 16, true},
+		{"too long", 64, true},
+		{"empty", 0, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := &protocol.ClientFinished{
+				VerifyData: make([]byte, tc.verifyLen),
+			}
+			err := msg.Validate()
+			if tc.wantErr && err == nil {
+				t.Error("expected validation error")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected validation error: %v", err)
+			}
+		})
+	}
+}
+
+func TestServerFinishedValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		verifyLen int
+		wantErr   bool
+	}{
+		{"valid", 32, false},
+		{"too short", 16, true},
+		{"too long", 64, true},
+		{"empty", 0, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := &protocol.ServerFinished{
+				VerifyData: make([]byte, tc.verifyLen),
+			}
+			err := msg.Validate()
+			if tc.wantErr && err == nil {
+				t.Error("expected validation error")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected validation error: %v", err)
+			}
+		})
 	}
 }

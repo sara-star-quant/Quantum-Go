@@ -440,3 +440,332 @@ func TestAEADInvalidKeySize(t *testing.T) {
 		t.Error("Expected error for invalid key size")
 	}
 }
+
+func TestAEADSetCounter(t *testing.T) {
+	key := make([]byte, 32)
+	_ = crypto.SecureRandom(key)
+
+	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
+	if err != nil {
+		t.Fatalf("NewAEAD failed: %v", err)
+	}
+
+	// Set counter to a valid value
+	err = aead.SetCounter(100)
+	if err != nil {
+		t.Errorf("SetCounter failed: %v", err)
+	}
+
+	if aead.Counter() != 100 {
+		t.Errorf("Counter: got %d, want 100", aead.Counter())
+	}
+
+	// Set counter to max value should fail
+	err = aead.SetCounter(uint64(constants.MaxPacketsBeforeRekey))
+	if err == nil {
+		t.Error("Expected error for counter at max")
+	}
+}
+
+func TestAEADNeedsRekey(t *testing.T) {
+	key := make([]byte, 32)
+	_ = crypto.SecureRandom(key)
+
+	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
+	if err != nil {
+		t.Fatalf("NewAEAD failed: %v", err)
+	}
+
+	// Initially should not need rekey
+	if aead.NeedsRekey() {
+		t.Error("Fresh AEAD should not need rekey")
+	}
+
+	// Set counter to 90% of capacity
+	threshold := uint64(constants.MaxPacketsBeforeRekey) * 9 / 10
+	_ = aead.SetCounter(threshold)
+
+	// Now should need rekey
+	if !aead.NeedsRekey() {
+		t.Error("AEAD at 90% capacity should need rekey")
+	}
+}
+
+func TestAEADSuite(t *testing.T) {
+	key := make([]byte, 32)
+	_ = crypto.SecureRandom(key)
+
+	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
+	if err != nil {
+		t.Fatalf("NewAEAD failed: %v", err)
+	}
+
+	if aead.Suite() != constants.CipherSuiteAES256GCM {
+		t.Errorf("Suite: got %d, want %d", aead.Suite(), constants.CipherSuiteAES256GCM)
+	}
+
+	aead2, err := crypto.NewAEAD(constants.CipherSuiteChaCha20Poly1305, key)
+	if err != nil {
+		t.Fatalf("NewAEAD failed: %v", err)
+	}
+
+	if aead2.Suite() != constants.CipherSuiteChaCha20Poly1305 {
+		t.Errorf("Suite: got %d, want %d", aead2.Suite(), constants.CipherSuiteChaCha20Poly1305)
+	}
+}
+
+func TestAEADOverhead(t *testing.T) {
+	key := make([]byte, 32)
+	_ = crypto.SecureRandom(key)
+
+	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
+	if err != nil {
+		t.Fatalf("NewAEAD failed: %v", err)
+	}
+
+	overhead := aead.Overhead()
+	// Overhead should be nonce size (12) + tag size (16) = 28
+	if overhead != constants.AESNonceSize+constants.AESTagSize {
+		t.Errorf("Overhead: got %d, want %d", overhead, constants.AESNonceSize+constants.AESTagSize)
+	}
+}
+
+func TestAEADNonceSize(t *testing.T) {
+	key := make([]byte, 32)
+	_ = crypto.SecureRandom(key)
+
+	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
+	if err != nil {
+		t.Fatalf("NewAEAD failed: %v", err)
+	}
+
+	nonceSize := aead.NonceSize()
+	if nonceSize != constants.AESNonceSize {
+		t.Errorf("NonceSize: got %d, want %d", nonceSize, constants.AESNonceSize)
+	}
+}
+
+func TestAEADUnsupportedCipherSuite(t *testing.T) {
+	key := make([]byte, 32)
+	_ = crypto.SecureRandom(key)
+
+	_, err := crypto.NewAEAD(constants.CipherSuite(0xFF), key)
+	if err == nil {
+		t.Error("Expected error for unsupported cipher suite")
+	}
+}
+
+func TestAEADSealWithNonce(t *testing.T) {
+	key := make([]byte, 32)
+	_ = crypto.SecureRandom(key)
+
+	aead, err := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
+	if err != nil {
+		t.Fatalf("NewAEAD failed: %v", err)
+	}
+
+	nonce := make([]byte, constants.AESNonceSize)
+	_ = crypto.SecureRandom(nonce)
+
+	plaintext := []byte("test message")
+	additionalData := []byte("aad")
+
+	ciphertext, err := aead.SealWithNonce(nonce, plaintext, additionalData)
+	if err != nil {
+		t.Fatalf("SealWithNonce failed: %v", err)
+	}
+
+	// Decrypt with OpenWithNonce
+	decrypted, err := aead.OpenWithNonce(nonce, ciphertext, additionalData)
+	if err != nil {
+		t.Fatalf("OpenWithNonce failed: %v", err)
+	}
+
+	if !bytes.Equal(plaintext, decrypted) {
+		t.Error("Decrypted plaintext does not match original")
+	}
+
+	// Test invalid nonce size
+	_, err = aead.SealWithNonce([]byte("short"), plaintext, additionalData)
+	if err == nil {
+		t.Error("Expected error for invalid nonce size")
+	}
+
+	// Test invalid nonce size for OpenWithNonce
+	_, err = aead.OpenWithNonce([]byte("short"), ciphertext, additionalData)
+	if err == nil {
+		t.Error("Expected error for invalid nonce size in OpenWithNonce")
+	}
+
+	// Test short ciphertext in OpenWithNonce
+	_, err = aead.OpenWithNonce(nonce, []byte("short"), additionalData)
+	if err == nil {
+		t.Error("Expected error for short ciphertext in OpenWithNonce")
+	}
+}
+
+// --- More ML-KEM Tests ---
+
+func TestMLKEMKeyPairFromSeed(t *testing.T) {
+	seed := make([]byte, 64)
+	_ = crypto.SecureRandom(seed)
+
+	kp1, err := crypto.NewMLKEMKeyPairFromSeed(seed)
+	if err != nil {
+		t.Fatalf("NewMLKEMKeyPairFromSeed failed: %v", err)
+	}
+
+	// Same seed should produce same key pair
+	kp2, err := crypto.NewMLKEMKeyPairFromSeed(seed)
+	if err != nil {
+		t.Fatalf("NewMLKEMKeyPairFromSeed failed: %v", err)
+	}
+
+	if !bytes.Equal(kp1.PublicKeyBytes(), kp2.PublicKeyBytes()) {
+		t.Error("Same seed should produce same public key")
+	}
+
+	// Invalid seed size should fail
+	_, err = crypto.NewMLKEMKeyPairFromSeed([]byte("short"))
+	if err == nil {
+		t.Error("Expected error for invalid seed size")
+	}
+}
+
+func TestMLKEMParsePublicKey(t *testing.T) {
+	kp, err := crypto.GenerateMLKEMKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateMLKEMKeyPair failed: %v", err)
+	}
+
+	// Parse the public key
+	parsed, err := crypto.ParseMLKEMPublicKey(kp.PublicKeyBytes())
+	if err != nil {
+		t.Fatalf("ParseMLKEMPublicKey failed: %v", err)
+	}
+
+	if !bytes.Equal(parsed.Bytes(), kp.PublicKeyBytes()) {
+		t.Error("Parsed public key does not match original")
+	}
+
+	// Invalid public key size should fail
+	_, err = crypto.ParseMLKEMPublicKey([]byte("short"))
+	if err == nil {
+		t.Error("Expected error for invalid public key size")
+	}
+}
+
+func TestMLKEMZeroize(t *testing.T) {
+	kp, err := crypto.GenerateMLKEMKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateMLKEMKeyPair failed: %v", err)
+	}
+
+	kp.Zeroize()
+
+	if kp.EncapsulationKey != nil {
+		t.Error("EncapsulationKey should be nil after Zeroize")
+	}
+	if kp.DecapsulationKey != nil {
+		t.Error("DecapsulationKey should be nil after Zeroize")
+	}
+}
+
+// --- More X25519 Tests ---
+
+func TestX25519KeyPairFromBytes(t *testing.T) {
+	// Generate a key pair first
+	original, err := crypto.GenerateX25519KeyPair()
+	if err != nil {
+		t.Fatalf("GenerateX25519KeyPair failed: %v", err)
+	}
+
+	// Create from bytes
+	kp, err := crypto.NewX25519KeyPairFromBytes(original.PrivateKeyBytes())
+	if err != nil {
+		t.Fatalf("NewX25519KeyPairFromBytes failed: %v", err)
+	}
+
+	// Should produce same public key
+	if !bytes.Equal(kp.PublicKeyBytes(), original.PublicKeyBytes()) {
+		t.Error("Key pair from bytes should have same public key")
+	}
+
+	// Invalid key size should fail
+	_, err = crypto.NewX25519KeyPairFromBytes([]byte("short"))
+	if err == nil {
+		t.Error("Expected error for invalid private key size")
+	}
+}
+
+func TestX25519Zeroize(t *testing.T) {
+	kp, err := crypto.GenerateX25519KeyPair()
+	if err != nil {
+		t.Fatalf("GenerateX25519KeyPair failed: %v", err)
+	}
+
+	kp.Zeroize()
+
+	if kp.PublicKey != nil {
+		t.Error("PublicKey should be nil after Zeroize")
+	}
+	if kp.PrivateKey != nil {
+		t.Error("PrivateKey should be nil after Zeroize")
+	}
+}
+
+func TestX25519NilKeys(t *testing.T) {
+	// Test X25519 with nil private key
+	_, err := crypto.X25519(nil, nil)
+	if err == nil {
+		t.Error("Expected error for nil private key")
+	}
+
+	// Test X25519 with nil public key
+	kp, _ := crypto.GenerateX25519KeyPair()
+	_, err = crypto.X25519(kp.PrivateKey, nil)
+	if err == nil {
+		t.Error("Expected error for nil public key")
+	}
+}
+
+// --- More Random Tests ---
+
+func TestMustSecureRandom(t *testing.T) {
+	buf := make([]byte, 32)
+	// Should not panic
+	crypto.MustSecureRandom(buf)
+
+	// Check that it's not all zeros
+	allZeros := true
+	for _, b := range buf {
+		if b != 0 {
+			allZeros = false
+			break
+		}
+	}
+	if allZeros {
+		t.Error("MustSecureRandom returned all zeros")
+	}
+}
+
+func TestMustSecureRandomBytes(t *testing.T) {
+	buf := crypto.MustSecureRandomBytes(32)
+
+	if len(buf) != 32 {
+		t.Errorf("MustSecureRandomBytes returned %d bytes, want 32", len(buf))
+	}
+
+	// Check that it's not all zeros
+	allZeros := true
+	for _, b := range buf {
+		if b != 0 {
+			allZeros = false
+			break
+		}
+	}
+	if allZeros {
+		t.Error("MustSecureRandomBytes returned all zeros")
+	}
+}
+
