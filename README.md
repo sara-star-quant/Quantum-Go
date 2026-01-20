@@ -4,6 +4,8 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![Go Reference](https://pkg.go.dev/badge/github.com/pzverkov/quantum-go.svg)](https://pkg.go.dev/github.com/pzverkov/quantum-go)
+[![Go Report Card](https://goreportcard.com/badge/pzverkov/quantum-go)](https://goreportcard.com/report/github.com/pzverkov/quantum-go) 
+[![Go Build](https://github.com/pzverkov/quantum-go/actions/workflows/ci.yml/badge.svg)](https://github.com/pzverkov/quantum-go/actions/workflows/ci.yml)
 [![Security Level](https://img.shields.io/badge/Security-NIST%20Category%205-green)](https://csrc.nist.gov/projects/post-quantum-cryptography)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
