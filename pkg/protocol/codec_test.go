@@ -697,8 +697,8 @@ func TestServerHelloValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			random := make([]byte, 32)
 			sessionID := make([]byte, constants.SessionIDSize)
-			crypto.SecureRandom(random)
-			crypto.SecureRandom(sessionID)
+			_ = crypto.SecureRandom(random)
+			_ = crypto.SecureRandom(sessionID)
 
 			msg := &protocol.ServerHello{
 				Version:         protocol.Current,

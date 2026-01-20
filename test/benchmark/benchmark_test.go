@@ -26,7 +26,7 @@ func BenchmarkSecureRandom32(b *testing.B) {
 	buf := make([]byte, 32)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		crypto.SecureRandom(buf)
+		_ = crypto.SecureRandom(buf)
 	}
 }
 
@@ -34,7 +34,7 @@ func BenchmarkSecureRandom64(b *testing.B) {
 	buf := make([]byte, 64)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		crypto.SecureRandom(buf)
+		_ = crypto.SecureRandom(buf)
 	}
 }
 
@@ -155,7 +155,7 @@ func BenchmarkCHKEMFullKeyExchange(b *testing.B) {
 
 func BenchmarkDeriveKey32(b *testing.B) {
 	input := make([]byte, 64)
-	crypto.SecureRandom(input)
+	_ = crypto.SecureRandom(input)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -173,7 +173,7 @@ func BenchmarkDeriveKeyMultiple(b *testing.B) {
 		make([]byte, 32),
 	}
 	for _, input := range inputs {
-		crypto.SecureRandom(input)
+		_ = crypto.SecureRandom(input)
 	}
 
 	b.ResetTimer()
@@ -193,7 +193,7 @@ func BenchmarkTranscriptHash(b *testing.B) {
 		make([]byte, 1568),
 	}
 	for _, c := range components {
-		crypto.SecureRandom(c)
+		_ = crypto.SecureRandom(c)
 	}
 
 	b.ResetTimer()
@@ -206,7 +206,7 @@ func BenchmarkTranscriptHash(b *testing.B) {
 
 func BenchmarkAES256GCMEncrypt(b *testing.B) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 	aead, _ := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
 	plaintext := make([]byte, 1400) // Typical MTU payload
 
@@ -222,7 +222,7 @@ func BenchmarkAES256GCMEncrypt(b *testing.B) {
 
 func BenchmarkAES256GCMDecrypt(b *testing.B) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 	aead, _ := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
 	plaintext := make([]byte, 1400)
 	ciphertext, _ := aead.Seal(plaintext, nil)
@@ -242,7 +242,7 @@ func BenchmarkAES256GCMDecrypt(b *testing.B) {
 
 func BenchmarkChaCha20Poly1305Encrypt(b *testing.B) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 	aead, _ := crypto.NewAEAD(constants.CipherSuiteChaCha20Poly1305, key)
 	plaintext := make([]byte, 1400)
 
@@ -258,7 +258,7 @@ func BenchmarkChaCha20Poly1305Encrypt(b *testing.B) {
 
 func BenchmarkChaCha20Poly1305Decrypt(b *testing.B) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 	aead, _ := crypto.NewAEAD(constants.CipherSuiteChaCha20Poly1305, key)
 	plaintext := make([]byte, 1400)
 	ciphertext, _ := aead.Seal(plaintext, nil)
@@ -295,7 +295,7 @@ func BenchmarkAES256GCMEncrypt64KB(b *testing.B) {
 
 func benchmarkAEADEncrypt(b *testing.B, suite constants.CipherSuite, size int) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 	aead, _ := crypto.NewAEAD(suite, key)
 	plaintext := make([]byte, size)
 
@@ -314,7 +314,7 @@ func benchmarkAEADEncrypt(b *testing.B, suite constants.CipherSuite, size int) {
 func BenchmarkSessionEncrypt(b *testing.B) {
 	session, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	masterSecret := make([]byte, 32)
-	crypto.SecureRandom(masterSecret)
+	_ = crypto.SecureRandom(masterSecret)
 	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	plaintext := make([]byte, 1400)
@@ -401,7 +401,7 @@ func BenchmarkCHKEMEncapsulationParallel(b *testing.B) {
 
 func BenchmarkAES256GCMEncryptParallel(b *testing.B) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 	plaintext := make([]byte, 1400)
 
 	b.SetBytes(int64(len(plaintext)))
