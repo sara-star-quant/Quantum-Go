@@ -118,6 +118,14 @@ type Session struct {
 	// Handshake transcript for key derivation
 	transcriptHash []byte //nolint:unused // Reserved for future session verification
 
+	// Rekey state
+	rekeyInProgress      bool
+	pendingRekeyKeyPair  *chkem.KeyPair  // New keypair for initiator
+	pendingRekeySecret   []byte          // Pending shared secret for responder
+	rekeyActivationSeq   uint64          // Sequence number when new keys activate
+	pendingRecvCipher    *crypto.AEAD    // New receive cipher waiting for activation
+	pendingSendCipher    *crypto.AEAD    // New send cipher waiting for activation (initiator)
+
 	// Mutex for state changes
 	mu sync.RWMutex
 }
@@ -263,6 +271,13 @@ func (s *Session) InitializeKeys(masterSecret []byte, cipherSuite constants.Ciph
 
 // Encrypt encrypts data for sending.
 func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
+	// Get the sequence number first
+	seq := s.sendSeq.Add(1) - 1
+
+	// Check if we need to activate pending send cipher at this sequence
+	s.checkAndActivateSendCipher(seq)
+
+	// Now get the current send cipher (potentially just activated)
 	s.mu.RLock()
 	cipher := s.sendCipher
 	s.mu.RUnlock()
@@ -271,15 +286,13 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 		return nil, 0, qerrors.ErrInvalidState
 	}
 
-	seq := s.sendSeq.Add(1) - 1
-
 	// Use sequence number as additional authenticated data
 	aad := make([]byte, 8)
+	seqCopy := seq
 	for i := 7; i >= 0; i-- {
-		aad[i] = byte(seq)
-		seq >>= 8
+		aad[i] = byte(seqCopy)
+		seqCopy >>= 8
 	}
-	seq = s.sendSeq.Load() - 1 // Restore for return
 
 	ciphertext, err := cipher.Seal(plaintext, aad)
 	if err != nil {
@@ -455,4 +468,229 @@ func (s *Session) Stats() Stats {
 		Duration:      time.Since(s.CreatedAt),
 		State:         s.State(),
 	}
+}
+
+// --- Rekey Protocol Methods ---
+
+// InitiateRekey starts a rekey operation (called by initiator).
+// Returns the new public key to send to the responder and the activation sequence.
+func (s *Session) InitiateRekey() ([]byte, uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.rekeyInProgress {
+		return nil, 0, qerrors.ErrRekeyInProgress
+	}
+
+	if s.State() != SessionStateEstablished {
+		return nil, 0, qerrors.ErrInvalidState
+	}
+
+	// Generate new keypair for rekey
+	newKeyPair, err := chkem.GenerateKeyPair()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Set activation sequence to current + some buffer for in-flight packets
+	activationSeq := s.sendSeq.Load() + 16
+
+	s.rekeyInProgress = true
+	s.pendingRekeyKeyPair = newKeyPair
+	s.rekeyActivationSeq = activationSeq
+	s.SetState(SessionStateRekeying)
+
+	return newKeyPair.PublicKey().Bytes(), activationSeq, nil
+}
+
+// PrepareRekeyResponse processes an incoming rekey request (called by responder).
+// Returns the ciphertext to send back to the initiator.
+func (s *Session) PrepareRekeyResponse(newPublicKeyBytes []byte, activationSeq uint64) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.State() != SessionStateEstablished && s.State() != SessionStateRekeying {
+		return nil, qerrors.ErrInvalidState
+	}
+
+	// Parse the new public key
+	newPublicKey, err := chkem.ParsePublicKey(newPublicKeyBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Encapsulate to the new public key
+	ciphertext, sharedSecret, err := chkem.Encapsulate(newPublicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Derive new traffic keys
+	initiatorKey, responderKey, err := crypto.DeriveTrafficKeys(sharedSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create new receive cipher (for receiving from initiator after activation)
+	newRecvCipher, err := crypto.NewAEAD(s.CipherSuite, initiatorKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create new send cipher
+	newSendCipher, err := crypto.NewAEAD(s.CipherSuite, responderKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store pending state (both ciphers activate at activation sequence)
+	s.rekeyInProgress = true
+	s.rekeyActivationSeq = activationSeq
+	s.pendingRecvCipher = newRecvCipher
+	s.pendingSendCipher = newSendCipher
+	s.pendingRekeySecret = sharedSecret
+
+	// Zeroize temporary keys
+	crypto.ZeroizeMultiple(initiatorKey, responderKey)
+
+	s.SetState(SessionStateRekeying)
+
+	return ciphertext.Bytes(), nil
+}
+
+// ProcessRekeyResponse completes a rekey operation (called by initiator).
+func (s *Session) ProcessRekeyResponse(ciphertextBytes []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.rekeyInProgress || s.pendingRekeyKeyPair == nil {
+		return qerrors.ErrInvalidState
+	}
+
+	// Parse ciphertext
+	ciphertext, err := chkem.ParseCiphertext(ciphertextBytes)
+	if err != nil {
+		return err
+	}
+
+	// Decapsulate using pending keypair
+	sharedSecret, err := chkem.Decapsulate(ciphertext, s.pendingRekeyKeyPair)
+	if err != nil {
+		return err
+	}
+
+	// Derive new traffic keys
+	initiatorKey, responderKey, err := crypto.DeriveTrafficKeys(sharedSecret)
+	if err != nil {
+		return err
+	}
+
+	// Create new ciphers
+	newSendCipher, err := crypto.NewAEAD(s.CipherSuite, initiatorKey)
+	if err != nil {
+		return err
+	}
+
+	newRecvCipher, err := crypto.NewAEAD(s.CipherSuite, responderKey)
+	if err != nil {
+		return err
+	}
+
+	// Store pending ciphers (will activate at activation sequence)
+	s.pendingRecvCipher = newRecvCipher
+	s.pendingSendCipher = newSendCipher
+	s.pendingRekeySecret = sharedSecret
+
+	// Clean up pending keypair
+	s.pendingRekeyKeyPair.Zeroize()
+	s.pendingRekeyKeyPair = nil
+
+	// Zeroize temporary keys
+	crypto.ZeroizeMultiple(initiatorKey, responderKey)
+
+	return nil
+}
+
+// ActivatePendingKeys activates pending keys after activation sequence is reached.
+func (s *Session) ActivatePendingKeys() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.rekeyInProgress {
+		return
+	}
+
+	// Switch receive cipher if pending
+	if s.pendingRecvCipher != nil {
+		s.recvCipher = s.pendingRecvCipher
+		s.pendingRecvCipher = nil
+	}
+
+	// Switch send cipher if pending
+	if s.pendingSendCipher != nil {
+		s.sendCipher = s.pendingSendCipher
+		s.pendingSendCipher = nil
+	}
+
+	// Update master secret
+	if s.pendingRekeySecret != nil {
+		crypto.Zeroize(s.masterSecret)
+		s.masterSecret = s.pendingRekeySecret
+		s.pendingRekeySecret = nil
+	}
+
+	// Reset rekey state
+	s.rekeyInProgress = false
+	s.rekeyActivationSeq = 0
+	s.replayWindow = NewReplayWindow()
+	s.EstablishedAt = time.Now()
+
+	s.SetState(SessionStateEstablished)
+}
+
+// checkAndActivateSendCipher checks if send cipher should be activated based on sequence number.
+// When activation happens, it also activates pending keys on the receive side if available.
+func (s *Session) checkAndActivateSendCipher(seq uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.rekeyInProgress && s.pendingSendCipher != nil && seq >= s.rekeyActivationSeq {
+		// Switch send cipher
+		s.sendCipher = s.pendingSendCipher
+		s.pendingSendCipher = nil
+
+		// Also switch receive cipher if pending
+		if s.pendingRecvCipher != nil {
+			s.recvCipher = s.pendingRecvCipher
+			s.pendingRecvCipher = nil
+		}
+
+		// Update master secret
+		if s.pendingRekeySecret != nil {
+			crypto.Zeroize(s.masterSecret)
+			s.masterSecret = s.pendingRekeySecret
+			s.pendingRekeySecret = nil
+		}
+
+		// Complete the rekey
+		s.rekeyInProgress = false
+		s.rekeyActivationSeq = 0
+		s.replayWindow = NewReplayWindow()
+		s.EstablishedAt = time.Now()
+		s.state.Store(int32(SessionStateEstablished))
+	}
+}
+
+// IsRekeyInProgress returns true if a rekey operation is in progress.
+func (s *Session) IsRekeyInProgress() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.rekeyInProgress
+}
+
+// GetRekeyActivationSeq returns the sequence number at which new keys activate.
+func (s *Session) GetRekeyActivationSeq() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.rekeyActivationSeq
 }

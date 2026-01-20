@@ -564,3 +564,181 @@ func TestSessionInitializeKeysInvalidCipherSuite(t *testing.T) {
 		t.Error("Expected error for invalid cipher suite")
 	}
 }
+
+// --- Rekey Protocol Tests ---
+
+func TestSessionInitiateRekey(t *testing.T) {
+	session, err := tunnel.NewSession(tunnel.RoleInitiator)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+
+	// Initialize keys first
+	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
+	_ = crypto.SecureRandom(masterSecret)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+
+	// Initiate rekey
+	newPublicKey, activationSeq, err := session.InitiateRekey()
+	if err != nil {
+		t.Fatalf("InitiateRekey failed: %v", err)
+	}
+
+	if len(newPublicKey) != constants.CHKEMPublicKeySize {
+		t.Errorf("new public key size: got %d, want %d", len(newPublicKey), constants.CHKEMPublicKeySize)
+	}
+
+	if activationSeq == 0 {
+		t.Error("activation sequence should not be 0")
+	}
+
+	if !session.IsRekeyInProgress() {
+		t.Error("session should be in rekeying state")
+	}
+
+	if session.State() != tunnel.SessionStateRekeying {
+		t.Errorf("session state: got %v, want Rekeying", session.State())
+	}
+
+	// Trying to initiate again should fail
+	_, _, err = session.InitiateRekey()
+	if err == nil {
+		t.Error("expected error when initiating rekey while already in progress")
+	}
+}
+
+func TestSessionInitiateRekeyBeforeEstablished(t *testing.T) {
+	session, err := tunnel.NewSession(tunnel.RoleInitiator)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+
+	// Don't initialize keys - session not established
+	_, _, err = session.InitiateRekey()
+	if err == nil {
+		t.Error("expected error when initiating rekey before session established")
+	}
+}
+
+func TestSessionRekeyFullFlow(t *testing.T) {
+	// Create initiator and responder sessions
+	initiator, err := tunnel.NewSession(tunnel.RoleInitiator)
+	if err != nil {
+		t.Fatalf("NewSession (initiator) failed: %v", err)
+	}
+
+	responder, err := tunnel.NewSession(tunnel.RoleResponder)
+	if err != nil {
+		t.Fatalf("NewSession (responder) failed: %v", err)
+	}
+
+	// Initialize with same master secret
+	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
+	_ = crypto.SecureRandom(masterSecret)
+	_ = initiator.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = responder.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+
+	// Step 1: Initiator starts rekey
+	newPublicKey, activationSeq, err := initiator.InitiateRekey()
+	if err != nil {
+		t.Fatalf("InitiateRekey failed: %v", err)
+	}
+
+	// Step 2: Responder processes rekey request and generates response
+	ciphertext, err := responder.PrepareRekeyResponse(newPublicKey, activationSeq)
+	if err != nil {
+		t.Fatalf("PrepareRekeyResponse failed: %v", err)
+	}
+
+	if len(ciphertext) != constants.CHKEMCiphertextSize {
+		t.Errorf("ciphertext size: got %d, want %d", len(ciphertext), constants.CHKEMCiphertextSize)
+	}
+
+	// Step 3: Initiator processes response
+	err = initiator.ProcessRekeyResponse(ciphertext)
+	if err != nil {
+		t.Fatalf("ProcessRekeyResponse failed: %v", err)
+	}
+
+	// Step 4: Both activate pending keys
+	initiator.ActivatePendingKeys()
+	responder.ActivatePendingKeys()
+
+	// Verify both are back to established state
+	if initiator.State() != tunnel.SessionStateEstablished {
+		t.Errorf("initiator state: got %v, want Established", initiator.State())
+	}
+	if responder.State() != tunnel.SessionStateEstablished {
+		t.Errorf("responder state: got %v, want Established", responder.State())
+	}
+
+	// Verify rekey is no longer in progress
+	if initiator.IsRekeyInProgress() {
+		t.Error("initiator should not be in rekey progress")
+	}
+	if responder.IsRekeyInProgress() {
+		t.Error("responder should not be in rekey progress")
+	}
+
+	// Test that encryption/decryption still works after rekey
+	plaintext := []byte("Test message after rekey")
+	ciphertextMsg, seq, err := initiator.Encrypt(plaintext)
+	if err != nil {
+		t.Fatalf("Encrypt after rekey failed: %v", err)
+	}
+
+	decrypted, err := responder.Decrypt(ciphertextMsg, seq)
+	if err != nil {
+		t.Fatalf("Decrypt after rekey failed: %v", err)
+	}
+
+	if !bytes.Equal(plaintext, decrypted) {
+		t.Error("decrypted message doesn't match after rekey")
+	}
+}
+
+func TestIsRekeyInProgress(t *testing.T) {
+	session, err := tunnel.NewSession(tunnel.RoleInitiator)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+
+	// Initially not in progress
+	if session.IsRekeyInProgress() {
+		t.Error("new session should not be in rekey progress")
+	}
+
+	// Initialize and start rekey
+	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
+	_ = crypto.SecureRandom(masterSecret)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+
+	_, _, _ = session.InitiateRekey()
+
+	if !session.IsRekeyInProgress() {
+		t.Error("session should be in rekey progress after InitiateRekey")
+	}
+}
+
+func TestGetRekeyActivationSeq(t *testing.T) {
+	session, err := tunnel.NewSession(tunnel.RoleInitiator)
+	if err != nil {
+		t.Fatalf("NewSession failed: %v", err)
+	}
+
+	// Initially 0
+	if session.GetRekeyActivationSeq() != 0 {
+		t.Error("new session should have 0 activation seq")
+	}
+
+	// Initialize and start rekey
+	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
+	_ = crypto.SecureRandom(masterSecret)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+
+	_, activationSeq, _ := session.InitiateRekey()
+
+	if session.GetRekeyActivationSeq() != activationSeq {
+		t.Errorf("activation seq: got %d, want %d", session.GetRekeyActivationSeq(), activationSeq)
+	}
+}
