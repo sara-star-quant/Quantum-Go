@@ -72,6 +72,12 @@ var (
 
 	// ErrReplayDetected indicates a potential replay attack
 	ErrReplayDetected = errors.New("protocol: replay detected")
+
+	// ErrInvalidTicket indicates a session ticket is invalid or malformed
+	ErrInvalidTicket = errors.New("protocol: invalid ticket")
+
+	// ErrExpiredTicket indicates a session ticket has expired
+	ErrExpiredTicket = errors.New("protocol: expired ticket")
 )
 
 // Sentinel errors for tunnel operations

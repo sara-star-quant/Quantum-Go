@@ -119,12 +119,12 @@ type Session struct {
 	transcriptHash []byte //nolint:unused // Reserved for future session verification
 
 	// Rekey state
-	rekeyInProgress      bool
-	pendingRekeyKeyPair  *chkem.KeyPair  // New keypair for initiator
-	pendingRekeySecret   []byte          // Pending shared secret for responder
-	rekeyActivationSeq   uint64          // Sequence number when new keys activate
-	pendingRecvCipher    *crypto.AEAD    // New receive cipher waiting for activation
-	pendingSendCipher    *crypto.AEAD    // New send cipher waiting for activation (initiator)
+	rekeyInProgress     bool
+	pendingRekeyKeyPair *chkem.KeyPair // New keypair for initiator
+	pendingRekeySecret  []byte         // Pending shared secret for responder
+	rekeyActivationSeq  uint64         // Sequence number when new keys activate
+	pendingRecvCipher   *crypto.AEAD   // New receive cipher waiting for activation
+	pendingSendCipher   *crypto.AEAD   // New send cipher waiting for activation (initiator)
 
 	// Mutex for state changes
 	mu sync.RWMutex
@@ -132,9 +132,9 @@ type Session struct {
 
 // ReplayWindow implements a sliding window for replay attack protection.
 type ReplayWindow struct {
-	mu       sync.Mutex
-	highSeq  uint64
-	bitmap   uint64 // Bitmap for last 64 sequence numbers
+	mu         sync.Mutex
+	highSeq    uint64
+	bitmap     uint64 // Bitmap for last 64 sequence numbers
 	windowSize uint64
 }
 
@@ -424,6 +424,50 @@ func (s *Session) Rekey(newMasterSecret []byte) error {
 	s.EstablishedAt = time.Now()
 
 	return nil
+}
+
+// ExportTicket creates an encrypted session ticket for resumption.
+func (s *Session) ExportTicket(tm *TicketManager) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.State() != SessionStateEstablished {
+		return nil, qerrors.ErrInvalidState
+	}
+
+	if s.masterSecret == nil {
+		return nil, qerrors.ErrInvalidState
+	}
+
+	ticket := &SessionTicket{
+		Version:      1,
+		CipherSuite:  s.CipherSuite,
+		MasterSecret: make([]byte, len(s.masterSecret)),
+		CreatedAt:    s.EstablishedAt,
+	}
+	copy(ticket.MasterSecret, s.masterSecret)
+
+	return tm.EncryptTicket(ticket)
+}
+
+// Resume restores a session from an encrypted ticket (called by responder).
+func (s *Session) Resume(ticketBytes []byte, tm *TicketManager) ([]byte, error) {
+	ticket, err := tm.DecryptTicket(ticketBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Initialize session state from ticket
+	s.mu.Lock()
+	s.CipherSuite = ticket.CipherSuite
+	s.mu.Unlock()
+
+	// Initialize traffic keys
+	if err := s.InitializeKeys(ticket.MasterSecret, ticket.CipherSuite); err != nil {
+		return nil, err
+	}
+
+	return ticket.MasterSecret, nil
 }
 
 // Close securely closes the session and zeroizes sensitive data.

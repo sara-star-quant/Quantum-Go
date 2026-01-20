@@ -33,11 +33,11 @@ const (
 	MessageTypeServerFinished MessageType = 0x04
 
 	// Tunnel messages
-	MessageTypeData   MessageType = 0x10
-	MessageTypeRekey  MessageType = 0x11
-	MessageTypePing   MessageType = 0x12
-	MessageTypePong   MessageType = 0x13
-	MessageTypeClose  MessageType = 0x14
+	MessageTypeData  MessageType = 0x10
+	MessageTypeRekey MessageType = 0x11
+	MessageTypePing  MessageType = 0x12
+	MessageTypePong  MessageType = 0x13
+	MessageTypeClose MessageType = 0x14
 
 	// Error messages
 	MessageTypeAlert MessageType = 0xF0
@@ -75,14 +75,14 @@ func (mt MessageType) String() string {
 type AlertCode uint8
 
 const (
-	AlertCodeUnexpectedMessage   AlertCode = 0x01
-	AlertCodeBadCiphertext       AlertCode = 0x02
-	AlertCodeHandshakeFailure    AlertCode = 0x03
-	AlertCodeUnsupportedVersion  AlertCode = 0x04
-	AlertCodeUnsupportedCipher   AlertCode = 0x05
-	AlertCodeDecryptionFailed    AlertCode = 0x06
-	AlertCodeInternalError       AlertCode = 0x07
-	AlertCodeCloseNotify         AlertCode = 0x08
+	AlertCodeUnexpectedMessage  AlertCode = 0x01
+	AlertCodeBadCiphertext      AlertCode = 0x02
+	AlertCodeHandshakeFailure   AlertCode = 0x03
+	AlertCodeUnsupportedVersion AlertCode = 0x04
+	AlertCodeUnsupportedCipher  AlertCode = 0x05
+	AlertCodeDecryptionFailed   AlertCode = 0x06
+	AlertCodeInternalError      AlertCode = 0x07
+	AlertCodeCloseNotify        AlertCode = 0x08
 )
 
 // ClientHello is sent by the initiator to begin the handshake.
@@ -192,7 +192,7 @@ func (m *ServerHello) Validate() error {
 	if len(m.Random) != 32 {
 		return qerrors.ErrInvalidMessage
 	}
-	if len(m.SessionID) != constants.SessionIDSize {
+	if len(m.SessionID) > 2048 {
 		return qerrors.ErrInvalidMessage
 	}
 	if len(m.CHKEMCiphertext) != constants.CHKEMCiphertextSize {
