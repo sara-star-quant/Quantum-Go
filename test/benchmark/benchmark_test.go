@@ -315,7 +315,7 @@ func BenchmarkSessionEncrypt(b *testing.B) {
 	session, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	masterSecret := make([]byte, 32)
 	crypto.SecureRandom(masterSecret)
-	session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	plaintext := make([]byte, 1400)
 
@@ -373,17 +373,17 @@ func BenchmarkHandshake(b *testing.B) {
 
 		go func() {
 			defer wg.Done()
-			tunnel.InitiatorHandshake(initiator, clientConn)
+			_ = tunnel.InitiatorHandshake(initiator, clientConn)
 		}()
 
 		go func() {
 			defer wg.Done()
-			tunnel.ResponderHandshake(responder, serverConn)
+			_ = tunnel.ResponderHandshake(responder, serverConn)
 		}()
 
 		wg.Wait()
-		clientConn.Close()
-		serverConn.Close()
+		_ = clientConn.Close()
+		_ = serverConn.Close()
 	}
 }
 

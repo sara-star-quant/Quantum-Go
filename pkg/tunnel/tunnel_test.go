@@ -433,8 +433,8 @@ func TestSessionRekey(t *testing.T) {
 
 	// Initialize with first secret
 	masterSecret1 := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret1)
-	session.InitializeKeys(masterSecret1, constants.CipherSuiteAES256GCM)
+	_ = crypto.SecureRandom(masterSecret1)
+	_ = session.InitializeKeys(masterSecret1, constants.CipherSuiteAES256GCM)
 
 	// Encrypt some data
 	plaintext := []byte("before rekey")

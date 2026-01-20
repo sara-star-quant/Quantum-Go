@@ -344,12 +344,12 @@ func TestTransportCloseNonBlocking(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -361,8 +361,8 @@ func TestTransportCloseNonBlocking(t *testing.T) {
 	done := make(chan struct{})
 
 	go func() {
-		clientTransport.Close()
-		serverTransport.Close()
+		_ = clientTransport.Close()
+		_ = serverTransport.Close()
 		close(done)
 	}()
 

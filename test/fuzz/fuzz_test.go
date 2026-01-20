@@ -219,7 +219,7 @@ func FuzzDecodeAlert(f *testing.F) {
 // This is critical as it processes potentially malicious ciphertext.
 func FuzzAEADOpen(f *testing.F) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 	aead, _ := crypto.NewAEAD(constants.CipherSuiteAES256GCM, key)
 
 	// Add valid ciphertext as seed
@@ -248,7 +248,7 @@ func FuzzAEADOpen(f *testing.F) {
 // FuzzAEADOpenChaCha20 fuzzes ChaCha20-Poly1305 decryption.
 func FuzzAEADOpenChaCha20(f *testing.F) {
 	key := make([]byte, 32)
-	crypto.SecureRandom(key)
+	_ = crypto.SecureRandom(key)
 	aead, _ := crypto.NewAEAD(constants.CipherSuiteChaCha20Poly1305, key)
 
 	// Add valid ciphertext as seed

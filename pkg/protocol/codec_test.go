@@ -23,7 +23,7 @@ func TestEncodeDecodeClientHello(t *testing.T) {
 	}
 
 	random := make([]byte, 32)
-	crypto.SecureRandom(random)
+	_ = crypto.SecureRandom(random)
 
 	original := &protocol.ClientHello{
 		Version:        protocol.Current,
@@ -447,7 +447,7 @@ func TestReadMessage(t *testing.T) {
 	kp, _ := chkem.GenerateKeyPair()
 
 	random := make([]byte, 32)
-	crypto.SecureRandom(random)
+	_ = crypto.SecureRandom(random)
 
 	original := &protocol.ClientHello{
 		Version:        protocol.Current,
@@ -752,7 +752,7 @@ func TestMultipleRoundtrips(t *testing.T) {
 	kp, _ := chkem.GenerateKeyPair()
 
 	random := make([]byte, 32)
-	crypto.SecureRandom(random)
+	_ = crypto.SecureRandom(random)
 
 	original := &protocol.ClientHello{
 		Version:        protocol.Current,

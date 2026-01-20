@@ -13,8 +13,8 @@ import (
 // TestTransportSendPing tests SendPing functionality.
 func TestTransportSendPing(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -24,20 +24,20 @@ func TestTransportSendPing(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
 
 	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, tunnel.DefaultTransportConfig())
 	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, tunnel.DefaultTransportConfig())
-	defer clientTransport.Close()
-	defer serverTransport.Close()
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
 
 	// Send ping from client
 	wg.Add(1)
@@ -62,8 +62,8 @@ func TestTransportSendPing(t *testing.T) {
 // TestTransportReceiveWithTimeout tests Receive with timeout.
 func TestTransportReceiveWithTimeout(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
 	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
@@ -73,18 +73,18 @@ func TestTransportReceiveWithTimeout(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
 
 	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, tunnel.DefaultTransportConfig())
-	defer serverTransport.Close()
+	defer func() { _ = serverTransport.Close() }()
 
 	// Set a short read timeout
 	serverTransport.SetReadTimeout(100 * time.Millisecond)
@@ -102,7 +102,7 @@ func TestTransportSendLargeMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr().String()
 
@@ -144,7 +144,7 @@ func TestTransportSendLargeMessage(t *testing.T) {
 			clientErr = err
 			return
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		if err := client.Send(largeData); err != nil {
 			clientErr = err
@@ -171,7 +171,7 @@ func TestTransportMultipleMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr().String()
 	numMessages := 10
@@ -210,7 +210,7 @@ func TestTransportMultipleMessages(t *testing.T) {
 			clientErr = err
 			return
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		for i := 0; i < numMessages; i++ {
 			msg := []byte{byte(i), byte(i + 1), byte(i + 2)}
@@ -254,12 +254,12 @@ func TestTransportCloseBehavior(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -290,12 +290,12 @@ func TestTransportClosedConnection(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		tunnel.InitiatorHandshake(clientSession, clientConn)
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
 	}()
 
 	go func() {
 		defer wg.Done()
-		tunnel.ResponderHandshake(serverSession, serverConn)
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
 	}()
 
 	wg.Wait()
@@ -304,8 +304,8 @@ func TestTransportClosedConnection(t *testing.T) {
 	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, tunnel.DefaultTransportConfig())
 
 	// Close client connection
-	clientTransport.Close()
-	clientConn.Close()
+	_ = clientTransport.Close()
+	_ = clientConn.Close()
 
 	// Server should get error when trying to receive
 	_, err := serverTransport.Receive()
@@ -323,7 +323,7 @@ func TestTransportConcurrentSendReceive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	addr := listener.Addr().String()
 
@@ -385,7 +385,7 @@ func TestTransportConcurrentSendReceive(t *testing.T) {
 			errors <- err
 			return
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		var clientWg sync.WaitGroup
 

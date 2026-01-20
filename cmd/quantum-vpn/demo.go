@@ -62,7 +62,7 @@ func runDemoServer(addr string, verbose bool) {
 	go func() {
 		<-sigChan
 		fmt.Println("\n\nShutting down server...")
-		listener.Close()
+		_ = listener.Close()
 		os.Exit(0)
 	}()
 
@@ -95,7 +95,7 @@ func runDemoServer(addr string, verbose bool) {
 }
 
 func handleConnection(conn *tunnel.Tunnel, connNum int, verbose bool) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	for {
 		if verbose {

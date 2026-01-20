@@ -35,7 +35,7 @@ func TestDialAndListen(t *testing.T) {
 			serverErr = fmt.Errorf("Accept failed: %w", err)
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		data, err := conn.Receive()
 		if err != nil {
@@ -96,7 +96,7 @@ func TestDialWithConfig(t *testing.T) {
 		defer wg.Done()
 		conn, _ := listener.Accept()
 		if conn != nil {
-			conn.Close()
+			_ = conn.Close()
 		}
 	}()
 
