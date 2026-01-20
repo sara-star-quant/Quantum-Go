@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 BINARY_NAME="quantum-vpn"
 CMD_DIR="./cmd/quantum-vpn"
 BIN_DIR="./bin"
-VERSION="${VERSION:-0.0.3}"
+VERSION="${VERSION:-0.0.4}"
 BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 

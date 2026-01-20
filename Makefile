@@ -5,7 +5,7 @@
 BINARY_NAME=quantum-vpn
 CMD_DIR=./cmd/quantum-vpn
 BIN_DIR=./bin
-VERSION?=0.0.3
+VERSION?=0.0.4
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.gitCommit=$(GIT_COMMIT)"

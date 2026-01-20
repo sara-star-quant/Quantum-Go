@@ -20,7 +20,7 @@ RUN go mod download
 COPY . .
 
 # Build binary
-ARG VERSION=0.0.3
+ARG VERSION=0.0.4
 ARG BUILD_TIME
 ARG GIT_COMMIT
 
