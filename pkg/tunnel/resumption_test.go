@@ -178,7 +178,9 @@ func TestSessionResumptionFallbackNoTicketManager(t *testing.T) {
 	c1, s1 := net.Pipe()
 	errChan := make(chan error, 2)
 	go func() { errChan <- ResponderHandshake(serverSession, s1) }()
-	InitiatorHandshake(clientSession, c1)
+	if err := InitiatorHandshake(clientSession, c1); err != nil {
+		t.Fatalf("Initial handshake failed: %v", err)
+	}
 	<-errChan
 
 	tmKey := bytes.Repeat([]byte{0x99}, 32)
