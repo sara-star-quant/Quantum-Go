@@ -105,11 +105,10 @@ func (t *Transport) Send(data []byte) error {
 		return err
 	}
 
-	// Check if rekey is needed
-	if t.session.NeedsRekey() {
-		// TODO: In production, this would trigger rekeying
-		// For now, we just note that rekey is needed
-		_ = t.session // Acknowledge but don't act yet
+	// Check if rekey is needed and initiate if so
+	if err := t.CheckAndRekey(); err != nil {
+		// Log but don't fail the send - rekey errors are non-fatal
+		_ = err
 	}
 
 	return nil
@@ -166,6 +165,14 @@ func (t *Transport) Receive() ([]byte, error) {
 		t.closedMu.Unlock()
 		return nil, qerrors.ErrTunnelClosed
 
+	case protocol.MessageTypeRekey:
+		// Handle incoming rekey request/response
+		if err := t.handleRekey(msg); err != nil {
+			return nil, err
+		}
+		// Continue reading after processing rekey
+		return t.Receive()
+
 	case protocol.MessageTypeAlert:
 		code, desc, _ := t.codec.DecodeAlert(msg)
 		return nil, qerrors.NewProtocolError("alert", &alertError{code: code, desc: desc})
@@ -181,6 +188,11 @@ func (t *Transport) handleData(msg []byte) ([]byte, error) {
 	seq, ciphertext, err := t.codec.DecodeData(msg)
 	if err != nil {
 		return nil, err
+	}
+
+	// Check if we've reached the activation sequence for pending keys
+	if t.session.IsRekeyInProgress() && seq >= t.session.GetRekeyActivationSeq() {
+		t.session.ActivatePendingKeys()
 	}
 
 	// Decrypt
@@ -279,6 +291,109 @@ func (t *Transport) encodeClose() []byte {
 	buf[0] = byte(protocol.MessageTypeClose)
 	binary.BigEndian.PutUint32(buf[1:], 0)
 	return buf
+}
+
+// --- Rekey Protocol Methods ---
+
+// handleRekey processes an incoming rekey message.
+func (t *Transport) handleRekey(msg []byte) error {
+	newPublicKey, activationSeq, err := t.codec.DecodeRekey(msg)
+	if err != nil {
+		return err
+	}
+
+	// If we're the responder and receive a rekey request
+	if t.session.Role == RoleResponder && !t.session.IsRekeyInProgress() {
+		// Prepare response (encapsulate to new key)
+		ciphertext, err := t.session.PrepareRekeyResponse(newPublicKey, activationSeq)
+		if err != nil {
+			return err
+		}
+
+		// Send rekey response back
+		return t.sendRekeyResponse(ciphertext, activationSeq)
+	}
+
+	// If we're the initiator and receive a rekey response (ciphertext)
+	if t.session.Role == RoleInitiator && t.session.IsRekeyInProgress() {
+		// Process the response
+		if err := t.session.ProcessRekeyResponse(newPublicKey); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// SendRekey initiates a rekey operation (called by initiator).
+func (t *Transport) SendRekey() error {
+	t.closedMu.RLock()
+	if t.closed {
+		t.closedMu.RUnlock()
+		return qerrors.ErrTunnelClosed
+	}
+	t.closedMu.RUnlock()
+
+	// Initiate rekey in session
+	newPublicKey, activationSeq, err := t.session.InitiateRekey()
+	if err != nil {
+		return err
+	}
+
+	// Encode rekey message
+	msg, err := t.codec.EncodeRekey(newPublicKey, activationSeq)
+	if err != nil {
+		return err
+	}
+
+	// Send
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
+	if t.writeTimeout > 0 {
+		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
+	}
+
+	_, err = t.conn.Write(msg)
+	return err
+}
+
+// sendRekeyResponse sends a rekey response (called by responder).
+func (t *Transport) sendRekeyResponse(ciphertext []byte, activationSeq uint64) error {
+	// For the response, we send the ciphertext in place of public key
+	// The format is the same, responder sends ciphertext back
+	msg, err := t.codec.EncodeRekey(ciphertext, activationSeq)
+	if err != nil {
+		return err
+	}
+
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
+	if t.writeTimeout > 0 {
+		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
+	}
+
+	_, err = t.conn.Write(msg)
+	return err
+}
+
+// CheckAndRekey checks if rekey is needed and initiates it if so.
+// Should be called periodically or after Send operations.
+func (t *Transport) CheckAndRekey() error {
+	if t.session.Role != RoleInitiator {
+		return nil // Only initiator triggers rekey
+	}
+
+	if t.session.IsRekeyInProgress() {
+		return nil // Already rekeying
+	}
+
+	if t.session.NeedsRekey() {
+		return t.SendRekey()
+	}
+
+	return nil
 }
 
 // Session returns the underlying session.

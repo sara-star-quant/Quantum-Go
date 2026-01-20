@@ -82,6 +82,9 @@ var (
 	// ErrRekeyRequired indicates a rekey operation is required
 	ErrRekeyRequired = errors.New("tunnel: rekey required")
 
+	// ErrRekeyInProgress indicates a rekey operation is already in progress
+	ErrRekeyInProgress = errors.New("tunnel: rekey already in progress")
+
 	// ErrTimeout indicates an operation timed out
 	ErrTimeout = errors.New("tunnel: operation timed out")
 )

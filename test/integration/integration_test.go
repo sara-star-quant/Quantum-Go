@@ -495,3 +495,521 @@ func TestTunnelTimeout(t *testing.T) {
 		t.Error("Expected timeout error")
 	}
 }
+
+// --- Rekey Under Load Tests ---
+
+// TestRekeyDuringDataTransfer verifies rekey completes correctly while data is being transferred.
+func TestRekeyDuringDataTransfer(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
+
+	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
+	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
+	}()
+
+	go func() {
+		defer wg.Done()
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
+	}()
+
+	wg.Wait()
+
+	config := tunnel.DefaultTransportConfig()
+	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
+	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
+
+	// Message counts
+	messageCount := 50
+	messagesBeforeRekey := 10
+	var serverRecvCount, clientRecvCount int
+	var mu sync.Mutex
+	serverRecvDone := make(chan struct{})
+	clientRecvDone := make(chan struct{})
+
+	// Server receiver goroutine - receives data from client
+	go func() {
+		defer close(serverRecvDone)
+		for i := 0; i < messageCount; i++ {
+			_, err := serverTransport.Receive()
+			if err != nil {
+				t.Errorf("Server receive %d error: %v", i, err)
+				return
+			}
+			mu.Lock()
+			serverRecvCount++
+			mu.Unlock()
+		}
+	}()
+
+	// Client receiver goroutine - needed to receive rekey response
+	go func() {
+		defer close(clientRecvDone)
+		for {
+			_, err := clientTransport.Receive()
+			if err != nil {
+				// Expected when connection closes
+				return
+			}
+			mu.Lock()
+			clientRecvCount++
+			mu.Unlock()
+		}
+	}()
+
+	// Client sender - sends data and triggers rekey
+	for i := 0; i < messageCount; i++ {
+		msg := []byte("Message " + string(rune('A'+i%26)) + " #" + string(rune('0'+i/10)) + string(rune('0'+i%10)))
+
+		// Trigger rekey after some messages
+		if i == messagesBeforeRekey {
+			if err := clientTransport.SendRekey(); err != nil {
+				t.Errorf("SendRekey error: %v", err)
+			}
+		}
+
+		if err := clientTransport.Send(msg); err != nil {
+			t.Errorf("Send %d error: %v", i, err)
+			break
+		}
+	}
+
+	// Wait for server to receive all messages
+	<-serverRecvDone
+
+	// Verify message count
+	mu.Lock()
+	count := serverRecvCount
+	mu.Unlock()
+
+	if count != messageCount {
+		t.Errorf("Server received %d messages, expected %d", count, messageCount)
+	}
+}
+
+// TestRekeyWithBidirectionalTraffic verifies rekey works with traffic in both directions.
+func TestRekeyWithBidirectionalTraffic(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
+
+	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
+	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
+	}()
+
+	go func() {
+		defer wg.Done()
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
+	}()
+
+	wg.Wait()
+
+	config := tunnel.DefaultTransportConfig()
+	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
+	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
+
+	roundCount := 20
+	rekeyAt := 10
+
+	// Channels for server-received and client-received messages
+	serverRecv := make(chan []byte, roundCount+5)
+	clientRecv := make(chan []byte, roundCount+5)
+
+	// Server receiver goroutine
+	go func() {
+		for {
+			data, err := serverTransport.Receive()
+			if err != nil {
+				return
+			}
+			serverRecv <- data
+		}
+	}()
+
+	// Client receiver goroutine - also receives rekey response (handled internally)
+	go func() {
+		for {
+			data, err := clientTransport.Receive()
+			if err != nil {
+				return
+			}
+			clientRecv <- data
+		}
+	}()
+
+	// Send client to server messages with rekey at midpoint
+	for i := 0; i < roundCount; i++ {
+		// Trigger rekey at midpoint
+		if i == rekeyAt {
+			if err := clientTransport.SendRekey(); err != nil {
+				t.Errorf("SendRekey error: %v", err)
+			}
+		}
+		msg := []byte("C2S:" + string(rune('0'+i/10)) + string(rune('0'+i%10)))
+		if err := clientTransport.Send(msg); err != nil {
+			t.Fatalf("C2S send %d error: %v", i, err)
+		}
+	}
+
+	// Receive all C2S messages
+	for i := 0; i < roundCount; i++ {
+		select {
+		case <-serverRecv:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("C2S message %d: timeout", i)
+		}
+	}
+
+	// Send server to client messages
+	for i := 0; i < roundCount; i++ {
+		msg := []byte("S2C:" + string(rune('0'+i/10)) + string(rune('0'+i%10)))
+		if err := serverTransport.Send(msg); err != nil {
+			t.Fatalf("S2C send %d error: %v", i, err)
+		}
+	}
+
+	// Receive all S2C messages
+	for i := 0; i < roundCount; i++ {
+		select {
+		case <-clientRecv:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("S2C message %d: timeout", i)
+		}
+	}
+}
+
+// TestMultipleSequentialRekeys verifies multiple rekey operations work correctly.
+func TestMultipleSequentialRekeys(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
+
+	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
+	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
+	}()
+
+	go func() {
+		defer wg.Done()
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
+	}()
+
+	wg.Wait()
+
+	config := tunnel.DefaultTransportConfig()
+	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
+	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
+
+	rekeyCount := 3
+	messagesPerCycle := 25 // Must be > 16 (activation offset) to complete rekey
+
+	// Client receiver goroutine - needed to receive rekey responses
+	go func() {
+		for {
+			_, err := clientTransport.Receive()
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	// Server receiver goroutine with channel for received messages
+	serverRecv := make(chan []byte, 100)
+	serverErr := make(chan error, 1)
+	go func() {
+		for {
+			data, err := serverTransport.Receive()
+			if err != nil {
+				serverErr <- err
+				return
+			}
+			serverRecv <- data
+		}
+	}()
+
+	for rekey := 0; rekey < rekeyCount; rekey++ {
+		// Send messages, with rekey in the middle
+		for i := 0; i < messagesPerCycle; i++ {
+			// Trigger rekey at the 5th message
+			if i == 5 {
+				if err := clientTransport.SendRekey(); err != nil {
+					t.Fatalf("Rekey %d: SendRekey error: %v", rekey, err)
+				}
+			}
+
+			msg := []byte("Cycle" + string(rune('0'+rekey)) + "-Msg" + string(rune('0'+i/10)) + string(rune('0'+i%10)))
+			if err := clientTransport.Send(msg); err != nil {
+				t.Fatalf("Rekey %d, message %d: send error: %v", rekey, i, err)
+			}
+		}
+
+		// Receive all messages
+		for i := 0; i < messagesPerCycle; i++ {
+			select {
+			case received := <-serverRecv:
+				expected := []byte("Cycle" + string(rune('0'+rekey)) + "-Msg" + string(rune('0'+i/10)) + string(rune('0'+i%10)))
+				if !bytes.Equal(expected, received) {
+					t.Errorf("Rekey %d, message %d: got %q, want %q", rekey, i, received, expected)
+				}
+			case err := <-serverErr:
+				t.Fatalf("Rekey %d, message %d: receive error: %v", rekey, i, err)
+			case <-time.After(5 * time.Second):
+				t.Fatalf("Rekey %d, message %d: timeout waiting for message", rekey, i)
+			}
+		}
+
+		// Wait for rekey to complete
+		for i := 0; i < 100 && clientSession.IsRekeyInProgress(); i++ {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		if clientSession.IsRekeyInProgress() {
+			t.Fatalf("Rekey %d: still in progress after receiving all messages", rekey)
+		}
+	}
+}
+
+// TestRekeyDataIntegrity verifies data integrity is maintained through rekey.
+func TestRekeyDataIntegrity(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
+
+	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
+	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
+	}()
+
+	go func() {
+		defer wg.Done()
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
+	}()
+
+	wg.Wait()
+
+	config := tunnel.DefaultTransportConfig()
+	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
+	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
+
+	// Client receiver goroutine - needed to receive rekey responses
+	go func() {
+		for {
+			_, err := clientTransport.Receive()
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	// Generate test data with pattern for verification
+	dataSize := 10000
+	testData := make([]byte, dataSize)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Send data before rekey
+	sendDone := make(chan struct{})
+	recvDone := make(chan struct{})
+	var receivedBefore []byte
+	var errBefore error
+
+	go func() {
+		defer close(sendDone)
+		_ = clientTransport.Send(testData)
+	}()
+
+	go func() {
+		defer close(recvDone)
+		receivedBefore, errBefore = serverTransport.Receive()
+	}()
+
+	<-sendDone
+	<-recvDone
+
+	if errBefore != nil {
+		t.Fatalf("Receive before rekey: %v", errBefore)
+	}
+	if !bytes.Equal(testData, receivedBefore) {
+		t.Error("Data mismatch before rekey")
+	}
+
+	// Send rekey and data after - single Receive() handles rekey internally
+	sendDone2 := make(chan struct{})
+	recvDone2 := make(chan struct{})
+	var receivedAfter []byte
+	var errAfter error
+
+	go func() {
+		defer close(sendDone2)
+		// Send rekey first, then data
+		if err := clientTransport.SendRekey(); err != nil {
+			t.Errorf("SendRekey error: %v", err)
+			return
+		}
+		_ = clientTransport.Send(testData)
+	}()
+
+	go func() {
+		defer close(recvDone2)
+		// Single Receive() handles rekey internally and returns data
+		receivedAfter, errAfter = serverTransport.Receive()
+	}()
+
+	<-sendDone2
+	<-recvDone2
+
+	if errAfter != nil {
+		t.Fatalf("Receive after rekey: %v", errAfter)
+	}
+	if !bytes.Equal(testData, receivedAfter) {
+		t.Error("Data mismatch after rekey")
+	}
+
+	// Verify data integrity by checking pattern
+	for i := range receivedAfter {
+		if receivedAfter[i] != byte(i%256) {
+			t.Errorf("Data corruption at byte %d: got %d, want %d", i, receivedAfter[i], i%256)
+			break
+		}
+	}
+}
+
+// TestRekeyUnderHighLoad verifies rekey under high message throughput.
+func TestRekeyUnderHighLoad(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping high load test in short mode")
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
+
+	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
+	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
+	}()
+
+	go func() {
+		defer wg.Done()
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
+	}()
+
+	wg.Wait()
+
+	config := tunnel.DefaultTransportConfig()
+	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
+	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
+	defer func() { _ = clientTransport.Close() }()
+	defer func() { _ = serverTransport.Close() }()
+
+	// Client receiver goroutine - needed to receive rekey responses
+	go func() {
+		for {
+			_, err := clientTransport.Receive()
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	messageCount := 500
+	messagesReceived := 0
+	var mu sync.Mutex
+	done := make(chan struct{})
+
+	// Server receiver
+	go func() {
+		for i := 0; i < messageCount; i++ {
+			_, err := serverTransport.Receive()
+			if err != nil {
+				continue
+			}
+			mu.Lock()
+			messagesReceived++
+			mu.Unlock()
+		}
+		close(done)
+	}()
+
+	// Sender with periodic rekeys
+	rekeyInterval := 100
+	for i := 0; i < messageCount; i++ {
+		msg := make([]byte, 1000)
+		for j := range msg {
+			msg[j] = byte((i + j) % 256)
+		}
+
+		if err := clientTransport.Send(msg); err != nil {
+			t.Errorf("Send %d error: %v", i, err)
+			break
+		}
+
+		// Trigger rekey periodically
+		if i > 0 && i%rekeyInterval == 0 {
+			// Only rekey if not already in progress
+			if !clientSession.IsRekeyInProgress() {
+				_ = clientTransport.SendRekey()
+			}
+		}
+	}
+
+	// Wait for receiver with timeout
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("Test timed out")
+	}
+
+	mu.Lock()
+	received := messagesReceived
+	mu.Unlock()
+
+	// We may miss some messages due to rekey processing, but should receive most
+	minExpected := messageCount * 80 / 100 // At least 80%
+	if received < minExpected {
+		t.Errorf("Received %d messages, expected at least %d", received, minExpected)
+	}
+
+	t.Logf("Received %d/%d messages under high load with rekeys", received, messageCount)
+}

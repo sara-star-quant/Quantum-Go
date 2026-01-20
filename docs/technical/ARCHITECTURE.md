@@ -46,7 +46,7 @@ Quantum-Go is a quantum-resistant VPN encryption library implementing the Cascad
 ```
 quantum-go/
 ├── cmd/
-│   └── quantum-vpn/           # CLI application (future)
+│   └── quantum-vpn/           # CLI application
 │       └── main.go
 ├── pkg/
 │   ├── chkem/                 # Cascaded Hybrid KEM
@@ -344,8 +344,7 @@ Errors are designed to prevent information leakage:
 package main
 
 import (
-    "net"
-    "github.com/quantum-go/quantum-go/pkg/tunnel"
+    "github.com/pzverkov/quantum-go/pkg/tunnel"
 )
 
 func main() {
@@ -412,5 +411,5 @@ transport, err := tunnel.NewTransport(session, conn, config)
 
 ---
 
-*Document Version: 1.0*
-*Last Updated: 2026-01-18*
+*Document Version: 1.1*
+*Last Updated: 2026-01-20*

@@ -968,3 +968,73 @@ func TestServerFinishedValidation(t *testing.T) {
 		})
 	}
 }
+
+// --- Rekey Codec Tests ---
+
+func TestEncodeDecodeRekey(t *testing.T) {
+	codec := protocol.NewCodec()
+
+	// Generate a valid public key for testing
+	kp, err := chkem.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair failed: %v", err)
+	}
+	publicKey := kp.PublicKey().Bytes()
+	activationSeq := uint64(12345)
+
+	// Encode
+	encoded, err := codec.EncodeRekey(publicKey, activationSeq)
+	if err != nil {
+		t.Fatalf("EncodeRekey failed: %v", err)
+	}
+
+	// Verify message type
+	if protocol.MessageType(encoded[0]) != protocol.MessageTypeRekey {
+		t.Errorf("wrong message type: got %d, want %d", encoded[0], protocol.MessageTypeRekey)
+	}
+
+	// Decode
+	decodedKey, decodedSeq, err := codec.DecodeRekey(encoded)
+	if err != nil {
+		t.Fatalf("DecodeRekey failed: %v", err)
+	}
+
+	if !bytes.Equal(publicKey, decodedKey) {
+		t.Error("decoded public key doesn't match")
+	}
+
+	if activationSeq != decodedSeq {
+		t.Errorf("decoded activation sequence: got %d, want %d", decodedSeq, activationSeq)
+	}
+}
+
+func TestEncodeRekeyInvalidKey(t *testing.T) {
+	codec := protocol.NewCodec()
+
+	// Try with invalid key size
+	_, err := codec.EncodeRekey([]byte("short"), 100)
+	if err == nil {
+		t.Error("expected error for invalid key size")
+	}
+}
+
+func TestDecodeRekeyInvalid(t *testing.T) {
+	codec := protocol.NewCodec()
+
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{"too short", make([]byte, 10)},
+		{"wrong type", append([]byte{byte(protocol.MessageTypeData)}, make([]byte, 1700)...)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := codec.DecodeRekey(tc.data)
+			if err == nil {
+				t.Error("expected error")
+			}
+		})
+	}
+}
