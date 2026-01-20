@@ -768,4 +768,3 @@ func TestMustSecureRandomBytes(t *testing.T) {
 		t.Error("MustSecureRandomBytes returned all zeros")
 	}
 }
-
