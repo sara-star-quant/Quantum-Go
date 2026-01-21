@@ -1,6 +1,6 @@
-// mlkem.go implements ML-KEM-1024 key encapsulation mechanism wrapper.
+// Package crypto implements ML-KEM-1024 key encapsulation mechanism wrapper.
 //
-// ML-KEM (Module-Lattice-based Key-Encapsulation Mechanism) is standardized in
+// This file (mlkem.go) wraps ML-KEM, which is standardized in
 // NIST FIPS 203. The security of ML-KEM is based on the computational difficulty
 // of the Module Learning With Errors (MLWE) problem.
 //

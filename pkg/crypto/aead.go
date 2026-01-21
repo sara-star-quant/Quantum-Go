@@ -1,6 +1,6 @@
-// aead.go implements Authenticated Encryption with Associated Data (AEAD).
+// Package crypto implements Authenticated Encryption with Associated Data (AEAD).
 //
-// This package supports two AEAD algorithms:
+// This file (aead.go) supports two AEAD algorithms:
 //   - AES-256-GCM: FIPS-approved, hardware-accelerated on modern CPUs
 //   - ChaCha20-Poly1305: High performance without hardware support
 //

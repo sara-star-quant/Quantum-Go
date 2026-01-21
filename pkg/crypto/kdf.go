@@ -1,6 +1,6 @@
-// kdf.go implements key derivation functions using SHAKE-256 (SHA-3 XOF).
+// Package crypto implements key derivation functions using SHAKE-256 (SHA-3 XOF).
 //
-// SHAKE-256 (FIPS 202) is an extendable-output function (XOF) based on the
+// This file (kdf.go) uses SHAKE-256 (FIPS 202), an extendable-output function (XOF) based on the
 // Keccak sponge construction. It provides 256-bit security against collision
 // and preimage attacks, and 128-bit security against length-extension attacks.
 //

@@ -1,6 +1,6 @@
-// handshake.go implements the CH-KEM handshake state machine.
+// Package tunnel implements the CH-KEM handshake state machine.
 //
-// Handshake Protocol:
+// This file (handshake.go) implements the handshake protocol:
 //
 //	Initiator                              Responder
 //	    |                                      |
