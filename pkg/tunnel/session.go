@@ -225,6 +225,10 @@ func (s *Session) InitializeKeys(masterSecret []byte, cipherSuite constants.Ciph
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.state.Load() == int32(SessionStateClosed) {
+		return qerrors.ErrTunnelClosed
+	}
+
 	if len(masterSecret) != constants.CHKEMSharedSecretSize {
 		return qerrors.ErrInvalidKeySize
 	}
@@ -361,6 +365,11 @@ func (s *Session) NeedsRekey() bool {
 
 	// Check byte limit
 	if s.BytesSent.Load() >= constants.MaxBytesBeforeRekey {
+		return true
+	}
+
+	// Check packet limit
+	if s.PacketsSent.Load() >= constants.MaxPacketsBeforeRekey {
 		return true
 	}
 

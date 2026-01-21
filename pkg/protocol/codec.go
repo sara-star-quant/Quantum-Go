@@ -325,44 +325,46 @@ func (c *Codec) DecodeData(data []byte) (uint64, []byte, error) {
 }
 
 // EncodeAlert serializes an alert message.
-func (c *Codec) EncodeAlert(code AlertCode, description string) []byte {
+func (c *Codec) EncodeAlert(level AlertLevel, code AlertCode, description string) []byte {
 	// Description length is stored in a single byte (max 255)
 	if len(description) > 255 {
 		description = description[:255]
 	}
 
-	payloadSize := 1 + 1 + len(description)
+	payloadSize := 1 + 1 + 1 + len(description)
 	buf := make([]byte, HeaderSize+payloadSize)
 
 	buf[0] = byte(MessageTypeAlert)
 	binary.BigEndian.PutUint32(buf[1:], uint32(payloadSize))
-	buf[HeaderSize] = byte(code)
-	buf[HeaderSize+1] = byte(len(description))
-	copy(buf[HeaderSize+2:], description)
+	buf[HeaderSize] = byte(level)
+	buf[HeaderSize+1] = byte(code)
+	buf[HeaderSize+2] = byte(len(description))
+	copy(buf[HeaderSize+3:], description)
 
 	return buf
 }
 
 // DecodeAlert deserializes an alert message.
-func (c *Codec) DecodeAlert(data []byte) (AlertCode, string, error) {
-	if len(data) < HeaderSize+2 {
-		return 0, "", qerrors.ErrInvalidMessage
+func (c *Codec) DecodeAlert(data []byte) (AlertLevel, AlertCode, string, error) {
+	if len(data) < HeaderSize+3 {
+		return 0, 0, "", qerrors.ErrInvalidMessage
 	}
 
 	if MessageType(data[0]) != MessageTypeAlert {
-		return 0, "", qerrors.ErrInvalidMessage
+		return 0, 0, "", qerrors.ErrInvalidMessage
 	}
 
-	code := AlertCode(data[HeaderSize])
-	descLen := int(data[HeaderSize+1])
+	level := AlertLevel(data[HeaderSize])
+	code := AlertCode(data[HeaderSize+1])
+	descLen := int(data[HeaderSize+2])
 
-	if len(data) < HeaderSize+2+descLen {
-		return 0, "", qerrors.ErrInvalidMessage
+	if len(data) < HeaderSize+3+descLen {
+		return 0, 0, "", qerrors.ErrInvalidMessage
 	}
 
-	description := string(data[HeaderSize+2 : HeaderSize+2+descLen])
+	description := string(data[HeaderSize+3 : HeaderSize+3+descLen])
 
-	return code, description, nil
+	return level, code, description, nil
 }
 
 // EncodeRekey serializes a rekey message.

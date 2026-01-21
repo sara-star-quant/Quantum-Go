@@ -365,29 +365,33 @@ func TestEncodeDecodeAlert(t *testing.T) {
 	codec := protocol.NewCodec()
 
 	testCases := []struct {
-		name string
-		code protocol.AlertCode
-		desc string
+		name  string
+		level protocol.AlertLevel
+		code  protocol.AlertCode
+		desc  string
 	}{
-		{"handshake failure", protocol.AlertCodeHandshakeFailure, "handshake failed"},
-		{"close notify", protocol.AlertCodeCloseNotify, "connection closing"},
-		{"empty description", protocol.AlertCodeInternalError, ""},
-		{"long description", protocol.AlertCodeBadCiphertext, "this is a somewhat longer description that explains the error"},
+		{"handshake failure", protocol.AlertLevelFatal, protocol.AlertCodeHandshakeFailure, "handshake failed"},
+		{"close notify", protocol.AlertLevelWarning, protocol.AlertCodeCloseNotify, "connection closing"},
+		{"empty description", protocol.AlertLevelFatal, protocol.AlertCodeInternalError, ""},
+		{"long description", protocol.AlertLevelWarning, protocol.AlertCodeBadCiphertext, "this is a somewhat longer description that explains the error"},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			encoded := codec.EncodeAlert(tc.code, tc.desc)
+			encoded := codec.EncodeAlert(tc.level, tc.code, tc.desc)
 
 			if protocol.MessageType(encoded[0]) != protocol.MessageTypeAlert {
 				t.Errorf("wrong message type: got %d, want %d", encoded[0], protocol.MessageTypeAlert)
 			}
 
-			decodedCode, decodedDesc, err := codec.DecodeAlert(encoded)
+			decodedLevel, decodedCode, decodedDesc, err := codec.DecodeAlert(encoded)
 			if err != nil {
 				t.Fatalf("DecodeAlert failed: %v", err)
 			}
 
+			if decodedLevel != tc.level {
+				t.Errorf("level mismatch: got %d, want %d", decodedLevel, tc.level)
+			}
 			if decodedCode != tc.code {
 				t.Errorf("code mismatch: got %d, want %d", decodedCode, tc.code)
 			}
@@ -407,8 +411,8 @@ func TestEncodeAlertDescriptionTruncation(t *testing.T) {
 		longDesc[i] = 'A'
 	}
 
-	encoded := codec.EncodeAlert(protocol.AlertCodeInternalError, string(longDesc))
-	_, decodedDesc, err := codec.DecodeAlert(encoded)
+	encoded := codec.EncodeAlert(protocol.AlertLevelFatal, protocol.AlertCodeInternalError, string(longDesc))
+	_, _, decodedDesc, err := codec.DecodeAlert(encoded)
 	if err != nil {
 		t.Fatalf("DecodeAlert failed: %v", err)
 	}
@@ -432,9 +436,56 @@ func TestDecodeAlertInvalidInputs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := codec.DecodeAlert(tc.data)
+			_, _, _, err := codec.DecodeAlert(tc.data)
 			if err == nil {
 				t.Error("expected error for invalid input")
+			}
+		})
+	}
+}
+
+func TestAlertMessageValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		modify  func(*protocol.AlertMessage)
+		wantErr bool
+	}{
+		{
+			name:    "valid fatal",
+			modify:  func(m *protocol.AlertMessage) {},
+			wantErr: false,
+		},
+		{
+			name: "invalid level",
+			modify: func(m *protocol.AlertMessage) {
+				m.Level = 0
+			},
+			wantErr: true,
+		},
+		{
+			name: "description too long",
+			modify: func(m *protocol.AlertMessage) {
+				m.Description = string(make([]byte, 257))
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			msg := &protocol.AlertMessage{
+				Level:       protocol.AlertLevelFatal,
+				Code:        protocol.AlertCodeInternalError,
+				Description: "test error",
+			}
+			tc.modify(msg)
+
+			err := msg.Validate()
+			if tc.wantErr && err == nil {
+				t.Error("expected validation error")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected validation error: %v", err)
 			}
 		})
 	}
@@ -479,7 +530,7 @@ func TestReadMessageMultiple(t *testing.T) {
 
 	msg1, _ := codec.EncodeData(1, []byte("first"))
 	msg2, _ := codec.EncodeData(2, []byte("second"))
-	msg3 := codec.EncodeAlert(protocol.AlertCodeCloseNotify, "closing")
+	msg3 := codec.EncodeAlert(protocol.AlertLevelWarning, protocol.AlertCodeCloseNotify, "closing")
 
 	buf.Write(msg1)
 	buf.Write(msg2)

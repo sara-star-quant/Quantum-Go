@@ -153,13 +153,35 @@ type RekeyMessage struct {
 	ActivationSequence uint64
 }
 
-// AlertMessage signals an error condition.
+// AlertLevel indicates the severity of the alert.
+type AlertLevel uint8
+
+const (
+	AlertLevelWarning AlertLevel = 0x01
+	AlertLevelFatal   AlertLevel = 0x02
+)
+
+// AlertMessage signals an error condition or connection closure.
 type AlertMessage struct {
-	// Alert code indicating the error type
+	// Level of the alert (Warning or Fatal)
+	Level AlertLevel
+
+	// Alert code identifying the specific condition
 	Code AlertCode
 
 	// Optional description (max 256 bytes)
 	Description string
+}
+
+// Validate checks if the AlertMessage is valid.
+func (m *AlertMessage) Validate() error {
+	if m.Level != AlertLevelWarning && m.Level != AlertLevelFatal {
+		return qerrors.ErrInvalidMessage
+	}
+	if len(m.Description) > 256 {
+		return qerrors.ErrInvalidMessage
+	}
+	return nil
 }
 
 // Validate checks if the ClientHello message is valid.

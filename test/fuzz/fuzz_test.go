@@ -196,20 +196,21 @@ func FuzzDecodeAlert(f *testing.F) {
 	codec := protocol.NewCodec()
 
 	// Add valid Alert as seed
-	validAlert := codec.EncodeAlert(protocol.AlertCodeHandshakeFailure, "test error")
+	validAlert := codec.EncodeAlert(protocol.AlertLevelFatal, protocol.AlertCodeHandshakeFailure, "test error")
 	f.Add(validAlert)
 
 	// Edge cases
 	f.Add([]byte{})
 	f.Add([]byte{0xF0})
-	f.Add([]byte{0xF0, 0, 0, 0, 2, 0x03, 0}) // Minimal valid
+	f.Add([]byte{0xF0, 0, 0, 0, 3, 0x02, 0x03, 0}) // Minimal valid with level
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// Should not panic regardless of input
-		code, desc, err := codec.DecodeAlert(data)
+		level, code, desc, err := codec.DecodeAlert(data)
 		if err != nil {
 			return
 		}
+		_ = level
 		_ = code
 		_ = desc
 	})

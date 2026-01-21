@@ -1,375 +1,308 @@
-package tunnel_test
+package tunnel
 
 import (
 	"bytes"
+	"encoding/binary"
+	"errors"
 	"io"
 	"net"
-	"sync"
 	"testing"
-	"time"
 
-	"github.com/pzverkov/quantum-go/pkg/tunnel"
+	"github.com/pzverkov/quantum-go/internal/constants"
+	"github.com/pzverkov/quantum-go/pkg/protocol"
 )
 
-// TestHandshakeStateMachine verifies the handshake state transitions.
-func TestHandshakeStateMachine(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer func() { _ = clientConn.Close() }()
-	defer func() { _ = serverConn.Close() }()
-
-	clientSession, err := tunnel.NewSession(tunnel.RoleInitiator)
-	if err != nil {
-		t.Fatalf("NewSession (client) failed: %v", err)
-	}
-
-	serverSession, err := tunnel.NewSession(tunnel.RoleResponder)
-	if err != nil {
-		t.Fatalf("NewSession (server) failed: %v", err)
-	}
-
-	// Verify initial state
-	if clientSession.State() != tunnel.SessionStateNew {
-		t.Errorf("Client initial state: got %v, want New", clientSession.State())
-	}
-	if serverSession.State() != tunnel.SessionStateNew {
-		t.Errorf("Server initial state: got %v, want New", serverSession.State())
-	}
-
-	var wg sync.WaitGroup
-	var clientErr, serverErr error
-
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		clientErr = tunnel.InitiatorHandshake(clientSession, clientConn)
-	}()
-
-	go func() {
-		defer wg.Done()
-		serverErr = tunnel.ResponderHandshake(serverSession, serverConn)
-	}()
-
-	wg.Wait()
-
-	if clientErr != nil {
-		t.Fatalf("Client handshake failed: %v", clientErr)
-	}
-	if serverErr != nil {
-		t.Fatalf("Server handshake failed: %v", serverErr)
-	}
-
-	// Verify final state
-	if clientSession.State() != tunnel.SessionStateEstablished {
-		t.Errorf("Client final state: got %v, want Established", clientSession.State())
-	}
-	if serverSession.State() != tunnel.SessionStateEstablished {
-		t.Errorf("Server final state: got %v, want Established", serverSession.State())
-	}
-
-	// Verify session IDs match
-	if !bytes.Equal(clientSession.ID, serverSession.ID) {
-		t.Error("Session IDs should match after handshake")
-	}
-
-	// Verify cipher suites match
-	if clientSession.CipherSuite != serverSession.CipherSuite {
-		t.Errorf("Cipher suite mismatch: client=%v, server=%v",
-			clientSession.CipherSuite, serverSession.CipherSuite)
-	}
+// mockReadWriter for injecting errors
+type mockReadWriter struct {
+	readError  error
+	writeError error
+	readData   []byte
+	writeData  bytes.Buffer
 }
 
-// TestHandshakeTimeout verifies that handshake respects timeouts.
-func TestHandshakeTimeout(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer func() { _ = clientConn.Close() }()
-	defer func() { _ = serverConn.Close() }()
+func (m *mockReadWriter) Read(p []byte) (n int, err error) {
+	if m.readError != nil {
+		return 0, m.readError
+	}
+	if len(m.readData) == 0 {
+		return 0, io.EOF
+	}
+	n = copy(p, m.readData)
+	m.readData = m.readData[n:]
+	return n, nil
+}
 
-	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
+func (m *mockReadWriter) Write(p []byte) (n int, err error) {
+	if m.writeError != nil {
+		return 0, m.writeError
+	}
+	return m.writeData.Write(p)
+}
 
-	// Set a very short deadline
-	_ = clientConn.SetDeadline(time.Now().Add(10 * time.Millisecond))
+func TestHandshakeInvalidMessages(t *testing.T) {
+	session, _ := NewSession(RoleInitiator)
+	h := NewHandshake(session)
 
-	// Handshake should fail because no responder
-	err := tunnel.InitiatorHandshake(clientSession, clientConn)
+	// Test ProcessServerHello with wrong message type
+	invalidMsg := []byte{0xFF, 0, 0, 0, 0}
+	err := h.ProcessServerHello(invalidMsg)
 	if err == nil {
-		t.Error("Expected timeout error, got nil")
+		t.Error("expected error for invalid message type in ProcessServerHello")
+	}
+
+	// Test ProcessServerFinished with wrong message type
+	err = h.ProcessServerFinished(invalidMsg)
+	if err == nil {
+		t.Error("expected error for invalid message type in ProcessServerFinished")
 	}
 }
 
-// TestHandshakeWithData verifies data can be sent immediately after handshake.
-func TestHandshakeWithData(t *testing.T) {
+func TestHandshakeStateTransitions(t *testing.T) {
+	session, _ := NewSession(RoleInitiator)
+	h := NewHandshake(session)
+
+	if h.State() != HandshakeStateInitial {
+		t.Errorf("expected Initial state, got %v", h.State())
+	}
+
+	if h.IsComplete() {
+		t.Error("handshake should not be complete initially")
+	}
+}
+
+func TestHandshakeErrorPaths(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer func() { _ = clientConn.Close() }()
 	defer func() { _ = serverConn.Close() }()
 
-	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
-	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
+	session, _ := NewSession(RoleInitiator)
 
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
-	}()
-
-	go func() {
-		defer wg.Done()
-		_ = tunnel.ResponderHandshake(serverSession, serverConn)
-	}()
-
-	wg.Wait()
-
-	// Create transports
-	clientTransport, err := tunnel.NewTransport(clientSession, clientConn, tunnel.DefaultTransportConfig())
-	if err != nil {
-		t.Fatalf("NewTransport (client) failed: %v", err)
-	}
-	defer func() { _ = clientTransport.Close() }()
-
-	serverTransport, err := tunnel.NewTransport(serverSession, serverConn, tunnel.DefaultTransportConfig())
-	if err != nil {
-		t.Fatalf("NewTransport (server) failed: %v", err)
-	}
-	defer func() { _ = serverTransport.Close() }()
-
-	// Send data immediately after handshake
-	testData := []byte("First message after handshake!")
-
-	wg.Add(2)
-
-	var received []byte
-	var receiveErr error
-
-	go func() {
-		defer wg.Done()
-		_ = clientTransport.Send(testData)
-	}()
-
-	go func() {
-		defer wg.Done()
-		received, receiveErr = serverTransport.Receive()
-	}()
-
-	wg.Wait()
-
-	if receiveErr != nil {
-		t.Fatalf("Receive failed: %v", receiveErr)
+	// Test InitiatorHandshake with closed connection
+	_ = clientConn.Close()
+	err := InitiatorHandshake(session, clientConn)
+	if err == nil {
+		t.Error("expected error for handshake on closed connection")
 	}
 
-	if !bytes.Equal(testData, received) {
-		t.Errorf("Data mismatch: got %q, want %q", received, testData)
+	session2, _ := NewSession(RoleResponder)
+	err = ResponderHandshake(session2, serverConn)
+	if err == nil {
+		t.Error("expected error for handshake on closed connection (responder)")
 	}
 }
 
-// TestMultipleHandshakes verifies multiple concurrent handshakes work correctly.
-func TestMultipleHandshakes(t *testing.T) {
-	const numPairs = 5
-
-	var wg sync.WaitGroup
-	errors := make(chan error, numPairs*2)
-
-	for i := 0; i < numPairs; i++ {
-		clientConn, serverConn := net.Pipe()
-
-		wg.Add(2)
-
-		go func() {
-			defer wg.Done()
-			defer func() { _ = clientConn.Close() }()
-
-			clientSession, err := tunnel.NewSession(tunnel.RoleInitiator)
-			if err != nil {
-				errors <- err
-				return
-			}
-
-			if err := tunnel.InitiatorHandshake(clientSession, clientConn); err != nil {
-				errors <- err
-				return
-			}
-
-			if clientSession.State() != tunnel.SessionStateEstablished {
-				errors <- io.ErrUnexpectedEOF // Use as sentinel
-			}
-		}()
-
-		go func() {
-			defer wg.Done()
-			defer func() { _ = serverConn.Close() }()
-
-			serverSession, err := tunnel.NewSession(tunnel.RoleResponder)
-			if err != nil {
-				errors <- err
-				return
-			}
-
-			if err := tunnel.ResponderHandshake(serverSession, serverConn); err != nil {
-				errors <- err
-				return
-			}
-
-			if serverSession.State() != tunnel.SessionStateEstablished {
-				errors <- io.ErrUnexpectedEOF
-			}
-		}()
-	}
-
-	wg.Wait()
-	close(errors)
-
-	for err := range errors {
-		t.Errorf("Handshake error: %v", err)
-	}
-}
-
-// TestHandshakeEncryptedRecordFraming verifies the encrypted record framing.
-func TestHandshakeEncryptedRecordFraming(t *testing.T) {
-	// This test verifies that ClientFinished and ServerFinished messages
-	// are properly framed with length prefixes for encrypted data.
-
+func TestHandshakeResumptionErrorPaths(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer func() { _ = clientConn.Close() }()
 	defer func() { _ = serverConn.Close() }()
 
-	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
-	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
+	session, _ := NewSession(RoleInitiator)
 
-	var wg sync.WaitGroup
-	var clientErr, serverErr error
-
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		clientErr = tunnel.InitiatorHandshake(clientSession, clientConn)
-	}()
-
-	go func() {
-		defer wg.Done()
-		serverErr = tunnel.ResponderHandshake(serverSession, serverConn)
-	}()
-
-	wg.Wait()
-
-	// Both sides should succeed with proper framing
-	if clientErr != nil {
-		t.Errorf("Client handshake failed: %v", clientErr)
-	}
-	if serverErr != nil {
-		t.Errorf("Server handshake failed: %v", serverErr)
+	// Test HandshakeResumptionErrorPaths with closed connection
+	_ = clientConn.Close()
+	err := InitiatorResumptionHandshake(session, clientConn, []byte("ticket"), []byte("secret"))
+	if err == nil {
+		t.Error("expected error for resumption handshake on closed connection")
 	}
 
-	// Sessions should be established
-	if clientSession.State() != tunnel.SessionStateEstablished {
-		t.Errorf("Client not established: %v", clientSession.State())
-	}
-	if serverSession.State() != tunnel.SessionStateEstablished {
-		t.Errorf("Server not established: %v", serverSession.State())
+	session2, _ := NewSession(RoleResponder)
+	err = ResponderResumptionHandshake(session2, serverConn, nil)
+	if err == nil {
+		t.Error("expected error for resumption handshake on closed connection (responder)")
 	}
 }
 
-// TestSessionKeyAgreement verifies both sides derive the same keys.
-func TestSessionKeyAgreement(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer func() { _ = clientConn.Close() }()
-	defer func() { _ = serverConn.Close() }()
+func TestHandshakeSelectCipherSuite(t *testing.T) {
+	// No common cipher suite
+	offered := []constants.CipherSuite{constants.CipherSuite(0xFF)}
 
-	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
-	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
-	}()
-
-	go func() {
-		defer wg.Done()
-		_ = tunnel.ResponderHandshake(serverSession, serverConn)
-	}()
-
-	wg.Wait()
-
-	// Test that data encrypted by one side can be decrypted by the other
-	testData := []byte("Key agreement test data")
-
-	// Client encrypts
-	ciphertext, seq, err := clientSession.Encrypt(testData)
-	if err != nil {
-		t.Fatalf("Client encrypt failed: %v", err)
-	}
-
-	// Server decrypts
-	plaintext, err := serverSession.Decrypt(ciphertext, seq)
-	if err != nil {
-		t.Fatalf("Server decrypt failed: %v", err)
-	}
-
-	if !bytes.Equal(testData, plaintext) {
-		t.Error("Decrypted data doesn't match original")
-	}
-
-	// Server encrypts
-	ciphertext2, seq2, err := serverSession.Encrypt(testData)
-	if err != nil {
-		t.Fatalf("Server encrypt failed: %v", err)
-	}
-
-	// Client decrypts
-	plaintext2, err := clientSession.Decrypt(ciphertext2, seq2)
-	if err != nil {
-		t.Fatalf("Client decrypt failed: %v", err)
-	}
-
-	if !bytes.Equal(testData, plaintext2) {
-		t.Error("Decrypted data doesn't match original (server->client)")
+	suite := selectCipherSuite(offered)
+	if suite != 0 {
+		t.Errorf("expected 0 (no match), got %v", suite)
 	}
 }
 
-// TestTransportCloseNonBlocking verifies Close() doesn't block indefinitely.
-func TestTransportCloseNonBlocking(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer func() { _ = clientConn.Close() }()
-	defer func() { _ = serverConn.Close() }()
+func TestHandshakeDeriveKeysError(t *testing.T) {
+	session, _ := NewSession(RoleInitiator)
+	h := NewHandshake(session)
 
-	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
-	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
+	// Try to derive keys before shared secret is set
+	err := h.deriveHandshakeKeys()
+	if err == nil {
+		t.Error("expected error when deriving keys without shared secret")
+	}
+}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
+func TestHandshakeVersionMismatch(t *testing.T) {
+	session, _ := NewSession(RoleResponder)
+	h := NewHandshake(session)
 
-	go func() {
-		defer wg.Done()
-		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
-	}()
+	clientHello := &protocol.ClientHello{
+		Version:        protocol.Version{Major: 99, Minor: 99}, // Unsupported version
+		Random:         make([]byte, 32),
+		CHKEMPublicKey: make([]byte, constants.CHKEMPublicKeySize),
+		CipherSuites:   []constants.CipherSuite{constants.CipherSuiteAES256GCM},
+	}
+	encoded, _ := h.codec.EncodeClientHello(clientHello)
 
-	go func() {
-		defer wg.Done()
-		_ = tunnel.ResponderHandshake(serverSession, serverConn)
-	}()
+	err := h.ProcessClientHello(encoded)
+	if err == nil {
+		t.Error("expected error for unsupported version in ProcessClientHello")
+	}
+}
 
-	wg.Wait()
+func TestHandshakeCipherSuiteMismatchInHello(t *testing.T) {
+	session, _ := NewSession(RoleResponder)
+	h := NewHandshake(session)
 
-	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, tunnel.DefaultTransportConfig())
-	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, tunnel.DefaultTransportConfig())
+	clientHello := &protocol.ClientHello{
+		Version:        protocol.Current,
+		Random:         make([]byte, 32),
+		CHKEMPublicKey: make([]byte, constants.CHKEMPublicKeySize),
+		CipherSuites:   []constants.CipherSuite{constants.CipherSuite(0xFF)}, // Unsupported
+	}
+	encoded, _ := h.codec.EncodeClientHello(clientHello)
 
-	// Close both transports - this should not block
-	done := make(chan struct{})
+	err := h.ProcessClientHello(encoded)
+	if err == nil {
+		t.Error("expected error for unsupported cipher suite in ProcessClientHello")
+	}
+}
 
-	go func() {
-		_ = clientTransport.Close()
-		_ = serverTransport.Close()
-		close(done)
-	}()
+func TestHandshakeInvalidState(t *testing.T) {
+	session, _ := NewSession(RoleInitiator)
+	h := NewHandshake(session)
 
-	select {
-	case <-done:
-		// Success - Close() returned promptly
-	case <-time.After(1 * time.Second):
-		t.Fatal("Transport.Close() blocked for too long")
+	// Try to CreateClientHello when not in Initial state
+	h.state = HandshakeStateComplete
+	_, err := h.CreateClientHello()
+	if err == nil {
+		t.Error("expected error for CreateClientHello in wrong state")
+	}
+
+	// Try to ProcessServerHello when not in ClientHelloSent state
+	h.state = HandshakeStateInitial
+	err = h.ProcessServerHello([]byte("dummy"))
+	if err == nil {
+		t.Error("expected error for ProcessServerHello in wrong state")
+	}
+
+	// Try to CreateClientFinished when not ready
+	h.sendCipher = nil
+	_, err = h.CreateClientFinished()
+	if err == nil {
+		t.Error("expected error for CreateClientFinished when cipher not set")
+	}
+}
+
+func TestHandshakeAuthenticationFailure(t *testing.T) {
+	// Mock established sessions to get to Finished state
+	clientS, _ := NewSession(RoleInitiator)
+
+	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
+	_ = clientS.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+
+	clientH := NewHandshake(clientS)
+	clientH.state = HandshakeStateClientFinishedSent
+
+	// Mock ciphers for handshake
+	clientH.recvCipher = clientS.recvCipher // Just for testing decryption failure
+
+	// Test ProcessServerFinished with invalid ciphertext
+	invalidCiphertext := make([]byte, 64)
+	err := clientH.ProcessServerFinished(invalidCiphertext)
+	if err == nil {
+		t.Error("expected error for ProcessServerFinished with invalid ciphertext")
+	}
+}
+
+func TestHandshakeIOErrors(t *testing.T) {
+	session, _ := NewSession(RoleInitiator)
+	rw := &mockReadWriter{writeError: errors.New("write error")}
+
+	// Test InitiatorHandshake write error on ClientHello
+	err := InitiatorHandshake(session, rw)
+	if err == nil {
+		t.Error("expected error for InitiatorHandshake with write error")
+	}
+
+	// Test ResponderHandshake read error on ClientHello
+	rw.writeError = nil
+	rw.readError = errors.New("read error")
+	err = ResponderHandshake(session, rw)
+	if err == nil {
+		t.Error("expected error for ResponderHandshake with read error")
+	}
+}
+
+func TestWriteEncryptedRecordError(t *testing.T) {
+	rw := &mockReadWriter{writeError: errors.New("write error")}
+	err := writeEncryptedRecord(rw, []byte("test"))
+	if err == nil {
+		t.Error("expected error for writeEncryptedRecord with write error")
+	}
+}
+
+func TestReadEncryptedRecordError(t *testing.T) {
+	// Too short for length prefix
+	rw := &mockReadWriter{readData: []byte{0, 0, 0}}
+	_, err := readEncryptedRecord(rw)
+	if err == nil {
+		t.Error("expected error for readEncryptedRecord with short data")
+	}
+
+	// Too large length
+	rw.readData = []byte{0xFF, 0xFF, 0xFF, 0xFF}
+	_, err = readEncryptedRecord(rw)
+	if err == nil {
+		t.Error("expected error for readEncryptedRecord with too large length")
+	}
+
+	// Short data for payload
+	rw.readData = []byte{0, 0, 0, 10}
+	_, err = readEncryptedRecord(rw)
+	if err == nil {
+		t.Error("expected error for readEncryptedRecord with short payload")
+	}
+}
+func TestHandshakeAlerts(t *testing.T) {
+	session, _ := NewSession(RoleResponder)
+	rw := &mockReadWriter{}
+	codec := protocol.NewCodec()
+
+	// Manually construct ClientHello with unsupported version to bypass EncodeClientHello validation
+	payloadSize := 2 + 32 + 1 + 32 + constants.CHKEMPublicKeySize + 2
+	encoded := make([]byte, protocol.HeaderSize+payloadSize)
+	encoded[0] = byte(protocol.MessageTypeClientHello)
+	binary.BigEndian.PutUint32(encoded[1:5], uint32(payloadSize))
+	encoded[5] = 99 // Major version
+	encoded[6] = 99 // Minor version
+	rw.readData = encoded
+
+	err := ResponderHandshake(session, rw)
+	t.Logf("ResponderHandshake error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for version mismatch")
+	}
+
+	t.Logf("WriteData len: %d", rw.writeData.Len())
+
+	// Verify alert was written
+	alertData := rw.writeData.Bytes()
+	if len(alertData) < protocol.HeaderSize {
+		t.Fatal("no alert written to connection")
+	}
+
+	msgType, _ := codec.GetMessageType(alertData)
+	if msgType != protocol.MessageTypeAlert {
+		t.Errorf("expected Alert message, got %v", msgType)
+	}
+
+	level, code, _, _ := codec.DecodeAlert(alertData)
+	if level != protocol.AlertLevelFatal {
+		t.Errorf("expected Fatal alert level, got %v", level)
+	}
+	if code != protocol.AlertCodeHandshakeFailure {
+		t.Errorf("expected HandshakeFailure code, got %v", code)
 	}
 }

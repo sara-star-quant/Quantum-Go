@@ -322,6 +322,9 @@ func formatSize(bytes int64) string {
 		div *= unit
 		exp++
 	}
-	units := []string{"KB", "MB", "GB", "TB"}
+	units := []string{"KB", "MB", "GB", "TB", "PB", "EB"}
+	if exp >= len(units) {
+		exp = len(units) - 1
+	}
 	return fmt.Sprintf("%.2f %s", float64(bytes)/float64(div), units[exp])
 }
