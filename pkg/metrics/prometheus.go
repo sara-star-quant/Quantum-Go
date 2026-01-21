@@ -205,6 +205,63 @@ func escapePromValue(s string) string {
 	return s
 }
 
+// WritePoolMetrics writes pool metrics in Prometheus text format to the writer.
+func (e *PrometheusExporter) WritePoolMetrics(w io.Writer, pool *PoolMetricsObserver) {
+	if pool == nil {
+		return
+	}
+
+	pw := &promWriter{w: w}
+	snap := pool.Snapshot()
+	labels := e.formatLabels(Labels{"pool": snap.PoolName})
+
+	// --- Pool Gauges ---
+	e.writeHelp(pw, "pool_connections_total", "Total number of connections in the pool")
+	e.writeType(pw, "pool_connections_total", "gauge")
+	e.writeMetric(pw, "pool_connections_total", labels, float64(snap.ConnectionsTotal))
+
+	e.writeHelp(pw, "pool_connections_idle", "Number of idle connections in the pool")
+	e.writeType(pw, "pool_connections_idle", "gauge")
+	e.writeMetric(pw, "pool_connections_idle", labels, float64(snap.ConnectionsIdle))
+
+	e.writeHelp(pw, "pool_connections_in_use", "Number of in-use connections in the pool")
+	e.writeType(pw, "pool_connections_in_use", "gauge")
+	e.writeMetric(pw, "pool_connections_in_use", labels, float64(snap.ConnectionsInUse))
+
+	e.writeHelp(pw, "pool_waiting_count", "Number of goroutines waiting for a connection")
+	e.writeType(pw, "pool_waiting_count", "gauge")
+	e.writeMetric(pw, "pool_waiting_count", labels, float64(snap.WaitingCount))
+
+	// --- Pool Counters ---
+	e.writeHelp(pw, "pool_acquires_total", "Total number of successful connection acquires")
+	e.writeType(pw, "pool_acquires_total", "counter")
+	e.writeMetric(pw, "pool_acquires_total", labels, float64(snap.AcquiresTotal))
+
+	e.writeHelp(pw, "pool_acquire_timeouts_total", "Total number of acquire timeouts")
+	e.writeType(pw, "pool_acquire_timeouts_total", "counter")
+	e.writeMetric(pw, "pool_acquire_timeouts_total", labels, float64(snap.AcquireTimeoutsTotal))
+
+	e.writeHelp(pw, "pool_connections_created_total", "Total number of connections created")
+	e.writeType(pw, "pool_connections_created_total", "counter")
+	e.writeMetric(pw, "pool_connections_created_total", labels, float64(snap.ConnectionsCreated))
+
+	e.writeHelp(pw, "pool_connections_closed_total", "Total number of connections closed")
+	e.writeType(pw, "pool_connections_closed_total", "counter")
+	e.writeMetric(pw, "pool_connections_closed_total", labels, float64(snap.ConnectionsClosed))
+
+	e.writeHelp(pw, "pool_health_checks_total", "Total number of health checks performed")
+	e.writeType(pw, "pool_health_checks_total", "counter")
+	e.writeMetric(pw, "pool_health_checks_total", labels, float64(snap.HealthChecksTotal))
+
+	e.writeHelp(pw, "pool_health_checks_failed_total", "Total number of failed health checks")
+	e.writeType(pw, "pool_health_checks_failed_total", "counter")
+	e.writeMetric(pw, "pool_health_checks_failed_total", labels, float64(snap.HealthChecksFailed))
+
+	// --- Pool Histograms ---
+	e.writeHistogram(pw, "pool_acquire_duration_milliseconds", "Time to acquire a connection in milliseconds", labels, snap.AcquireLatency)
+	e.writeHistogram(pw, "pool_dial_duration_milliseconds", "Time to establish new connection in milliseconds", labels, snap.DialLatency)
+}
+
 // --- Convenience Functions ---
 
 // ServePrometheus starts an HTTP server serving Prometheus metrics.
