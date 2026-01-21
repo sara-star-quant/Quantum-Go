@@ -11,6 +11,7 @@ type TransportConfig struct {
     RateLimit    RateLimitConfig
     Observer     tunnel.Observer
     ObserverFactory tunnel.ObserverFactory
+    RateLimitObserver tunnel.RateLimitObserver
 }
 ```
 
@@ -60,6 +61,13 @@ config.ObserverFactory = func(session *tunnel.Session) tunnel.Observer {
         Role:      role,
     })
 }
+```
+
+To record rate-limit metrics (connection and handshake rejections), attach a rate limit observer:
+
+```go
+rateObserver := metrics.NewRateLimitObserver(collector, metrics.GetLogger())
+config.RateLimitObserver = rateObserver
 ```
 
 ## Session Resumption

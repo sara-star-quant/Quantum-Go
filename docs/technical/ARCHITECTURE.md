@@ -405,6 +405,7 @@ config := tunnel.TransportConfig{
     ReadTimeout:  30 * time.Second,
     WriteTimeout: 30 * time.Second,
     // ObserverFactory: func(session *tunnel.Session) tunnel.Observer { ... },
+    // RateLimitObserver: metrics.NewRateLimitObserver(collector, metrics.GetLogger()),
 }
 
 transport, err := tunnel.NewTransport(session, conn, config)
@@ -413,4 +414,4 @@ transport, err := tunnel.NewTransport(session, conn, config)
 ---
 
 *Document Version: 1.1*
-*Last Updated: 2026-01-20*
+*Last Updated: 2026-01-21*
