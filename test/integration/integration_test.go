@@ -367,15 +367,15 @@ func TestSessionStatistics(t *testing.T) {
 	clientStats := clientSession.Stats()
 	serverStats := serverSession.Stats()
 
-	if clientStats.PacketsSent != uint64(messageCount) {
+	if clientStats.PacketsSent != int64(messageCount) {
 		t.Errorf("Client packets sent: got %d, want %d", clientStats.PacketsSent, messageCount)
 	}
 
-	if clientStats.BytesSent != uint64(messageCount*messageSize) {
+	if clientStats.BytesSent != int64(messageCount*messageSize) {
 		t.Errorf("Client bytes sent: got %d, want %d", clientStats.BytesSent, messageCount*messageSize)
 	}
 
-	if serverStats.PacketsRecv != uint64(messageCount) {
+	if serverStats.PacketsRecv != int64(messageCount) {
 		t.Errorf("Server packets received: got %d, want %d", serverStats.PacketsRecv, messageCount)
 	}
 }

@@ -23,8 +23,8 @@ type PoolStats struct {
 	healthChecksFailed     atomic.Uint64
 
 	// Timing accumulators for averages
-	totalAcquireWaitNanos atomic.Uint64
-	totalDialNanos        atomic.Uint64
+	totalAcquireWaitNanos atomic.Int64
+	totalDialNanos        atomic.Int64
 	acquireCount          atomic.Uint64
 	dialCount             atomic.Uint64
 
@@ -47,7 +47,11 @@ func newPoolStats() *PoolStats {
 func (s *PoolStats) recordAcquire(waitDuration time.Duration, reused bool) {
 	s.acquiresTotal.Add(1)
 	s.acquireCount.Add(1)
-	s.totalAcquireWaitNanos.Add(uint64(waitDuration.Nanoseconds()))
+	waitNanos := waitDuration.Nanoseconds()
+	if waitNanos < 0 {
+		waitNanos = 0
+	}
+	s.totalAcquireWaitNanos.Add(waitNanos)
 	s.connectionsInUse.Add(1)
 	if reused {
 		s.connectionsIdle.Add(-1)
@@ -72,7 +76,11 @@ func (s *PoolStats) recordRelease() {
 func (s *PoolStats) recordConnectionCreated(dialDuration time.Duration) {
 	s.connectionsCreated.Add(1)
 	s.dialCount.Add(1)
-	s.totalDialNanos.Add(uint64(dialDuration.Nanoseconds()))
+	dialNanos := dialDuration.Nanoseconds()
+	if dialNanos < 0 {
+		dialNanos = 0
+	}
+	s.totalDialNanos.Add(dialNanos)
 	total := s.connectionsTotal.Add(1)
 	s.updatePeakConnections(total)
 }
@@ -114,11 +122,6 @@ func (s *PoolStats) setIdleCount(count int64) {
 func (s *PoolStats) setTotalCount(count int64) {
 	s.connectionsTotal.Store(count)
 	s.updatePeakConnections(count)
-}
-
-// setInUseCount sets the in-use connection count.
-func (s *PoolStats) setInUseCount(count int64) {
-	s.connectionsInUse.Store(count)
 }
 
 // updatePeakConnections updates peak connections if current is higher.
@@ -185,10 +188,18 @@ func (s *PoolStats) Snapshot() PoolStatsSnapshot {
 	// Calculate averages
 	var avgAcquireWait, avgDial float64
 	if acquireCount := s.acquireCount.Load(); acquireCount > 0 {
-		avgAcquireWait = float64(s.totalAcquireWaitNanos.Load()) / float64(acquireCount) / 1e6
+		totalWaitNanos := s.totalAcquireWaitNanos.Load()
+		if totalWaitNanos < 0 {
+			totalWaitNanos = 0
+		}
+		avgAcquireWait = float64(totalWaitNanos) / float64(acquireCount) / 1e6
 	}
 	if dialCount := s.dialCount.Load(); dialCount > 0 {
-		avgDial = float64(s.totalDialNanos.Load()) / float64(dialCount) / 1e6
+		totalDialNanos := s.totalDialNanos.Load()
+		if totalDialNanos < 0 {
+			totalDialNanos = 0
+		}
+		avgDial = float64(totalDialNanos) / float64(dialCount) / 1e6
 	}
 
 	return PoolStatsSnapshot{

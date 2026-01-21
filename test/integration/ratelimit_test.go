@@ -7,11 +7,49 @@ import (
 	"github.com/pzverkov/quantum-go/pkg/tunnel"
 )
 
+type rateLimitObserver struct {
+	connectionCh chan string
+	handshakeCh  chan string
+}
+
+func newRateLimitObserver() *rateLimitObserver {
+	return &rateLimitObserver{
+		connectionCh: make(chan string, 1),
+		handshakeCh:  make(chan string, 1),
+	}
+}
+
+func (o *rateLimitObserver) OnConnectionRateLimit(remoteIP string) {
+	select {
+	case o.connectionCh <- remoteIP:
+	default:
+	}
+}
+
+func (o *rateLimitObserver) OnHandshakeRateLimit(remoteIP string) {
+	select {
+	case o.handshakeCh <- remoteIP:
+	default:
+	}
+}
+
+func waitForRateLimitEvent(t *testing.T, ch <-chan string, name string) {
+	t.Helper()
+	select {
+	case <-ch:
+		return
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("expected %s rate limit event", name)
+	}
+}
+
 func TestConnectionRateLimit(t *testing.T) {
 	// Configure server with MaxConnectionsPerIP = 1
 	config := tunnel.DefaultTransportConfig()
 	config.RateLimit.MaxConnectionsPerIP = 1
 	config.RateLimit.HandshakeRateLimit = 0 // No limit for this test
+	observer := newRateLimitObserver()
+	config.RateLimitObserver = observer
 
 	// Start server
 	ln, err := tunnel.Listen("tcp", ":0")
@@ -63,6 +101,7 @@ func TestConnectionRateLimit(t *testing.T) {
 		// Error is expected
 		t.Logf("Second connection rejected as expected: %v", err)
 	}
+	waitForRateLimitEvent(t, observer.connectionCh, "connection")
 
 	// 3. Wait for first connection to close/release
 	_ = conn1.Close()
@@ -83,6 +122,8 @@ func TestHandshakeRateLimit(t *testing.T) {
 	config := tunnel.DefaultTransportConfig()
 	config.RateLimit.HandshakeRateLimit = 1.0
 	config.RateLimit.HandshakeBurst = 1
+	observer := newRateLimitObserver()
+	config.RateLimitObserver = observer
 
 	// Start server
 	ln, err := tunnel.Listen("tcp", ":0")
@@ -128,6 +169,7 @@ func TestHandshakeRateLimit(t *testing.T) {
 	} else {
 		t.Logf("Second handshake rejected as expected: %v", err)
 	}
+	waitForRateLimitEvent(t, observer.handshakeCh, "handshake")
 
 	// 3. Wait for refill (1.1s)
 	time.Sleep(1100 * time.Millisecond)

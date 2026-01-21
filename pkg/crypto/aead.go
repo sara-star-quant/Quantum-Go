@@ -90,7 +90,7 @@ func NewAEAD(suite constants.CipherSuite, key []byte) (*AEAD, error) {
 		counter: 0,
 		// For a 96-bit nonce with 64-bit counter, we have 2^64 - 1 nonces available.
 		// In practice, we limit to 2^28 to trigger rekey well before exhaustion.
-		maxSeq: uint64(constants.MaxPacketsBeforeRekey),
+		maxSeq: constants.MaxPacketsBeforeRekey,
 	}, nil
 }
 

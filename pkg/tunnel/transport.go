@@ -50,6 +50,9 @@ type TransportConfig struct {
 
 	// ObserverFactory builds a per-session observer (takes precedence over Observer).
 	ObserverFactory ObserverFactory
+
+	// RateLimitObserver receives notifications when rate limits are hit.
+	RateLimitObserver RateLimitObserver
 }
 
 // RateLimitConfig holds configuration for rate limiting.
@@ -620,6 +623,9 @@ func (l *Listener) Accept() (*Tunnel, error) {
 	}
 
 	if l.ipLimiter != nil && !l.ipLimiter.AllowConnection(remoteIP) {
+		if l.config.RateLimitObserver != nil {
+			l.config.RateLimitObserver.OnConnectionRateLimit(remoteIP)
+		}
 		_ = conn.Close()
 		// Return a temporary error so accept loop might continue?
 		// Or just return error. For now return error.
@@ -654,6 +660,9 @@ func (l *Listener) Accept() (*Tunnel, error) {
 	// Perform handshake
 	// Check handshake rate limit
 	if l.handshakeLimiter != nil && !l.handshakeLimiter.AllowHandshake() {
+		if l.config.RateLimitObserver != nil {
+			l.config.RateLimitObserver.OnHandshakeRateLimit(remoteIP)
+		}
 		_ = conn.Close()
 		// We don't have a specific error for this, but we can log or just return error
 		err := qerrors.NewProtocolError("rate limit", &alertError{

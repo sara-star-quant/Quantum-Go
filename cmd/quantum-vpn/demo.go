@@ -61,6 +61,7 @@ func runDemoServer(addr string, verbose bool, obsAddr string, collector *metrics
 
 	config := tunnel.DefaultTransportConfig()
 	config.ObserverFactory = observerFactory
+	config.RateLimitObserver = metrics.NewRateLimitObserver(collector, logger)
 	listener.SetConfig(config)
 
 	actualAddr := listener.Addr().String()

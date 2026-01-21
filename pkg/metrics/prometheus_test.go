@@ -149,6 +149,8 @@ func TestPrometheusExporterAllMetricTypes(t *testing.T) {
 	c.RecordEncryptError()
 	c.RecordDecryptError()
 	c.RecordProtocolError()
+	c.RecordConnectionRateLimit()
+	c.RecordHandshakeRateLimit()
 	c.RecordHandshakeLatency(100 * time.Millisecond)
 	c.RecordEncryptLatency(10 * time.Microsecond)
 	c.RecordDecryptLatency(15 * time.Microsecond)
@@ -177,6 +179,8 @@ func TestPrometheusExporterAllMetricTypes(t *testing.T) {
 		"encrypt_errors_total",
 		"decrypt_errors_total",
 		"protocol_errors_total",
+		"rate_limit_connections_total",
+		"rate_limit_handshakes_total",
 		"uptime_seconds",
 		"handshake_duration_milliseconds",
 		"encrypt_duration_microseconds",

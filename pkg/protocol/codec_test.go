@@ -1031,7 +1031,7 @@ func TestEncodeDecodeRekey(t *testing.T) {
 		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 	publicKey := kp.PublicKey().Bytes()
-	activationSeq := uint64(12345)
+	var activationSeq uint64 = 12345
 
 	// Encode
 	encoded, err := codec.EncodeRekey(publicKey, activationSeq)

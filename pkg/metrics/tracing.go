@@ -223,8 +223,8 @@ type SpanAttributes struct {
 	SessionID   string
 	Role        string
 	CipherSuite string
-	BytesSent   uint64
-	BytesRecv   uint64
+	BytesSent   int64
+	BytesRecv   int64
 	Error       string
 }
 

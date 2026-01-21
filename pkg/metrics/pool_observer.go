@@ -151,7 +151,7 @@ func (o *PoolMetricsObserver) OnPoolStats(stats tunnel.PoolStatsSnapshot) {
 	})
 }
 
-// Snapshot returns a snapshot of pool metrics.
+// PoolMetricsSnapshot is a snapshot of pool metrics.
 type PoolMetricsSnapshot struct {
 	// Current state (gauges)
 	ConnectionsTotal  int64

@@ -114,6 +114,15 @@ func (e *PrometheusExporter) WriteMetrics(w io.Writer) {
 	e.writeType(pw, "protocol_errors_total", "counter")
 	e.writeMetric(pw, "protocol_errors_total", labels, float64(snap.ProtocolErrors))
 
+	// --- Rate Limit Metrics ---
+	e.writeHelp(pw, "rate_limit_connections_total", "Total connections rejected due to rate limiting")
+	e.writeType(pw, "rate_limit_connections_total", "counter")
+	e.writeMetric(pw, "rate_limit_connections_total", labels, float64(snap.ConnectionRateLimits))
+
+	e.writeHelp(pw, "rate_limit_handshakes_total", "Total handshakes rejected due to rate limiting")
+	e.writeType(pw, "rate_limit_handshakes_total", "counter")
+	e.writeMetric(pw, "rate_limit_handshakes_total", labels, float64(snap.HandshakeRateLimits))
+
 	// --- Uptime ---
 	e.writeHelp(pw, "uptime_seconds", "Time since the collector was created")
 	e.writeType(pw, "uptime_seconds", "gauge")

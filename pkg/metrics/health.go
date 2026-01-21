@@ -51,10 +51,10 @@ type CheckResult struct {
 
 // HealthMetrics contains key metrics for health monitoring.
 type HealthMetrics struct {
-	SessionsActive uint64  `json:"sessions_active"`
-	SessionsTotal  uint64  `json:"sessions_total"`
-	BytesSent      uint64  `json:"bytes_sent"`
-	BytesReceived  uint64  `json:"bytes_received"`
+	SessionsActive int64   `json:"sessions_active"`
+	SessionsTotal  int64   `json:"sessions_total"`
+	BytesSent      int64   `json:"bytes_sent"`
+	BytesReceived  int64   `json:"bytes_received"`
 	ErrorRate      float64 `json:"error_rate,omitempty"`
 }
 
