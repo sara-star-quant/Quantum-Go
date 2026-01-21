@@ -325,6 +325,25 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Disclaimer:** This software is provided for educational and research purposes. For production use in high-security environments, conduct independent security audits and consider FIPS validation requirements.
+## Global Regulation & Liability (Read Carefully)
 
-**Regulatory Warning:** This software contains high-strength encryption which may be subject to export/import and usage restrictions in your jurisdiction (e.g., United States EAR, EU Dual-Use Regulations, Wassenaar Arrangement). **Quantum-Go must not be used to bypass telecommunications regulations, including VoIP censorship or VPN restrictions, in highly regulated regions such as the United Arab Emirates, Saudi Arabia, China, and others.** Users are solely responsible for ensuring compliance with all local laws and regulations.
+**IMPORTANT: By using, cloning, or forking this repository, you acknowledge and agree to the following terms:**
+
+### 1. Responsibility of Use
+Quantum-Go is a high-assurance cryptographic tool. **You (the User)** assume full responsibility for complying with all applicable local, national, and international laws where you install, deploy, or transport this software. The developers of Quantum-Go disclaim all liability for:
+- Use of this software to bypass telecommunications regulations (e.g., VoIP blocking, VPN bans).
+- Deployment in jurisdictions where strong encryption is restricted (e.g., China, Russia, UAE, Saudi Arabia).
+- Failure to obtain necessary export/import licenses or file declarations (e.g., US BIS, EU Dual-Use, French ANSSI).
+
+### 2. Agency & Enterprise Compliance
+Government agencies and corporate entities must verify:
+- **Export Control:** This software involves Class 5 (5D002) dual-use technology. Access by foreign nationals may constitute a "deemed export."
+- **FIPS Validation:** While this library implements FIPS 203 parameters, it is **NOT** currently FIPS 140-3 validated. Federal agencies requiring FIPS validation for production data must treat this as "research grade."
+- **Data Sovereignty:** Users are responsible for ensuring packet data handling complies with GDPR, CCPA, and regional data residency laws (e.g., Saudi ECC-1).
+
+### 3. No Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+**Regulatory Warning:** Quantum-Go must not be used to bypass telecommunications regulations. Users are solely responsible for ensuring compliance with all local laws and regulations.
