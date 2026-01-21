@@ -273,8 +273,8 @@ func TestTransportRekey(t *testing.T) {
 
 func TestTransportInvalidMessages(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
 	_ = crypto.SecureRandom(masterSecret)
