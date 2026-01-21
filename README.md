@@ -311,3 +311,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 **Disclaimer:** This software is provided for educational and research purposes. For production use in high-security environments, conduct independent security audits and consider FIPS validation requirements.
+
+**Regulatory Warning:** This software contains high-strength encryption which may be subject to export/import and usage restrictions in your jurisdiction (e.g., United States EAR, EU Dual-Use Regulations, Wassenaar Arrangement). **Quantum-Go must not be used to bypass telecommunications regulations, including VoIP censorship or VPN restrictions, in highly regulated regions such as the United Arab Emirates, Saudi Arabia, China, and others.** Users are solely responsible for ensuring compliance with all local laws and regulations.
