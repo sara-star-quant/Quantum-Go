@@ -221,7 +221,7 @@ func (s *InstrumentedSession) WrapDecrypt(ctx context.Context, ciphertextLen uin
 // EventType represents a type of tunnel event for logging.
 type EventType string
 
-// EventType values for structured tunnel events.
+// EventSessionStart marks the beginning of a session; other values cover lifecycle and error events.
 const (
 	EventSessionStart   EventType = "session.start"
 	EventSessionEnd     EventType = "session.end"

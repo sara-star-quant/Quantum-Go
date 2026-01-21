@@ -697,11 +697,7 @@ func ResponderHandshake(session *Session, rw io.ReadWriter) error {
 		if err != nil {
 			return err
 		}
-		if err := writeEncryptedRecord(rw, serverFinished); err != nil {
-			return err
-		}
-
-		return nil
+		return writeEncryptedRecord(rw, serverFinished)
 	}()
 
 	if observer != nil {
@@ -830,9 +826,5 @@ func ResponderResumptionHandshake(session *Session, rw io.ReadWriter, tm *Ticket
 	if err != nil {
 		return err
 	}
-	if err := writeEncryptedRecord(rw, serverFinished); err != nil {
-		return err
-	}
-
-	return nil
+	return writeEncryptedRecord(rw, serverFinished)
 }

@@ -29,12 +29,10 @@ type spanConfig struct {
 // SpanKind identifies the type of span.
 type SpanKind int
 
+// SpanKindInternal is the default span kind; other values indicate server or client spans.
 const (
-	// SpanKindInternal indicates internal spans.
 	SpanKindInternal SpanKind = iota
-	// SpanKindServer indicates server spans.
 	SpanKindServer
-	// SpanKindClient indicates client spans.
 	SpanKindClient
 )
 
