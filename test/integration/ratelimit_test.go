@@ -26,9 +26,9 @@ func TestConnectionRateLimit(t *testing.T) {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				return
+				// Don't exit on error (e.g. rate limit error), just continue
+				continue
 			}
-			defer func() { _ = conn.Close() }()
 			// Keep connection alive for a bit
 			go func() {
 				time.Sleep(100 * time.Millisecond)
@@ -97,7 +97,7 @@ func TestHandshakeRateLimit(t *testing.T) {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				return
+				continue
 			}
 			go func() {
 				// Keep alive briefly
