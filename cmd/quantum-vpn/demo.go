@@ -2,30 +2,39 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/pzverkov/quantum-go/pkg/metrics"
 	"github.com/pzverkov/quantum-go/pkg/tunnel"
 )
 
-func runDemo(mode, addr, message string, verbose bool) {
+func runDemo(mode, addr, message string, verbose bool, obsAddr, logLevel, logFormat, tracing string) {
+	collector, observerFactory, logger, err := setupObservability(logLevel, logFormat, tracing)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
 	switch mode {
 	case "server":
-		runDemoServer(addr, verbose)
+		runDemoServer(addr, verbose, obsAddr, collector, observerFactory, logger)
 	case "client":
-		runDemoClient(addr, message, verbose)
+		runDemoClient(addr, message, verbose, observerFactory)
 	default:
 		fmt.Fprintf(os.Stderr, "Invalid mode: %s (use 'server' or 'client')\n", mode)
 		os.Exit(1)
 	}
 }
 
-func runDemoServer(addr string, verbose bool) {
+func runDemoServer(addr string, verbose bool, obsAddr string, collector *metrics.Collector, observerFactory tunnel.ObserverFactory, logger *metrics.Logger) {
 	fmt.Println("╔═══════════════════════════════════════════════════════════╗")
 	fmt.Println("║      Quantum-Resistant VPN Demo Server                   ║")
 	fmt.Println("║      CH-KEM: ML-KEM-1024 + X25519                        ║")
@@ -50,10 +59,32 @@ func runDemoServer(addr string, verbose bool) {
 	}
 	defer func() { _ = listener.Close() }()
 
+	config := tunnel.DefaultTransportConfig()
+	config.ObserverFactory = observerFactory
+	listener.SetConfig(config)
+
 	actualAddr := listener.Addr().String()
 	fmt.Printf("✓ Server listening on %s\n", actualAddr)
 	fmt.Println("Waiting for connections... (Press Ctrl+C to stop)")
 	fmt.Println()
+
+	if obsAddr != "" {
+		server := metrics.NewServer(metrics.ServerConfig{
+			Collector:        collector,
+			Version:          version,
+			Namespace:        "quantum_vpn",
+			EnablePrometheus: true,
+			EnableHealth:     true,
+		})
+
+		go func() {
+			if err := server.ListenAndServe(obsAddr); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Error("observability server error", metrics.Fields{"error": err.Error()})
+			}
+		}()
+
+		fmt.Printf("✓ Observability server on %s (metrics: /metrics, health: /health)\n", obsAddr)
+	}
 
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -128,7 +159,7 @@ func handleConnection(conn *tunnel.Tunnel, connNum int, verbose bool) {
 	}
 }
 
-func runDemoClient(addr, message string, verbose bool) {
+func runDemoClient(addr, message string, verbose bool, observerFactory tunnel.ObserverFactory) {
 	fmt.Println("╔═══════════════════════════════════════════════════════════╗")
 	fmt.Println("║      Quantum-Resistant VPN Demo Client                   ║")
 	fmt.Println("║      CH-KEM: ML-KEM-1024 + X25519                        ║")
@@ -147,7 +178,10 @@ func runDemoClient(addr, message string, verbose bool) {
 	fmt.Printf("Connecting to %s...\n", addr)
 
 	startHandshake := time.Now()
-	client, err := tunnel.Dial("tcp", addr)
+	config := tunnel.DefaultTransportConfig()
+	config.ObserverFactory = observerFactory
+
+	client, err := tunnel.DialWithConfig("tcp", addr, config)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to connect: %v\n", err)
 		os.Exit(1)
@@ -249,4 +283,88 @@ func runInteractiveClient(client *tunnel.Tunnel, verbose bool) {
 	if err := scanner.Err(); err != nil {
 		fmt.Fprintf(os.Stderr, "Input error: %v\n", err)
 	}
+}
+
+func setupObservability(logLevel, logFormat, tracing string) (*metrics.Collector, tunnel.ObserverFactory, *metrics.Logger, error) {
+	level, err := parseLogLevel(logLevel)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	format, err := parseLogFormat(logFormat)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	logger := metrics.NewLogger(
+		metrics.WithOutput(os.Stderr),
+		metrics.WithLevel(level),
+		metrics.WithFormat(format),
+		metrics.WithFields(metrics.Fields{"app": "quantum-vpn"}),
+	)
+	metrics.SetLogger(logger)
+
+	switch strings.ToLower(tracing) {
+	case "none":
+		metrics.SetTracer(metrics.NoOpTracer{})
+	case "simple":
+		metrics.SetTracer(metrics.NewSimpleTracer())
+	case "otel":
+		if !metrics.OTelEnabled() {
+			return nil, nil, nil, fmt.Errorf("otel tracing not enabled (build with -tags otel)")
+		}
+		metrics.SetTracer(metrics.NewOTelTracer("quantum-vpn"))
+	default:
+		return nil, nil, nil, fmt.Errorf("invalid tracing mode: %s (use none, simple, or otel)", tracing)
+	}
+
+	collector := metrics.NewCollector(metrics.Labels{
+		"service": "quantum-vpn",
+	})
+	metrics.SetGlobal(collector)
+
+	observerFactory := func(session *tunnel.Session) tunnel.Observer {
+		return metrics.NewTunnelObserver(metrics.TunnelObserverConfig{
+			Collector: collector,
+			SessionID: session.ID,
+			Role:      roleLabel(session.Role),
+		})
+	}
+
+	return collector, observerFactory, logger, nil
+}
+
+func parseLogLevel(level string) (metrics.Level, error) {
+	switch strings.ToLower(level) {
+	case "debug":
+		return metrics.LevelDebug, nil
+	case "info":
+		return metrics.LevelInfo, nil
+	case "warn", "warning":
+		return metrics.LevelWarn, nil
+	case "error":
+		return metrics.LevelError, nil
+	case "silent", "off", "none":
+		return metrics.LevelSilent, nil
+	default:
+		return metrics.LevelInfo, fmt.Errorf("invalid log level: %s (use debug, info, warn, error, silent)", level)
+	}
+}
+
+func parseLogFormat(format string) (metrics.Format, error) {
+	switch strings.ToLower(format) {
+	case "text":
+		return metrics.FormatText, nil
+	case "json":
+		return metrics.FormatJSON, nil
+	default:
+		return metrics.FormatText, fmt.Errorf("invalid log format: %s (use text or json)", format)
+	}
+}
+
+func roleLabel(role tunnel.Role) string {
+	if role == tunnel.RoleResponder {
+		return "responder"
+	}
+	return "initiator"
 }

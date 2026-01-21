@@ -9,6 +9,7 @@
 package tunnel
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -44,6 +45,11 @@ type TransportConfig struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	RateLimit    RateLimitConfig
+	// Observer is a shared observer for all sessions (ignored if ObserverFactory is set).
+	Observer Observer
+
+	// ObserverFactory builds a per-session observer (takes precedence over Observer).
+	ObserverFactory ObserverFactory
 }
 
 // RateLimitConfig holds configuration for rate limiting.
@@ -73,6 +79,12 @@ func DefaultTransportConfig() TransportConfig {
 func NewTransport(session *Session, conn net.Conn, config TransportConfig) (*Transport, error) {
 	if session.State() != SessionStateEstablished {
 		return nil, qerrors.ErrInvalidState
+	}
+
+	if session.observer == nil {
+		if observer := observerFromConfig(config, session); observer != nil {
+			session.SetObserver(observer)
+		}
 	}
 
 	return &Transport{
@@ -106,6 +118,7 @@ func (t *Transport) Send(data []byte) error {
 	// Encode as data message
 	msg, err := t.codec.EncodeData(seq, ciphertext)
 	if err != nil {
+		t.recordProtocolError(err)
 		return err
 	}
 
@@ -151,18 +164,24 @@ func (t *Transport) Receive() ([]byte, error) {
 		if err == io.EOF {
 			return nil, qerrors.ErrTunnelClosed
 		}
+		t.recordProtocolError(err)
 		return nil, err
 	}
 
 	// Get message type
 	msgType, err := t.codec.GetMessageType(msg)
 	if err != nil {
+		t.recordProtocolError(err)
 		return nil, err
 	}
 
 	switch msgType {
 	case protocol.MessageTypeData:
-		return t.handleData(msg)
+		data, err := t.handleData(msg)
+		if err != nil {
+			t.recordProtocolError(err)
+		}
+		return data, err
 
 	case protocol.MessageTypePing:
 		// Respond with pong
@@ -185,6 +204,7 @@ func (t *Transport) Receive() ([]byte, error) {
 	case protocol.MessageTypeRekey:
 		// Handle incoming rekey request/response
 		if err := t.handleRekey(msg); err != nil {
+			t.recordProtocolError(err)
 			return nil, err
 		}
 		// Continue reading after processing rekey
@@ -198,9 +218,12 @@ func (t *Transport) Receive() ([]byte, error) {
 			t.closedMu.Unlock()
 			return nil, qerrors.ErrTunnelClosed
 		}
-		return nil, qerrors.NewProtocolError("alert", &alertError{level: level, code: code, desc: desc})
+		err := qerrors.NewProtocolError("alert", &alertError{level: level, code: code, desc: desc})
+		t.recordProtocolError(err)
+		return nil, err
 
 	default:
+		t.recordProtocolError(qerrors.ErrInvalidMessage)
 		return nil, qerrors.ErrInvalidMessage
 	}
 }
@@ -319,6 +342,9 @@ func (t *Transport) Close() error {
 
 	// Close session
 	t.session.Close()
+	if t.session.observer != nil {
+		t.session.observer.OnSessionEnd()
+	}
 
 	// Close the underlying connection
 	_ = t.conn.Close()
@@ -367,27 +393,41 @@ func (t *Transport) SendRekey() error {
 	}
 	t.closedMu.RUnlock()
 
-	// Initiate rekey in session
-	newPublicKey, activationSeq, err := t.session.InitiateRekey()
-	if err != nil {
+	observer := t.session.observer
+	var done func(error)
+	if observer != nil && t.session.Role == RoleInitiator {
+		_, done = observer.OnRekeyStart(context.Background())
+	}
+
+	err := func() error {
+		// Initiate rekey in session
+		newPublicKey, activationSeq, err := t.session.InitiateRekey()
+		if err != nil {
+			return err
+		}
+
+		// Encode rekey message
+		msg, err := t.codec.EncodeRekey(newPublicKey, activationSeq)
+		if err != nil {
+			return err
+		}
+
+		// Send
+		t.writeMu.Lock()
+		defer t.writeMu.Unlock()
+
+		if t.writeTimeout > 0 {
+			_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
+		}
+
+		_, err = t.conn.Write(msg)
 		return err
+	}()
+
+	if done != nil {
+		done(err)
 	}
 
-	// Encode rekey message
-	msg, err := t.codec.EncodeRekey(newPublicKey, activationSeq)
-	if err != nil {
-		return err
-	}
-
-	// Send
-	t.writeMu.Lock()
-	defer t.writeMu.Unlock()
-
-	if t.writeTimeout > 0 {
-		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
-	}
-
-	_, err = t.conn.Write(msg)
 	return err
 }
 
@@ -454,6 +494,15 @@ func (t *Transport) SetWriteTimeout(d time.Duration) {
 	t.writeTimeout = d
 }
 
+func (t *Transport) recordProtocolError(err error) {
+	if err == nil {
+		return
+	}
+	if t.session.observer != nil && isProtocolError(err) {
+		t.session.observer.OnProtocolError(err)
+	}
+}
+
 // alertError represents an alert received from the peer.
 type alertError struct {
 	level protocol.AlertLevel
@@ -499,9 +548,17 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 		_ = conn.Close()
 		return nil, err
 	}
+	if observer := observerFromConfig(config, session); observer != nil {
+		session.SetObserver(observer)
+		observer.OnSessionStart()
+	}
 
 	// Perform handshake
 	if err := InitiatorHandshake(session, conn); err != nil {
+		if session.observer != nil {
+			session.observer.OnSessionFailed(err)
+			session.observer.OnSessionEnd()
+		}
 		_ = conn.Close()
 		return nil, err
 	}
@@ -509,6 +566,10 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 	// Create transport
 	transport, err := NewTransport(session, conn, config)
 	if err != nil {
+		if session.observer != nil {
+			session.observer.OnSessionFailed(err)
+			session.observer.OnSessionEnd()
+		}
 		_ = conn.Close()
 		return nil, err
 	}
@@ -585,20 +646,33 @@ func (l *Listener) Accept() (*Tunnel, error) {
 		_ = conn.Close()
 		return nil, err
 	}
+	if observer := observerFromConfig(l.config, session); observer != nil {
+		session.SetObserver(observer)
+		observer.OnSessionStart()
+	}
 
 	// Perform handshake
 	// Check handshake rate limit
 	if l.handshakeLimiter != nil && !l.handshakeLimiter.AllowHandshake() {
 		_ = conn.Close()
 		// We don't have a specific error for this, but we can log or just return error
-		return nil, qerrors.NewProtocolError("rate limit", &alertError{
+		err := qerrors.NewProtocolError("rate limit", &alertError{
 			level: protocol.AlertLevelFatal,
 			code:  protocol.AlertCodeInternalError, // Or a custom code if we had one
 			desc:  "handshake rate limit exceeded",
 		})
+		if session.observer != nil {
+			session.observer.OnSessionFailed(err)
+			session.observer.OnSessionEnd()
+		}
+		return nil, err
 	}
 
 	if err := ResponderHandshake(session, conn); err != nil {
+		if session.observer != nil {
+			session.observer.OnSessionFailed(err)
+			session.observer.OnSessionEnd()
+		}
 		_ = conn.Close()
 		return nil, err
 	}
@@ -606,6 +680,10 @@ func (l *Listener) Accept() (*Tunnel, error) {
 	// Create transport
 	transport, err := NewTransport(session, conn, l.config)
 	if err != nil {
+		if session.observer != nil {
+			session.observer.OnSessionFailed(err)
+			session.observer.OnSessionEnd()
+		}
 		_ = conn.Close()
 		return nil, err
 	}

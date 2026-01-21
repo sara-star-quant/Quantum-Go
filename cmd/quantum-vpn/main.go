@@ -90,6 +90,10 @@ func demoCommand() {
 	addr := fs.String("addr", "localhost:8443", "Address to listen/connect")
 	message := fs.String("message", "Hello from quantum-vpn!", "Message to send (client mode)")
 	verbose := fs.Bool("verbose", false, "Verbose output")
+	obsAddr := fs.String("obs-addr", ":9090", "Observability server address (server mode). Empty disables")
+	logLevel := fs.String("log-level", "warn", "Log level: debug, info, warn, error, silent")
+	logFormat := fs.String("log-format", "text", "Log format: text or json")
+	tracing := fs.String("tracing", "none", "Tracing mode: none, simple, otel (requires -tags otel)")
 
 	fs.Usage = func() {
 		fmt.Println(`USAGE: quantum-vpn demo [options]
@@ -112,7 +116,7 @@ EXAMPLES:
 
 	_ = fs.Parse(os.Args[2:])
 
-	runDemo(*mode, *addr, *message, *verbose)
+	runDemo(*mode, *addr, *message, *verbose, *obsAddr, *logLevel, *logFormat, *tracing)
 }
 
 func benchCommand() {
