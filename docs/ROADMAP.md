@@ -174,7 +174,7 @@ Required for FIPS 140-3 validation.
 
 ## Global Compliance & Regulatory Considerations
 
-> [!CAUTION]
+> **CAUTION**
 > **Advisory Only**: The following compliance roadmap is based on public regulatory documentation (EAR, dual-use lists) and is provided for **informational purposes only**. It does **NOT** constitute legal advice. Organizations must consult with their own legal counsel and trade compliance officers before exporting or deploying this software globally.
 
 ### Cryptographic Export Controls

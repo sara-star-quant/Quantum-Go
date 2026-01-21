@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased][]
 
-## [0.0.5] - 2026-01-21
+## [0.0.5][] - 2026-01-21
 
 ### Added
 - **Global Compliance**: Comprehensive regulatory documentation for 15+ jurisdictions (docs/ROADMAP.md) and strict liability guidelines.
@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stability**: Improved connection tear-down stability in transport layer.
 
 
-## [0.0.4] - 2026-01-20
+## [0.0.4][] - 2026-01-20
 
 ### Added
 - **Expanded test coverage** across core packages
@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI compatibility**: Fixed test runner for cross-platform execution
 - **Code quality**: Resolved all static analysis warnings in test files
 
-## [0.0.3] - 2026-01-19
+## [0.0.3][] - 2026-01-19
 
 ### Added
 - **Command-line tool** (`quantum-vpn`) with demo, benchmark, and example modes
@@ -92,7 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Known Answer Tests (KATs) for cryptographic correctness
 - Security audit recommendations in SECURITY.md
 
-## [0.0.2] - 2026-01-19
+## [0.0.2][] - 2026-01-19
 
 ### Added
 - Initial public release
@@ -109,7 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Forward secrecy with ephemeral keys
 - Hybrid guarantee (secure if either algorithm is secure)
 
-## [0.0.1] - 2026-01-18
+## [0.0.1][] - 2026-01-18
 
 ### Added
 - Initial development version
