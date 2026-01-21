@@ -30,8 +30,11 @@ type spanConfig struct {
 type SpanKind int
 
 const (
+	// SpanKindInternal indicates internal spans.
 	SpanKindInternal SpanKind = iota
+	// SpanKindServer indicates server spans.
 	SpanKindServer
+	// SpanKindClient indicates client spans.
 	SpanKindClient
 )
 
@@ -169,8 +172,8 @@ func generateID() string {
 // --- Global Tracer ---
 
 var (
-	globalTracer     Tracer = NoOpTracer{}
-	globalTracerMu   sync.RWMutex
+	globalTracer   Tracer = NoOpTracer{}
+	globalTracerMu sync.RWMutex
 )
 
 // SetTracer sets the global tracer.

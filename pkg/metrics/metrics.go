@@ -16,10 +16,8 @@ import (
 
 // Collector aggregates metrics from tunnel sessions and transports.
 type Collector struct {
-	mu sync.RWMutex
-
 	// Session metrics
-	sessionsActive   atomic.Int64
+	sessionsActive   atomic.Uint64
 	sessionsTotal    atomic.Uint64
 	sessionsFailed   atomic.Uint64
 	handshakeLatency *Histogram
@@ -38,8 +36,8 @@ type Collector struct {
 	rekeysFailed         atomic.Uint64
 
 	// Error metrics
-	encryptErrors atomic.Uint64
-	decryptErrors atomic.Uint64
+	encryptErrors  atomic.Uint64
+	decryptErrors  atomic.Uint64
 	protocolErrors atomic.Uint64
 
 	// Performance histograms
@@ -90,7 +88,15 @@ func (c *Collector) SessionStarted() {
 
 // SessionEnded decrements active session counter.
 func (c *Collector) SessionEnded() {
-	c.sessionsActive.Add(-1)
+	for {
+		current := c.sessionsActive.Load()
+		if current == 0 {
+			return
+		}
+		if c.sessionsActive.CompareAndSwap(current, current-1) {
+			return
+		}
+	}
 }
 
 // SessionFailed records a failed session attempt.
@@ -228,7 +234,7 @@ func (c *Collector) Snapshot() Snapshot {
 	return Snapshot{
 		Timestamp:            time.Now(),
 		Uptime:               time.Since(c.createdAt),
-		SessionsActive:       uint64(c.sessionsActive.Load()),
+		SessionsActive:       c.sessionsActive.Load(),
 		SessionsTotal:        c.sessionsTotal.Load(),
 		SessionsFailed:       c.sessionsFailed.Load(),
 		BytesSent:            c.bytesSent.Load(),

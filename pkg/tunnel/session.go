@@ -299,7 +299,7 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 	observer := s.observer
 	var done func(error)
 	if observer != nil {
-		_, done = observer.OnEncrypt(context.Background(), len(plaintext))
+		_, done = observer.OnEncrypt(context.Background(), uint64(len(plaintext)))
 	}
 
 	if cipher == nil {
@@ -364,7 +364,7 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 	observer := s.observer
 	var done func(error)
 	if observer != nil {
-		_, done = observer.OnDecrypt(context.Background(), len(ciphertext))
+		_, done = observer.OnDecrypt(context.Background(), uint64(len(ciphertext)))
 	}
 
 	// Use sequence number as additional authenticated data

@@ -136,6 +136,8 @@ jobs:
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
+    env:
+      CODEQL_ACTION_TEMP: ${{ runner.temp }}/codeql-action
     permissions:
       actions: read
       contents: read
@@ -154,6 +156,11 @@ jobs:
         with:
           go-version: "1.24.x"
           cache: true
+
+      - name: Disable CodeQL repository properties lookup
+        run: |
+          mkdir -p "$CODEQL_ACTION_TEMP"
+          printf '%s\n' '{"use_repository_properties": false}' > "$CODEQL_ACTION_TEMP/cached-feature-flags.json"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4

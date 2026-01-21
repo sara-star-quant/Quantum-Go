@@ -45,7 +45,7 @@ func NewTunnelObserver(cfg TunnelObserverConfig) *TunnelObserver {
 	return &TunnelObserver{
 		collector: cfg.Collector,
 		tracer:    cfg.Tracer,
-		logger:    cfg.Logger.Named("tunnel").With(Fields{
+		logger: cfg.Logger.Named("tunnel").With(Fields{
 			"session_id": sessionID,
 			"role":       cfg.Role,
 		}),
@@ -104,7 +104,7 @@ func (o *TunnelObserver) OnHandshakeStart(ctx context.Context) (context.Context,
 }
 
 // OnEncrypt records encryption metrics.
-func (o *TunnelObserver) OnEncrypt(ctx context.Context, plaintextLen int) (context.Context, func(error)) {
+func (o *TunnelObserver) OnEncrypt(ctx context.Context, plaintextLen uint64) (context.Context, func(error)) {
 	start := time.Now()
 	ctx, endSpan := o.tracer.StartSpan(ctx, SpanEncrypt)
 
@@ -116,7 +116,7 @@ func (o *TunnelObserver) OnEncrypt(ctx context.Context, plaintextLen int) (conte
 			o.collector.RecordEncryptError()
 			o.logger.Debug("encrypt failed", Fields{"error": err.Error()})
 		} else {
-			o.collector.RecordBytesSent(uint64(plaintextLen))
+			o.collector.RecordBytesSent(plaintextLen)
 			o.collector.RecordPacketSent()
 		}
 
@@ -125,7 +125,7 @@ func (o *TunnelObserver) OnEncrypt(ctx context.Context, plaintextLen int) (conte
 }
 
 // OnDecrypt records decryption metrics.
-func (o *TunnelObserver) OnDecrypt(ctx context.Context, ciphertextLen int) (context.Context, func(error)) {
+func (o *TunnelObserver) OnDecrypt(ctx context.Context, ciphertextLen uint64) (context.Context, func(error)) {
 	start := time.Now()
 	ctx, endSpan := o.tracer.StartSpan(ctx, SpanDecrypt)
 
@@ -137,7 +137,7 @@ func (o *TunnelObserver) OnDecrypt(ctx context.Context, ciphertextLen int) (cont
 			o.collector.RecordDecryptError()
 			o.logger.Debug("decrypt failed", Fields{"error": err.Error()})
 		} else {
-			o.collector.RecordBytesReceived(uint64(ciphertextLen))
+			o.collector.RecordBytesReceived(ciphertextLen)
 			o.collector.RecordPacketReceived()
 		}
 
@@ -201,7 +201,7 @@ func NewInstrumentedSession(observer *TunnelObserver) *InstrumentedSession {
 }
 
 // WrapEncrypt wraps an encrypt operation with metrics.
-func (s *InstrumentedSession) WrapEncrypt(ctx context.Context, plaintextLen int, fn func() error) error {
+func (s *InstrumentedSession) WrapEncrypt(ctx context.Context, plaintextLen uint64, fn func() error) error {
 	_, done := s.observer.OnEncrypt(ctx, plaintextLen)
 	err := fn()
 	done(err)
@@ -209,7 +209,7 @@ func (s *InstrumentedSession) WrapEncrypt(ctx context.Context, plaintextLen int,
 }
 
 // WrapDecrypt wraps a decrypt operation with metrics.
-func (s *InstrumentedSession) WrapDecrypt(ctx context.Context, ciphertextLen int, fn func() error) error {
+func (s *InstrumentedSession) WrapDecrypt(ctx context.Context, ciphertextLen uint64, fn func() error) error {
 	_, done := s.observer.OnDecrypt(ctx, ciphertextLen)
 	err := fn()
 	done(err)
@@ -221,6 +221,7 @@ func (s *InstrumentedSession) WrapDecrypt(ctx context.Context, ciphertextLen int
 // EventType represents a type of tunnel event for logging.
 type EventType string
 
+// EventType values for structured tunnel events.
 const (
 	EventSessionStart   EventType = "session.start"
 	EventSessionEnd     EventType = "session.end"

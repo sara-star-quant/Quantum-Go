@@ -11,18 +11,21 @@ import (
 type HealthStatus string
 
 const (
-	HealthStatusHealthy   HealthStatus = "healthy"
-	HealthStatusDegraded  HealthStatus = "degraded"
+	// HealthStatusHealthy indicates all checks are passing.
+	HealthStatusHealthy HealthStatus = "healthy"
+	// HealthStatusDegraded indicates non-critical checks are failing.
+	HealthStatusDegraded HealthStatus = "degraded"
+	// HealthStatusUnhealthy indicates critical checks are failing.
 	HealthStatusUnhealthy HealthStatus = "unhealthy"
 )
 
 // HealthCheck provides health check functionality for the VPN service.
 type HealthCheck struct {
-	mu         sync.RWMutex
-	checks     map[string]CheckFunc
-	collector  *Collector
-	startTime  time.Time
-	version    string
+	mu        sync.RWMutex
+	checks    map[string]CheckFunc
+	collector *Collector
+	startTime time.Time
+	version   string
 }
 
 // CheckFunc is a function that performs a health check.
@@ -31,12 +34,12 @@ type CheckFunc func() error
 
 // HealthResponse is the JSON response for health checks.
 type HealthResponse struct {
-	Status    HealthStatus          `json:"status"`
-	Timestamp time.Time             `json:"timestamp"`
-	Uptime    string                `json:"uptime"`
-	Version   string                `json:"version,omitempty"`
+	Status    HealthStatus           `json:"status"`
+	Timestamp time.Time              `json:"timestamp"`
+	Uptime    string                 `json:"uptime"`
+	Version   string                 `json:"version,omitempty"`
 	Checks    map[string]CheckResult `json:"checks,omitempty"`
-	Metrics   *HealthMetrics        `json:"metrics,omitempty"`
+	Metrics   *HealthMetrics         `json:"metrics,omitempty"`
 }
 
 // CheckResult represents the result of a single health check.
@@ -168,7 +171,9 @@ func (h *HealthCheck) Handler() http.Handler {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			return
+		}
 	})
 }
 
@@ -178,9 +183,11 @@ func (h *HealthCheck) LivenessHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{
+		if err := json.NewEncoder(w).Encode(map[string]string{
 			"status": "alive",
-		})
+		}); err != nil {
+			return
+		}
 	})
 }
 
@@ -198,10 +205,12 @@ func (h *HealthCheck) ReadinessHandler() http.Handler {
 			w.WriteHeader(http.StatusOK)
 		}
 
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": response.Status,
 			"ready":  response.Status != HealthStatusUnhealthy,
-		})
+		}); err != nil {
+			return
+		}
 	})
 }
 
@@ -267,11 +276,11 @@ type Server struct {
 
 // ServerConfig configures the observability server.
 type ServerConfig struct {
-	Collector       *Collector
-	Version         string
-	Namespace       string // Prometheus namespace
+	Collector        *Collector
+	Version          string
+	Namespace        string // Prometheus namespace
 	EnablePrometheus bool
-	EnableHealth    bool
+	EnableHealth     bool
 }
 
 // NewServer creates a new observability server.
@@ -317,5 +326,6 @@ func (s *Server) AddHealthCheck(name string, check CheckFunc) {
 
 // ListenAndServe starts the observability server.
 func (s *Server) ListenAndServe(addr string) error {
-	return http.ListenAndServe(addr, s.mux)
+	server := newHTTPServer(addr, s.mux)
+	return server.ListenAndServe()
 }

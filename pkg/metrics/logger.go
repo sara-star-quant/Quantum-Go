@@ -15,11 +15,16 @@ import (
 type Level int
 
 const (
+	// LevelDebug logs verbose output.
 	LevelDebug Level = iota
+	// LevelInfo logs general informational messages.
 	LevelInfo
+	// LevelWarn logs warning conditions.
 	LevelWarn
+	// LevelError logs error conditions.
 	LevelError
-	LevelSilent // Disables all logging
+	// LevelSilent disables all logging.
+	LevelSilent
 )
 
 // String returns the level name.
@@ -76,8 +81,10 @@ type Fields map[string]interface{}
 type Format int
 
 const (
-	FormatText Format = iota // Human-readable text format
-	FormatJSON               // JSON format for log aggregation
+	// FormatText outputs logs in a human-readable text format.
+	FormatText Format = iota
+	// FormatJSON outputs logs in JSON format for log aggregation.
+	FormatJSON
 )
 
 // LoggerOption configures a logger.
@@ -238,11 +245,17 @@ func (l *Logger) writeJSON(level Level, msg string, fields Fields) {
 	data, err := json.Marshal(entry)
 	if err != nil {
 		// Fallback to text
-		fmt.Fprintf(l.out, "LOG_ERROR: %v\n", err)
+		if _, writeErr := fmt.Fprintf(l.out, "LOG_ERROR: %v\n", err); writeErr != nil {
+			return
+		}
 		return
 	}
-	l.out.Write(data)
-	l.out.Write([]byte{'\n'})
+	if _, err := l.out.Write(data); err != nil {
+		return
+	}
+	if _, err := l.out.Write([]byte{'\n'}); err != nil {
+		return
+	}
 }
 
 // writeText writes a log entry in human-readable text format.
@@ -276,7 +289,9 @@ func (l *Logger) writeText(level Level, msg string, fields Fields) {
 	}
 
 	b.WriteString("\n")
-	l.out.Write([]byte(b.String()))
+	if _, err := l.out.Write([]byte(b.String())); err != nil {
+		return
+	}
 }
 
 // formatFields formats fields as key=value pairs.

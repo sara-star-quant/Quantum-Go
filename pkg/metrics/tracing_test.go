@@ -27,7 +27,7 @@ func TestSimpleTracer(t *testing.T) {
 	tracer := NewSimpleTracer()
 	ctx := context.Background()
 
-	ctx, end := tracer.StartSpan(ctx, "test-span", WithSpanKind(SpanKindServer))
+	_, end := tracer.StartSpan(ctx, "test-span", WithSpanKind(SpanKindServer))
 	time.Sleep(10 * time.Millisecond)
 	end(nil)
 
