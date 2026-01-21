@@ -107,14 +107,14 @@ func (p *BufferPool) Put(buf []byte) {
 	buf = buf[:cap]
 	bufPtr := &buf
 
-	switch {
-	case cap == smallBufferSize:
+	switch cap {
+	case smallBufferSize:
 		p.small.Put(bufPtr)
-	case cap == mediumBufferSize:
+	case mediumBufferSize:
 		p.medium.Put(bufPtr)
-	case cap == largeBufferSize:
+	case largeBufferSize:
 		p.large.Put(bufPtr)
-	case cap == xlargeBufferSize:
+	case xlargeBufferSize:
 		p.xlarge.Put(bufPtr)
 	// Non-standard sizes are not returned to pool (they were allocated directly)
 	}
