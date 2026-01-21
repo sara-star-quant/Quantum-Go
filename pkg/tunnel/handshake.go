@@ -102,6 +102,12 @@ func (h *Handshake) SetTicketManager(tm *TicketManager) {
 	h.ticketManager = tm
 }
 
+// sendHandshakeAlert sends a handshake failure alert. Best effort.
+func sendHandshakeAlert(rw io.ReadWriter, codec *protocol.Codec, code protocol.AlertCode, desc string) {
+	msg := codec.EncodeAlert(protocol.AlertLevelFatal, code, desc)
+	_, _ = rw.Write(msg)
+}
+
 // --- Initiator Functions ---
 
 // CreateClientHello generates the ClientHello message.
@@ -595,6 +601,7 @@ func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
 		return err
 	}
 	if err := h.ProcessServerHello(serverHello); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
 		return err
 	}
 
@@ -613,6 +620,7 @@ func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
 		return err
 	}
 	if err := h.ProcessServerFinished(serverFinished); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
 		return err
 	}
 
@@ -629,6 +637,7 @@ func ResponderHandshake(session *Session, rw io.ReadWriter) error {
 		return err
 	}
 	if err := h.ProcessClientHello(clientHello); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
 		return err
 	}
 
@@ -647,6 +656,7 @@ func ResponderHandshake(session *Session, rw io.ReadWriter) error {
 		return err
 	}
 	if err := h.ProcessClientFinished(clientFinished); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
 		return err
 	}
 
@@ -682,6 +692,7 @@ func InitiatorResumptionHandshake(session *Session, rw io.ReadWriter, ticket, se
 		return err
 	}
 	if err := h.ProcessServerHello(serverHello); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
 		return err
 	}
 
@@ -700,6 +711,7 @@ func InitiatorResumptionHandshake(session *Session, rw io.ReadWriter, ticket, se
 		return err
 	}
 	if err := h.ProcessServerFinished(serverFinished); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
 		return err
 	}
 
@@ -717,6 +729,7 @@ func ResponderResumptionHandshake(session *Session, rw io.ReadWriter, tm *Ticket
 		return err
 	}
 	if err := h.ProcessClientHello(clientHello); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
 		return err
 	}
 
@@ -735,6 +748,7 @@ func ResponderResumptionHandshake(session *Session, rw io.ReadWriter, tm *Ticket
 		return err
 	}
 	if err := h.ProcessClientFinished(clientFinished); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
 		return err
 	}
 
