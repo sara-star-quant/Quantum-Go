@@ -1,146 +1,55 @@
 # Quantum-Go Development Roadmap
 
-**Version:** 1.0
-**Last Updated:** 2026-01-20
+**Version:** 2.0  
+**Last Updated:** 2026-01-21
 
 ---
 
-## Current Status: v0.0.4
+## Current Status: v0.0.5
 
 ### Completed Features
-- Core CH-KEM implementation (ML-KEM-1024 + X25519)
-- 4-message handshake protocol
-- AES-256-GCM and ChaCha20-Poly1305 cipher suites
-- Replay protection with sliding window
-- Basic session rekeying (time/bytes/nonce triggers)
-- Ping/Pong keepalive messages
-- CLI tool with demo, benchmark, and example modes
-- Comprehensive test suite (75-96% coverage across packages)
-- KAT tests for cryptographic correctness
-- Fuzz tests for security-critical parsers
+- ✅ CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)
+- ✅ Network Rekey Protocol (handshake and activation)
+- ✅ Session Resumption (encrypted tickets)
+- ✅ Alert Protocol (standardized error reporting)
+- ✅ Graceful shutdown with CloseNotify
+- ✅ Comprehensive test suite (85%+ coverage on core packages)
+- ✅ Replay protection (sliding window)
 
 ---
 
-## v0.0.5 - Protocol Completion
+## v0.0.6 - Hardening & Observability
 
-**Theme:** Complete the protocol implementation with full rekey and session management.
+**Theme:** Production hardening and operational visibility.
 
-### 1. Network Rekey Protocol
-**Priority:** High
-**Effort:** Medium
+### 1. Rate Limiting & DoS Protection
+**Priority:** High | **Effort:** Medium
 
-Currently `Session.Rekey()` and `NeedsRekey()` exist, but the network-level `MessageTypeRekey` handling is not implemented.
-
-**Tasks:**
-- [x] Implement `Transport.sendRekey()` - send new CH-KEM public key
-- [x] Implement `Transport.handleRekey()` - process incoming rekey messages
-- [x] Add rekey state machine (pending, active, completed)
-- [x] Implement key activation at specified sequence number
-- [x] Add tests for rekey protocol (happy path, edge cases)
-- [x] Add tests for rekey under load (concurrent send/receive during rekey)
-
-**Files to modify:**
-- `pkg/tunnel/transport.go`
-- `pkg/tunnel/session.go`
-- `pkg/protocol/codec.go` (if needed)
-
-### 2. Session Resumption
-**Priority:** Medium
-**Effort:** Medium
-
-SessionID exists in the protocol but resumption is not implemented.
-
-**Tasks:**
-- [ ] Design session ticket format (encrypted session state)
-- [ ] Implement `Session.ExportTicket()` - export resumable session state
-- [ ] Implement `Session.Resume()` - restore session from ticket
-- [ ] Add abbreviated handshake for resumption (skip full CH-KEM)
-- [ ] Add session ticket encryption (with server-side key)
-- [ ] Add ticket lifetime and rotation
-- [ ] Add tests for session resumption
-
-**Files to modify:**
-- `pkg/tunnel/session.go`
-- `pkg/tunnel/handshake.go`
-- `pkg/protocol/messages.go` (add ticket structures)
-
-### 3. Alert Protocol
-**Priority:** Medium
-**Effort:** Low
-
-`MessageTypeAlert` is defined but minimally used.
-
-**Tasks:**
-- [ ] Implement `Transport.sendAlert()` for all error conditions
-- [ ] Add graceful shutdown with `AlertCodeCloseNotify`
-- [ ] Map internal errors to appropriate alert codes
-- [ ] Add alert logging for debugging
-- [ ] Add tests for alert handling
-
-**Files to modify:**
-- `pkg/tunnel/transport.go`
-- `pkg/tunnel/session.go`
-
-### 4. Improve Test Coverage
-**Priority:** Medium
-**Effort:** Low
-
-Target: 90%+ coverage on all packages.
-
-**Tasks:**
-- [ ] Add tests for `sendPong`/`encodePong` (currently 0%)
-- [ ] Add tests for alert message encoding/decoding
-- [ ] Add integration tests for rekey under load
-- [ ] Add tests for connection timeout scenarios
-
----
-
-## v0.0.6 - Hardening & Performance
-
-**Theme:** Production readiness with security hardening.
-
-### 1. Rate Limiting
-**Priority:** High
-**Effort:** Medium
-
-DoS protection mentioned in risk assessment.
-
-**Tasks:**
 - [ ] Add connection rate limiting (per IP)
 - [ ] Add handshake rate limiting
 - [ ] Add configurable limits via `TransportConfig`
 - [ ] Add metrics for rate limit events
 
-### 2. Connection Pooling
-**Priority:** Medium
-**Effort:** Medium
+### 2. Metrics & Observability
+**Priority:** High | **Effort:** Medium
 
-Performance optimization for high-throughput scenarios.
-
-**Tasks:**
-- [ ] Implement connection pool with configurable size
-- [ ] Add idle connection timeout
-- [ ] Add health checking for pooled connections
-- [ ] Add pool statistics
-
-### 3. Metrics & Observability
-**Priority:** Medium
-**Effort:** Medium
-
-**Tasks:**
 - [ ] Add Prometheus-compatible metrics export
 - [ ] Add OpenTelemetry tracing support
 - [ ] Add structured logging with levels
 - [ ] Add health check endpoint for CLI server mode
 
+### 3. Connection Pooling
+**Priority:** Medium | **Effort:** Medium
+
+- [ ] Implement connection pool with configurable size
+- [ ] Add idle connection timeout
+- [ ] Add health checking for pooled connections
+- [ ] Add pool statistics
+
 ### 4. Buffer Pooling
-**Priority:** Low
-**Effort:** Low
+**Priority:** Low | **Effort:** Low
 
-Memory optimization using `sync.Pool`.
-
-**Tasks:**
-- [ ] Pool message buffers
+- [ ] Pool message buffers using `sync.Pool`
 - [ ] Pool encryption/decryption buffers
 - [ ] Add benchmarks comparing pooled vs non-pooled
 
@@ -151,23 +60,19 @@ Memory optimization using `sync.Pool`.
 **Theme:** FIPS 140-3 compliance preparation.
 
 ### 1. FIPS Build Mode
-**Priority:** High
-**Effort:** Medium
+**Priority:** High | **Effort:** Medium
 
-**Tasks:**
 - [ ] Add `//go:build fips` conditional compilation
 - [ ] Disable ChaCha20-Poly1305 in FIPS mode (AES-GCM only)
 - [ ] Add FIPS mode indicator in session/transport
 - [ ] Add runtime FIPS mode check
 - [ ] Document FIPS deployment requirements
 
-### 2. Power-On Self-Tests
-**Priority:** High
-**Effort:** Medium
+### 2. Power-On Self-Tests (POST)
+**Priority:** High | **Effort:** Medium
 
 Required for FIPS 140-3 validation.
 
-**Tasks:**
 - [ ] Implement POST for ML-KEM (KAT check on init)
 - [ ] Implement POST for AES-GCM (KAT check on init)
 - [ ] Implement POST for SHAKE-256 (KAT check on init)
@@ -175,48 +80,198 @@ Required for FIPS 140-3 validation.
 - [ ] Add failure handling (panic or degraded mode)
 
 ### 3. Conditional Self-Tests
-**Priority:** Medium
-**Effort:** Low
+**Priority:** Medium | **Effort:** Low
 
-**Tasks:**
 - [ ] Add pairwise consistency test on key generation
 - [ ] Add DRBG health check on RNG output
 
 ---
 
-## v0.1.0 - Production Release
+## v0.0.8 - Enterprise Features
 
-**Theme:** First production-ready release.
+**Theme:** Enterprise deployment readiness.
 
-### Prerequisites
-- [ ] All v0.0.5-v0.0.7 features complete
-- [ ] Third-party security audit
-- [ ] Performance benchmarks published
-- [ ] API stability guarantee
-- [ ] Migration guide from pre-release versions
+### 1. Configuration Management
+**Priority:** High | **Effort:** Medium
 
-### Features
-- [ ] HSM integration (PKCS#11 interface)
-- [ ] Configuration file support
-- [ ] Systemd service integration
+- [ ] YAML/TOML configuration file support
+- [ ] Environment variable overrides
+- [ ] Configuration validation and error reporting
+- [ ] Hot-reload for non-cryptographic settings
+
+### 2. HSM Integration
+**Priority:** High | **Effort:** High
+
+- [ ] PKCS#11 interface for key storage
+- [ ] Support for AWS CloudHSM / Azure Dedicated HSM
+- [ ] Key escrow and backup mechanisms
+- [ ] HSM health monitoring
+
+### 3. Deployment Tooling
+**Priority:** Medium | **Effort:** Medium
+
+- [ ] Systemd service unit files
 - [ ] Docker Compose examples
-- [ ] Kubernetes deployment manifests
+- [ ] Kubernetes deployment manifests (Helm chart)
+- [ ] Terraform modules for cloud deployment
 
 ---
 
-## Future Considerations (v0.2.0+)
+## v0.0.9 - Security Audit Preparation
+
+**Theme:** Prepare for third-party security audit.
+
+### 1. Code Quality
+**Priority:** High | **Effort:** Medium
+
+- [ ] Static analysis report (golangci-lint, gosec)
+- [ ] Code documentation for all exported symbols
+- [ ] Architecture documentation
+- [ ] Threat model documentation
+
+### 2. Security Testing
+**Priority:** High | **Effort:** High
+
+- [ ] Fuzzing infrastructure for protocol parsing
+- [ ] Negative testing for error paths
+- [ ] Timing attack resistance verification
+- [ ] Memory safety validation
+
+### 3. Compliance Documentation
+**Priority:** High | **Effort:** Medium
+
+- [ ] NIST SP 800-131A compliance checklist
+- [ ] FIPS 140-3 compliance mapping
+- [ ] SOC 2 relevant controls documentation
+
+---
+
+## v1.0.0 - Production Release
+
+**Theme:** First production-ready, stable release.
+
+### Prerequisites
+- [ ] All v0.0.6-v0.0.9 features complete
+- [ ] Third-party security audit completed
+- [ ] Security audit findings remediated
+- [ ] Performance benchmarks published
+- [ ] API stability guarantee (semantic versioning)
+- [ ] Migration guide from pre-release versions
+
+### Release Artifacts
+- [ ] Signed binaries for Linux, macOS, Windows
+- [ ] Docker images (multi-arch)
+- [ ] Package manager releases (Homebrew, APT, etc.)
+- [ ] Go module stable release
+
+### Documentation
+- [ ] Complete API reference
+- [ ] Deployment guide
+- [ ] Operations runbook
+- [ ] Troubleshooting guide
+
+---
+
+## Global Compliance & Regulatory Considerations
+
+### Cryptographic Export Controls
+
+#### United States
+- **EAR (Export Administration Regulations)**: CH-KEM using ML-KEM-1024 and AES-256 may require export classification. ECCN 5D002 applies to encryption software.
+- **License Exception ENC**: Open-source and publicly available software typically qualifies.
+- **Action:** File notification with BIS (Bureau of Industry and Security) before v1.0.0 release.
+
+#### European Union (Spain & General)
+- **Dual-Use Regulation (EU 2021/821)**: governs encryption exports.
+- **Open Source Exemption**: Software "in the public domain" is generally exempt from controls.
+- **Spain Specifics**: Authority is *Ministerio de Economía, Comercio y Empresa*. Commercial exporters typically register with **REOCE**.
+- **Action:** Verify "Public Domain" exemption applicability for GitHub distribution. Consider voluntary REOCE registration for corporate entities.
+
+#### China
+- **Commercial Cryptography Regulations**: Foreign cryptographic products may require certification for commercial use in China.
+- **Action:** Document limitations for China deployments; consider separate compliance track.
+
+#### Russia
+- **FSB Certification**: Required for cryptographic products used in certain sectors.
+- **Action:** Document that Quantum-Go is not certified for regulated use in Russia.
+
+#### Australia
+- **Defence Trade Controls Act (DTCA)**: Controls supply of DSGL technology to foreign persons.
+- **Wassenaar Arrangement**: Australia is a signatory; strong encryption is controlled.
+- **Action:** Verify DSGL status before supplying software to non-citizens within Australia or exporting.
+
+#### France
+- **ANSSI Regulations**: Import/Supply requires **Declaration** (for standard use) or **Authorization**.
+- **Usage**: Generally unrestricted, but *supply* is strictly regulated.
+- **Action:** File ANSSI declaration (minimum 1 month notice) before distribution in France.
+
+#### India
+- **Department of Telecommunications (DoT)**: ISP/Telecom licenses often require "bulk encryption" restrictions (40-bit limit historical, now focus on traceability).
+- **DPDP Act 2023**: Mandates security but government retains decryption/interception powers.
+- **Key Escrow**: Be aware of "traceability" requirements effectively mandating escrow-like capabilities for substantial intermediaries.
+- **Action:** Clarify "traceability" vs "end-to-end encryption" stance for Indian deployments.
+
+#### Latin America (LATAM)
+- **Brazil (ANATEL)**: Act 77/21 prohibits hardcoded keys/backdoors in telecom equipment. New cybersecurity audits effective Nov 2025.
+- **Mexico**: Wassenaar signatory. Export of dual-use software requires Ministry of Economy permit.
+- **Action:** Ensure "Security by Design" compliance for Brazil and check export permits for Mexico.
+
+#### United Kingdom
+- **Post-Brexit Rules**: Retained EU Dual-Use Regulation (2021/821). Export of controlled encryption to non-EU/Five Eyes often requires license via SPIRE/LITE.
+- **NCSC Guidance**: Adherence to NCSC "Commercial Product Assurance" (CPA) recommended for government use.
+- **Action:** Verify whether OGEL (Open General Export Licence) applies to Quantum-Go distribution.
+
+#### Israel
+- **Defense Export Control**: Strictly regulated by DECA (Ministry of Defense). "Encryption Order" revoked in 2026 for alignment with Wassenaar, but commercial/defense distinction remains critical.
+- **Action:** File for export license if targeting defense sector; follow Ministry of Economy rules for civilian use.
+
+#### Asia-Pacific (APAC)
+- **Japan (METI)**: Strong List/Catch-all controls. Encryption is a controlled item requiring MITI license for export.
+- **Singapore**: Strategic Goods (Control) Act. Export/Transfer of ML-KEM technology may require XO Permit.
+- **Action:** Assess need for specific export licenses for Japanese/Singaporean markets.
+
+#### Middle East
+- **UAE & Saudi Arabia**: Tight control on VoIP/VPN usage. VPNs used to bypass telecom restrictions are illegal.
+- **Data Residency**: Strong preference (and sometimes mandate) for in-country data storage (e.g., Saudi ECC-1:2018).
+- **Action:** Provide clear disclaimer that Quantum-Go must not be used to bypass telecom regulations in these regions.
+
+### Data Sovereignty
+
+- [ ] Add deployment guidance for data residency requirements
+- [ ] Document key storage location considerations
+- [ ] Add region-specific configuration examples
+
+### Industry Compliance
+
+#### Financial Services
+- [ ] PCI DSS compliance documentation
+- [ ] SOC 2 Type II relevant controls
+- [ ] Banking regulatory alignment (OCC, FCA, MAS)
+
+#### Healthcare
+- [ ] HIPAA technical safeguards mapping
+- [ ] HITECH Act considerations
+
+#### Government
+- [ ] FedRAMP readiness assessment
+- [ ] NATO RESTRICTED / EU RESTRICTED suitability
+
+---
+
+## Future Considerations (v1.1.0+)
 
 ### Potential Features
 - **ML-KEM-768 support** - NIST Category 3 for constrained environments
-- **Certificate-based authentication** - X.509 with PQ signatures
+- **Certificate-based authentication** - X.509 with PQ signatures (ML-DSA)
 - **Multi-path transport** - Redundant connections for reliability
-- **Hardware acceleration** - AES-NI optimization verification
+- **Hardware acceleration** - AES-NI and AVX optimization verification
 - **WebSocket transport** - For firewall traversal
 
 ### Research Items
 - **ML-DSA integration** - Post-quantum signatures for authentication
 - **Hybrid certificates** - Dual classical/PQ certificate chains
 - **Formal verification** - Protocol model in ProVerif/Tamarin
+- **SLH-DSA (SPHINCS+)** - Stateless hash-based signatures as alternative
 
 ---
 
@@ -232,5 +287,5 @@ When picking up a task:
 
 ---
 
-*Document Version: 1.0*
-*Last Updated: 2026-01-20*
+*Document Version: 2.0*  
+*Last Updated: 2026-01-21*
