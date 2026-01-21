@@ -124,7 +124,7 @@ func TestSessionInitializeAfterClose(t *testing.T) {
 
 func TestSessionExportTicketResume(t *testing.T) {
 	tmKey := make([]byte, 32)
-	crypto.SecureRandom(tmKey)
+	_ = crypto.SecureRandom(tmKey)
 	tm, _ := NewTicketManager(tmKey, time.Hour)
 
 	session, _ := NewSession(RoleInitiator)

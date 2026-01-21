@@ -13,8 +13,8 @@ import (
 
 func TestTransportAlerts(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
 	_ = crypto.SecureRandom(masterSecret)
@@ -61,8 +61,8 @@ func TestTransportAlerts(t *testing.T) {
 
 func TestTransportPingPong(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
 	_ = crypto.SecureRandom(masterSecret)
@@ -130,8 +130,8 @@ func TestTransportPingPong(t *testing.T) {
 
 func TestTransportTimeouts(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
 	_ = crypto.SecureRandom(masterSecret)
@@ -158,8 +158,8 @@ func TestTransportTimeouts(t *testing.T) {
 
 func TestTransportGracefulClose(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
 	_ = crypto.SecureRandom(masterSecret)
@@ -193,8 +193,8 @@ func TestTransportGracefulClose(t *testing.T) {
 
 func TestTransportRekey(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
 	_ = crypto.SecureRandom(masterSecret)
