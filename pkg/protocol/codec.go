@@ -1,6 +1,6 @@
-// codec.go implements serialization and deserialization of protocol messages.
+// Package protocol implements serialization and deserialization of protocol messages.
 //
-// Wire Format:
+// This file (codec.go) defines the wire format:
 //
 // All messages follow this structure:
 //

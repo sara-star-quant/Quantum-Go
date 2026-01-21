@@ -1,8 +1,8 @@
-// buffer_pool.go implements buffer pooling for cryptographic operations.
+// Package crypto implements cryptographic primitives for the Quantum-Go VPN.
 //
-// Buffer pooling reduces memory allocations during encryption/decryption,
-// which is critical for high-throughput scenarios. The pool uses size classes
-// optimized for typical AEAD operations.
+// This file (buffer_pool.go) provides buffer pooling to reduce memory allocations
+// during encryption/decryption, which is critical for high-throughput scenarios.
+// The pool uses size classes optimized for typical AEAD operations.
 package crypto
 
 import (
@@ -11,8 +11,8 @@ import (
 	"github.com/pzverkov/quantum-go/internal/constants"
 )
 
-// CryptoBufferPool provides pooled byte slices for cryptographic operations.
-type CryptoBufferPool struct {
+// BufferPool provides pooled byte slices for cryptographic operations.
+type BufferPool struct {
 	// Nonce buffers (12 bytes for AES-GCM and ChaCha20-Poly1305)
 	nonce sync.Pool
 
@@ -35,11 +35,11 @@ const (
 )
 
 // globalCryptoPool is the default crypto buffer pool instance.
-var globalCryptoPool = NewCryptoBufferPool()
+var globalCryptoPool = NewBufferPool()
 
-// NewCryptoBufferPool creates a new crypto buffer pool.
-func NewCryptoBufferPool() *CryptoBufferPool {
-	return &CryptoBufferPool{
+// NewBufferPool creates a new crypto buffer pool.
+func NewBufferPool() *BufferPool {
+	return &BufferPool{
 		nonce: sync.Pool{
 			New: func() any {
 				buf := make([]byte, nonceBufferSize)
@@ -68,7 +68,7 @@ func NewCryptoBufferPool() *CryptoBufferPool {
 }
 
 // GetNonce returns a nonce buffer from the pool.
-func (p *CryptoBufferPool) GetNonce() []byte {
+func (p *BufferPool) GetNonce() []byte {
 	bufPtr := p.nonce.Get().(*[]byte)
 	buf := *bufPtr
 	// Zero the nonce before returning (security)
@@ -79,7 +79,7 @@ func (p *CryptoBufferPool) GetNonce() []byte {
 }
 
 // PutNonce returns a nonce buffer to the pool.
-func (p *CryptoBufferPool) PutNonce(buf []byte) {
+func (p *BufferPool) PutNonce(buf []byte) {
 	if buf == nil || cap(buf) != nonceBufferSize {
 		return
 	}
@@ -93,7 +93,7 @@ func (p *CryptoBufferPool) PutNonce(buf []byte) {
 
 // GetCiphertext returns a ciphertext buffer of at least the requested size.
 // The size should include space for nonce and tag overhead.
-func (p *CryptoBufferPool) GetCiphertext(size int) []byte {
+func (p *BufferPool) GetCiphertext(size int) []byte {
 	if size <= 0 {
 		return nil
 	}
@@ -116,7 +116,7 @@ func (p *CryptoBufferPool) GetCiphertext(size int) []byte {
 }
 
 // PutCiphertext returns a ciphertext buffer to the pool.
-func (p *CryptoBufferPool) PutCiphertext(buf []byte) {
+func (p *BufferPool) PutCiphertext(buf []byte) {
 	if buf == nil {
 		return
 	}

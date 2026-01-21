@@ -6,8 +6,8 @@ import (
 	"github.com/pzverkov/quantum-go/internal/constants"
 )
 
-func TestCryptoBufferPool(t *testing.T) {
-	pool := NewCryptoBufferPool()
+func TestBufferPool(t *testing.T) {
+	pool := NewBufferPool()
 
 	t.Run("GetNonce", func(t *testing.T) {
 		nonce := pool.GetNonce()
@@ -205,7 +205,7 @@ func BenchmarkSeal_Pooled_16KB(b *testing.B) {
 // Benchmark buffer pool get/put operations.
 
 func BenchmarkBufferPool_GetPut_Small(b *testing.B) {
-	pool := NewCryptoBufferPool()
+	pool := NewBufferPool()
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -217,7 +217,7 @@ func BenchmarkBufferPool_GetPut_Small(b *testing.B) {
 }
 
 func BenchmarkBufferPool_GetPut_Medium(b *testing.B) {
-	pool := NewCryptoBufferPool()
+	pool := NewBufferPool()
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -229,7 +229,7 @@ func BenchmarkBufferPool_GetPut_Medium(b *testing.B) {
 }
 
 func BenchmarkBufferPool_GetPut_Large(b *testing.B) {
-	pool := NewCryptoBufferPool()
+	pool := NewBufferPool()
 
 	b.ResetTimer()
 	b.ReportAllocs()

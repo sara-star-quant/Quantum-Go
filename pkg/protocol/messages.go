@@ -1,6 +1,6 @@
-// messages.go defines protocol message types for the CH-KEM VPN handshake.
+// Package protocol defines protocol message types for the CH-KEM VPN handshake.
 //
-// Message Flow:
+// This file (messages.go) implements the message flow:
 //
 //	Initiator                              Responder
 //	    |                                      |

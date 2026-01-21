@@ -1,8 +1,9 @@
-// buffer_pool.go implements buffer pooling for protocol message serialization.
+// Package protocol implements serialization and deserialization of protocol messages.
 //
-// Buffer pooling reduces memory allocations by reusing buffers across operations.
-// This is especially beneficial in high-throughput scenarios where frequent
-// message encoding/decoding would otherwise cause significant GC pressure.
+// This file (buffer_pool.go) provides buffer pooling to reduce memory allocations
+// by reusing buffers across operations. This is especially beneficial in
+// high-throughput scenarios where frequent message encoding/decoding would
+// otherwise cause significant GC pressure.
 package protocol
 
 import (

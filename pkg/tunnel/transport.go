@@ -1,6 +1,6 @@
-// transport.go implements the encrypted data transport layer.
+// Package tunnel implements the encrypted data transport layer.
 //
-// The transport layer provides:
+// This file (transport.go) provides:
 //   - Encrypted and authenticated data transmission
 //   - Sequence number management for replay protection
 //   - Automatic fragmentation for large payloads

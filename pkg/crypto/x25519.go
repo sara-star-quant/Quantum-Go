@@ -1,6 +1,6 @@
-// x25519.go implements X25519 Elliptic Curve Diffie-Hellman operations.
+// Package crypto implements X25519 Elliptic Curve Diffie-Hellman operations.
 //
-// X25519 (RFC 7748) is an elliptic curve Diffie-Hellman function using Curve25519.
+// This file (x25519.go) implements X25519 (RFC 7748), an elliptic curve Diffie-Hellman function using Curve25519.
 // It provides approximately 128 bits of security against classical computers.
 //
 // Mathematical Foundation:
