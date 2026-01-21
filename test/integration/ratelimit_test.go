@@ -18,7 +18,7 @@ func TestConnectionRateLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	ln.SetConfig(config)
 
 	// Accept connections in background
@@ -44,7 +44,7 @@ func TestConnectionRateLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("First connection failed: %v", err)
 	}
-	defer conn1.Close()
+	defer func() { _ = conn1.Close() }()
 
 	// 2. Second connection should fail (limited)
 	// Note: Since we're connecting from localhost, IP is the same.
