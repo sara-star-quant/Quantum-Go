@@ -143,6 +143,21 @@ Initiator                              Responder
     │═══════ Encrypted Tunnel ═════════════│
 ```
 
+## Configuration
+
+Quantum-Go exposes a `TransportConfig` struct to tune performance and security settings:
+
+```go
+config := tunnel.DefaultTransportConfig()
+config.ReadTimeout = 30 * time.Second
+config.WriteTimeout = 30 * time.Second
+
+// Rate Limiting (v0.0.6+)
+config.RateLimit.MaxConnectionsPerIP = 100
+config.RateLimit.HandshakeRateLimit = 5.0 // 5 handshakes/sec
+config.RateLimit.HandshakeBurst = 10
+```
+
 ### Session Resumption
 
 Quantum-Go supports secure session resumption using encrypted tickets. Following a successful full handshake, the server can issue a session ticket that allows for an abbreviated handshake (skipping the heavy CH-KEM exchange) while maintaining forward secrecy and security parity with the full handshake.
