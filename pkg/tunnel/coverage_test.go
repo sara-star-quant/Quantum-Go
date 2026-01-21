@@ -43,8 +43,8 @@ func TestHandshakeCreateServerFinishedErrors(t *testing.T) {
 
 func TestTransportReceiveErrors(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	session, _ := NewSession(RoleResponder)
 	tr := &Transport{
@@ -55,7 +55,7 @@ func TestTransportReceiveErrors(t *testing.T) {
 
 	// 1. Unknown message type
 	go func() {
-		serverConn.Write([]byte{0xFF, 0, 0, 0, 0})
+		_, _ = clientConn.Write([]byte{0xFF, 0, 0, 0, 0})
 	}()
 	_, err := tr.Receive()
 	if err == nil {
@@ -65,7 +65,7 @@ func TestTransportReceiveErrors(t *testing.T) {
 	// 2. handleData decode error
 	go func() {
 		// Valid data type but empty payload
-		serverConn.Write([]byte{byte(protocol.MessageTypeData), 0, 0, 0, 0})
+		_, _ = clientConn.Write([]byte{byte(protocol.MessageTypeData), 0, 0, 0, 0})
 	}()
 	_, err = tr.Receive()
 	if err == nil {

@@ -72,8 +72,8 @@ func TestHandshakeStateTransitions(t *testing.T) {
 
 func TestHandshakeErrorPaths(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	session, _ := NewSession(RoleInitiator)
 
@@ -93,8 +93,8 @@ func TestHandshakeErrorPaths(t *testing.T) {
 
 func TestHandshakeResumptionErrorPaths(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
-	defer clientConn.Close()
-	defer serverConn.Close()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
 
 	session, _ := NewSession(RoleInitiator)
 
@@ -200,7 +200,7 @@ func TestHandshakeAuthenticationFailure(t *testing.T) {
 	clientS, _ := NewSession(RoleInitiator)
 
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	clientS.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = clientS.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	clientH := NewHandshake(clientS)
 	clientH.state = HandshakeStateClientFinishedSent

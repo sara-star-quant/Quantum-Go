@@ -19,8 +19,8 @@ func TestSessionNeedsRekeyEdgeCases(t *testing.T) {
 
 	// Setup established session
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret)
-	session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = crypto.SecureRandom(masterSecret)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	if session.NeedsRekey() {
 		t.Error("freshly established session shouldn't need rekey")
@@ -58,8 +58,8 @@ func TestSessionRekeyErrorPaths(t *testing.T) {
 
 	// Setup established session
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret)
-	session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = crypto.SecureRandom(masterSecret)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	// Rekey with wrong secret size
 	err = session.Rekey(make([]byte, 10))
@@ -80,11 +80,11 @@ func TestSessionCheckAndActivateSendCipher(t *testing.T) {
 
 	// Setup established session
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret)
-	session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = crypto.SecureRandom(masterSecret)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	// Initiate rekey
-	session.InitiateRekey()
+	_, _, _ = session.InitiateRekey()
 
 	// Mock pending keys
 	session.pendingSendCipher = session.sendCipher
@@ -129,8 +129,8 @@ func TestSessionExportTicketResume(t *testing.T) {
 
 	session, _ := NewSession(RoleInitiator)
 	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	crypto.SecureRandom(masterSecret)
-	session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+	_ = crypto.SecureRandom(masterSecret)
+	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 	ticket, err := session.ExportTicket(tm)
 	if err != nil {
 		t.Fatalf("ExportTicket failed: %v", err)
