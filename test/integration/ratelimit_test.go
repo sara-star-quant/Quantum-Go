@@ -28,7 +28,7 @@ func TestConnectionRateLimit(t *testing.T) {
 			if err != nil {
 				return
 			}
-			defer conn.Close()
+			defer func() { _ = conn.Close() }()
 			// Keep connection alive for a bit
 			go func() {
 				time.Sleep(100 * time.Millisecond)
@@ -65,7 +65,7 @@ func TestConnectionRateLimit(t *testing.T) {
 	}
 
 	// 3. Wait for first connection to close/release
-	conn1.Close()
+	_ = conn1.Close()
 	time.Sleep(200 * time.Millisecond)
 
 	// 4. Third connection should now succeed
@@ -74,7 +74,7 @@ func TestConnectionRateLimit(t *testing.T) {
 		t.Errorf("Third connection failed after release: %v", err)
 	}
 	if conn3 != nil {
-		conn3.Close()
+		_ = conn3.Close()
 	}
 }
 
@@ -89,7 +89,7 @@ func TestHandshakeRateLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	ln.SetConfig(config)
 
 	// Accept in background
@@ -115,7 +115,7 @@ func TestHandshakeRateLimit(t *testing.T) {
 		t.Fatalf("First handshake failed: %v", err)
 	}
 	if conn1 != nil {
-		defer conn1.Close()
+		defer func() { _ = conn1.Close() }()
 	}
 
 	// 2. Second handshake immediately (should be rate limited)
@@ -124,7 +124,7 @@ func TestHandshakeRateLimit(t *testing.T) {
 		// If Dial succeeds, the connection might be closed immediately after.
 		// Dial waits for handshake completion. If server rejects before handshake finishes, Dial should fail.
 		t.Error("Second handshake should have failed rate limiting")
-		conn2.Close()
+		_ = conn2.Close()
 	} else {
 		t.Logf("Second handshake rejected as expected: %v", err)
 	}
@@ -138,6 +138,6 @@ func TestHandshakeRateLimit(t *testing.T) {
 		t.Errorf("Third handshake failed after refill: %v", err)
 	}
 	if conn3 != nil {
-		conn3.Close()
+		_ = conn3.Close()
 	}
 }
