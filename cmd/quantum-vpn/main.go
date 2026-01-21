@@ -4,14 +4,23 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	pkgversion "github.com/pzverkov/quantum-go/pkg/version"
 )
 
 // Build-time variables (set via -ldflags)
 var (
-	version   = "0.0.4"   // Set via -ldflags "-X main.version=x.y.z"
+	version   = ""        // Set via -ldflags "-X main.version=x.y.z"
 	buildTime = "unknown" // Set via -ldflags "-X main.buildTime=..."
 	gitCommit = "unknown" // Set via -ldflags "-X main.gitCommit=..."
 )
+
+func getVersion() string {
+	if version != "" {
+		return version
+	}
+	return pkgversion.String()
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -29,7 +38,7 @@ func main() {
 	case "example":
 		exampleCommand()
 	case "version":
-		fmt.Printf("quantum-vpn version %s\n", version)
+		fmt.Printf("quantum-vpn version %s\n", getVersion())
 		if buildTime != "unknown" {
 			fmt.Printf("Built: %s\n", buildTime)
 		}

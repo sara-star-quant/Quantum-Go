@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: v0.0.5
+## Current Status: v0.0.6
 
 ### Completed Features
 - [x] CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)
@@ -49,9 +49,9 @@
 ### 4. Buffer Pooling
 **Priority:** Low | **Effort:** Low
 
-- [ ] Pool message buffers using `sync.Pool`
-- [ ] Pool encryption/decryption buffers
-- [ ] Add benchmarks comparing pooled vs non-pooled
+- [x] Pool message buffers using `sync.Pool`
+- [x] Pool encryption/decryption buffers
+- [x] Add benchmarks comparing pooled vs non-pooled
 
 ---
 

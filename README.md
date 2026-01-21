@@ -30,6 +30,13 @@ Quantum-Go is a production-ready, quantum-resistant VPN encryption library imple
 | Session Resumption | Secure abbreviated handshake with encrypted tickets |
 | FIPS Compliance | Roadmap for FIPS 140-3 |
 
+## v0.0.6 Highlights
+
+- **Connection Pooling**: Reusable tunnel connections with health checking
+- **Buffer Pooling**: 75%+ reduction in memory allocations
+- **Rate Limiting**: Per-IP connection and handshake rate limiting
+- **Observability**: Prometheus metrics, OpenTelemetry tracing, structured logging
+
 ## Quick Start
 
 See [Quick Start Guide](docs/usage/QUICKSTART.md) for detailed installation and usage instructions.

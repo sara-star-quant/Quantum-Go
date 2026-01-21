@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.6][] - 2026-01-22
+
+### Added
+- **Connection Pooling** (`pkg/tunnel/pool*.go`)
+  - Reusable `*Tunnel` connection pool reducing handshake overhead
+  - Configurable pool size (MinConns, MaxConns)
+  - Idle connection timeout and max lifetime
+  - Background health checking with configurable interval
+  - Wait timeout for exhausted pools
+  - LIFO ordering for better cache locality
+  - Comprehensive statistics (gauges, counters, histograms)
+  - `PoolObserver` interface for metrics integration
+  - Thread-safe with proper locking and atomic operations
+
+- **Buffer Pooling** (`pkg/crypto/buffer_pool.go`, `pkg/protocol/buffer_pool.go`)
+  - `sync.Pool`-based buffer reuse for message encoding/decoding
+  - Size-class pooling (256B, 4KB, 64KB, 2MB for protocol; optimized for crypto)
+  - Security zeroing of crypto buffers before returning to pool
+  - `SealPooled()` method for zero-allocation encryption
+  - 75%+ reduction in allocations for typical workloads
+  - Parallel-safe with minimal contention
+
+- **Rate Limiting & DoS Protection** (`pkg/tunnel/limiter.go`)
+  - Per-IP connection rate limiting
+  - Global handshake rate limiting with token bucket
+  - Configurable via `TransportConfig.RateLimit`
+  - Metrics for rate limit events
+
+- **Metrics & Observability** (`pkg/metrics/`)
+  - Prometheus-compatible metrics export
+  - OpenTelemetry tracing support
+  - Structured logging with levels
+  - Health check endpoint
+  - Pool metrics observer (`PoolMetricsObserver`)
+
+### Changed
+- **Performance**: Buffer pooling reduces GC pressure by 75%+ in high-throughput scenarios
+- **Pool errors**: Added `ErrPoolClosed`, `ErrPoolTimeout`, `ErrPoolExhausted` to `internal/errors`
+
+### Fixed
+- **Integer overflow**: Fixed potential int64→uint64 overflow in pool statistics
+
+### Performance
+Benchmark results (Apple M-series):
+
+| Operation | Non-Pooled | Pooled | Improvement |
+|-----------|------------|--------|-------------|
+| Seal 1KB | 378 ns, 1168 B/op | 325 ns, 48 B/op | 14% faster, 96% less alloc |
+| Seal 16KB | 4567 ns, 18448 B/op | 3356 ns, 48 B/op | 26% faster, 99% less alloc |
+| Encode 1KB | 172 ns, 1152 B/op | 44 ns, 24 B/op | 74% faster, 98% less alloc |
+| Buffer 1MB | 49383 ns | 26 ns | 1900x faster |
+
 ## [0.0.5][] - 2026-01-21
 
 ### Added
@@ -117,7 +169,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.5...HEAD
+[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.6...HEAD
+[0.0.6]: https://github.com/pzverkov/quantum-go/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/pzverkov/quantum-go/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/pzverkov/quantum-go/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/pzverkov/quantum-go/compare/v0.0.2...v0.0.3

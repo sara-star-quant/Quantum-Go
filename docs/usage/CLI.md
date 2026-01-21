@@ -51,6 +51,10 @@ Endpoints:
 - `http://localhost:9090/healthz` (liveness)
 - `http://localhost:9090/readyz` (readiness)
 
+Rate limiting metrics (Prometheus counters):
+- `quantum_vpn_rate_limit_connections_total`
+- `quantum_vpn_rate_limit_handshakes_total`
+
 Logging and tracing controls:
 
 ```bash
