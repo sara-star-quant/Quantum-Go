@@ -335,6 +335,8 @@ func (c *Codec) EncodeAlert(level AlertLevel, code AlertCode, description string
 	buf := make([]byte, HeaderSize+payloadSize)
 
 	buf[0] = byte(MessageTypeAlert)
+	// payloadSize is max 258 bytes, so safe to cast
+	//nolint:gosec // G115: payloadSize is bounded < 300
 	binary.BigEndian.PutUint32(buf[1:], uint32(payloadSize))
 	buf[HeaderSize] = byte(level)
 	buf[HeaderSize+1] = byte(code)

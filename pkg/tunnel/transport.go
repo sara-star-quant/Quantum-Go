@@ -43,6 +43,22 @@ type Transport struct {
 type TransportConfig struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+	RateLimit    RateLimitConfig
+}
+
+// RateLimitConfig holds configuration for rate limiting.
+type RateLimitConfig struct {
+	// MaxConnectionsPerIP is the maximum number of concurrent connections allowed from a single IP.
+	// 0 means no limit.
+	MaxConnectionsPerIP int
+
+	// HandshakeRateLimit is the maximum number of handshakes per second allowed globally.
+	// 0 means no limit.
+	HandshakeRateLimit float64
+
+	// HandshakeBurst is the maximum burst of handshakes allowed.
+	// If 0, defaults to 1 when HandshakeRateLimit is set.
+	HandshakeBurst int
 }
 
 // DefaultTransportConfig returns sensible defaults.
@@ -517,6 +533,9 @@ func Listen(network, address string) (*Listener, error) {
 type Listener struct {
 	listener net.Listener
 	config   TransportConfig
+
+	ipLimiter        *IPRateLimiter
+	handshakeLimiter *HandshakeLimiter
 }
 
 // Accept waits for and returns the next tunnel connection.
@@ -524,6 +543,40 @@ func (l *Listener) Accept() (*Tunnel, error) {
 	conn, err := l.listener.Accept()
 	if err != nil {
 		return nil, err
+	}
+
+	// Check IP rate limit
+	var remoteIP string
+	if tcpAddr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+		remoteIP = tcpAddr.IP.String()
+	} else {
+		host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+		if err == nil {
+			remoteIP = host
+		} else {
+			remoteIP = conn.RemoteAddr().String()
+		}
+	}
+
+	if l.ipLimiter != nil && !l.ipLimiter.AllowConnection(remoteIP) {
+		_ = conn.Close()
+		// Return a temporary error so accept loop might continue?
+		// Or just return error. For now return error.
+		return nil, qerrors.NewProtocolError("rate limit", &alertError{
+			level: protocol.AlertLevelFatal,
+			code:  protocol.AlertCodeInternalError,
+			desc:  "connection rate limit exceeded",
+		})
+	}
+
+	// Wrap connection to release IP limit on close
+	if l.ipLimiter != nil {
+		conn = &rateLimitedConn{
+			Conn:      conn,
+			limiter:   l.ipLimiter,
+			ip:        remoteIP,
+			closeOnce: sync.Once{},
+		}
 	}
 
 	// Create session as responder
@@ -534,6 +587,17 @@ func (l *Listener) Accept() (*Tunnel, error) {
 	}
 
 	// Perform handshake
+	// Check handshake rate limit
+	if l.handshakeLimiter != nil && !l.handshakeLimiter.AllowHandshake() {
+		_ = conn.Close()
+		// We don't have a specific error for this, but we can log or just return error
+		return nil, qerrors.NewProtocolError("rate limit", &alertError{
+			level: protocol.AlertLevelFatal,
+			code:  protocol.AlertCodeInternalError, // Or a custom code if we had one
+			desc:  "handshake rate limit exceeded",
+		})
+	}
+
 	if err := ResponderHandshake(session, conn); err != nil {
 		_ = conn.Close()
 		return nil, err
@@ -562,4 +626,35 @@ func (l *Listener) Addr() net.Addr {
 // SetConfig sets the transport configuration for new connections.
 func (l *Listener) SetConfig(config TransportConfig) {
 	l.config = config
+	// Re-initialize limiters based on new config
+	if config.RateLimit.MaxConnectionsPerIP > 0 {
+		l.ipLimiter = NewIPRateLimiter(config.RateLimit.MaxConnectionsPerIP)
+	} else {
+		l.ipLimiter = nil
+	}
+
+	if config.RateLimit.HandshakeRateLimit > 0 {
+		l.handshakeLimiter = NewHandshakeLimiter(config.RateLimit.HandshakeRateLimit, config.RateLimit.HandshakeBurst)
+	} else {
+		l.handshakeLimiter = nil
+	}
+}
+
+// rateLimitedConn wraps a net.Conn to release the IP rate limit on close.
+type rateLimitedConn struct {
+	net.Conn
+	limiter   *IPRateLimiter
+	ip        string
+	closeOnce sync.Once
+}
+
+// Close closes the connection and releases the IP rate limit token.
+func (c *rateLimitedConn) Close() error {
+	err := c.Conn.Close()
+	c.closeOnce.Do(func() {
+		if c.limiter != nil {
+			c.limiter.ReleaseConnection(c.ip)
+		}
+	})
+	return err
 }

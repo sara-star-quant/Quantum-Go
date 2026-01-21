@@ -8,13 +8,13 @@
 ## Current Status: v0.0.5
 
 ### Completed Features
-- ✅ CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)
-- ✅ Network Rekey Protocol (handshake and activation)
-- ✅ Session Resumption (encrypted tickets)
-- ✅ Alert Protocol (standardized error reporting)
-- ✅ Graceful shutdown with CloseNotify
-- ✅ Comprehensive test suite (85%+ coverage on core packages)
-- ✅ Replay protection (sliding window)
+- [x] CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)
+- [x] Network Rekey Protocol (handshake and activation)
+- [x] Session Resumption (encrypted tickets)
+- [x] Alert Protocol (standardized error reporting)
+- [x] Graceful shutdown with CloseNotify
+- [x] Comprehensive test suite (85%+ coverage on core packages)
+- [x] Replay protection (sliding window)
 
 ---
 
@@ -25,9 +25,9 @@
 ### 1. Rate Limiting & DoS Protection
 **Priority:** High | **Effort:** Medium
 
-- [ ] Add connection rate limiting (per IP)
-- [ ] Add handshake rate limiting
-- [ ] Add configurable limits via `TransportConfig`
+- [x] Add connection rate limiting (per IP)
+- [x] Add handshake rate limiting
+- [x] Add configurable limits via `TransportConfig`
 - [ ] Add metrics for rate limit events
 
 ### 2. Metrics & Observability
@@ -173,6 +173,9 @@ Required for FIPS 140-3 validation.
 ---
 
 ## Global Compliance & Regulatory Considerations
+
+> **CAUTION**
+> **Advisory Only**: The following compliance roadmap is based on public regulatory documentation (EAR, dual-use lists) and is provided for **informational purposes only**. It does **NOT** constitute legal advice. Organizations must consult with their own legal counsel and trade compliance officers before exporting or deploying this software globally.
 
 ### Cryptographic Export Controls
 
