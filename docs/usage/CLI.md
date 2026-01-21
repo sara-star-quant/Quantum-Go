@@ -34,6 +34,36 @@ quantum-vpn demo --mode client --addr localhost:8443 --message "-"
 quantum-vpn demo --mode server --addr :8443 --verbose
 ```
 
+### Observability (Server Mode)
+
+Expose Prometheus metrics and health endpoints alongside the demo server:
+
+```bash
+# Start demo server with observability endpoints
+quantum-vpn demo --mode server --addr :8443 --obs-addr :9090
+```
+
+Set `--obs-addr ""` to disable the observability server.
+
+Endpoints:
+- `http://localhost:9090/metrics` (Prometheus)
+- `http://localhost:9090/health` (detailed health)
+- `http://localhost:9090/healthz` (liveness)
+- `http://localhost:9090/readyz` (readiness)
+
+Logging and tracing controls:
+
+```bash
+# Structured logs and tracing options
+quantum-vpn demo --mode server --log-level info --log-format json --tracing otel
+```
+
+Note: OpenTelemetry tracing requires building with the `otel` tag, for example:
+
+```bash
+go build -tags otel -o quantum-vpn ./cmd/quantum-vpn
+```
+
 ## Benchmark Mode
 
 Test performance on your hardware:

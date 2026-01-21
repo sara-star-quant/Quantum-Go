@@ -9,6 +9,8 @@ type TransportConfig struct {
     ReadTimeout  time.Duration
     WriteTimeout time.Duration
     RateLimit    RateLimitConfig
+    Observer     tunnel.Observer
+    ObserverFactory tunnel.ObserverFactory
 }
 ```
 
@@ -35,6 +37,29 @@ config.RateLimit.HandshakeRateLimit = 5.0
 
 // Burst allowance for handshakes
 config.RateLimit.HandshakeBurst = 10
+```
+
+### Observability
+
+Attach an observer to collect metrics, tracing, and structured logs per session:
+
+```go
+collector := metrics.NewCollector(metrics.Labels{
+    "service": "quantum-vpn",
+})
+
+config.ObserverFactory = func(session *tunnel.Session) tunnel.Observer {
+    role := "initiator"
+    if session.Role == tunnel.RoleResponder {
+        role = "responder"
+    }
+
+    return metrics.NewTunnelObserver(metrics.TunnelObserverConfig{
+        Collector: collector,
+        SessionID: session.ID,
+        Role:      role,
+    })
+}
 ```
 
 ## Session Resumption

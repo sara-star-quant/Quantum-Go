@@ -33,6 +33,7 @@ package tunnel
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"io"
 
@@ -584,138 +585,210 @@ func readEncryptedRecord(r io.Reader) ([]byte, error) {
 
 // InitiatorHandshake performs the complete handshake as initiator.
 func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
-	h := NewHandshake(session)
-
-	// Send ClientHello
-	clientHello, err := h.CreateClientHello()
-	if err != nil {
-		return err
-	}
-	if _, err := rw.Write(clientHello); err != nil {
-		return err
+	observer := session.observer
+	var done func(error)
+	if observer != nil {
+		_, done = observer.OnHandshakeStart(context.Background())
 	}
 
-	// Receive ServerHello
-	serverHello, err := h.codec.ReadMessage(rw)
-	if err != nil {
-		return err
-	}
-	if err := h.ProcessServerHello(serverHello); err != nil {
-		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
-		return err
+	err := func() error {
+		h := NewHandshake(session)
+
+		// Send ClientHello
+		clientHello, err := h.CreateClientHello()
+		if err != nil {
+			return err
+		}
+		if _, err := rw.Write(clientHello); err != nil {
+			return err
+		}
+
+		// Receive ServerHello
+		serverHello, err := h.codec.ReadMessage(rw)
+		if err != nil {
+			return err
+		}
+		if err := h.ProcessServerHello(serverHello); err != nil {
+			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
+			return err
+		}
+
+		// Send ClientFinished (encrypted, with length framing)
+		clientFinished, err := h.CreateClientFinished()
+		if err != nil {
+			return err
+		}
+		if err := writeEncryptedRecord(rw, clientFinished); err != nil {
+			return err
+		}
+
+		// Receive ServerFinished (encrypted, with length framing)
+		serverFinished, err := readEncryptedRecord(rw)
+		if err != nil {
+			return err
+		}
+		if err := h.ProcessServerFinished(serverFinished); err != nil {
+			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
+			return err
+		}
+
+		return nil
+	}()
+
+	if observer != nil {
+		if err != nil {
+			if qerrors.Is(err, qerrors.ErrAuthenticationFailed) {
+				observer.OnAuthFailure()
+			}
+			if isProtocolError(err) {
+				observer.OnProtocolError(err)
+			}
+		}
+		if done != nil {
+			done(err)
+		}
 	}
 
-	// Send ClientFinished (encrypted, with length framing)
-	clientFinished, err := h.CreateClientFinished()
-	if err != nil {
-		return err
-	}
-	if err := writeEncryptedRecord(rw, clientFinished); err != nil {
-		return err
-	}
-
-	// Receive ServerFinished (encrypted, with length framing)
-	serverFinished, err := readEncryptedRecord(rw)
-	if err != nil {
-		return err
-	}
-	if err := h.ProcessServerFinished(serverFinished); err != nil {
-		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // ResponderHandshake performs the complete handshake as responder.
 func ResponderHandshake(session *Session, rw io.ReadWriter) error {
-	h := NewHandshake(session)
-
-	// Receive ClientHello
-	clientHello, err := h.codec.ReadMessage(rw)
-	if err != nil {
-		return err
-	}
-	if err := h.ProcessClientHello(clientHello); err != nil {
-		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
-		return err
+	observer := session.observer
+	var done func(error)
+	if observer != nil {
+		_, done = observer.OnHandshakeStart(context.Background())
 	}
 
-	// Send ServerHello
-	serverHello, err := h.CreateServerHello()
-	if err != nil {
-		return err
-	}
-	if _, err := rw.Write(serverHello); err != nil {
-		return err
+	err := func() error {
+		h := NewHandshake(session)
+
+		// Receive ClientHello
+		clientHello, err := h.codec.ReadMessage(rw)
+		if err != nil {
+			return err
+		}
+		if err := h.ProcessClientHello(clientHello); err != nil {
+			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
+			return err
+		}
+
+		// Send ServerHello
+		serverHello, err := h.CreateServerHello()
+		if err != nil {
+			return err
+		}
+		if _, err := rw.Write(serverHello); err != nil {
+			return err
+		}
+
+		// Receive ClientFinished (encrypted, with length framing)
+		clientFinished, err := readEncryptedRecord(rw)
+		if err != nil {
+			return err
+		}
+		if err := h.ProcessClientFinished(clientFinished); err != nil {
+			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
+			return err
+		}
+
+		// Send ServerFinished (encrypted, with length framing)
+		serverFinished, err := h.CreateServerFinished()
+		if err != nil {
+			return err
+		}
+		if err := writeEncryptedRecord(rw, serverFinished); err != nil {
+			return err
+		}
+
+		return nil
+	}()
+
+	if observer != nil {
+		if err != nil {
+			if qerrors.Is(err, qerrors.ErrAuthenticationFailed) {
+				observer.OnAuthFailure()
+			}
+			if isProtocolError(err) {
+				observer.OnProtocolError(err)
+			}
+		}
+		if done != nil {
+			done(err)
+		}
 	}
 
-	// Receive ClientFinished (encrypted, with length framing)
-	clientFinished, err := readEncryptedRecord(rw)
-	if err != nil {
-		return err
-	}
-	if err := h.ProcessClientFinished(clientFinished); err != nil {
-		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
-		return err
-	}
-
-	// Send ServerFinished (encrypted, with length framing)
-	serverFinished, err := h.CreateServerFinished()
-	if err != nil {
-		return err
-	}
-	if err := writeEncryptedRecord(rw, serverFinished); err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // InitiatorResumptionHandshake performs the complete handshake as initiator with resumption.
 func InitiatorResumptionHandshake(session *Session, rw io.ReadWriter, ticket, secret []byte) error {
-	h := NewHandshake(session)
-	h.SetTicket(ticket, secret)
-
-	// Send ClientHello
-	clientHello, err := h.CreateClientHello()
-	if err != nil {
-		return err
-	}
-	if _, err := rw.Write(clientHello); err != nil {
-		return err
+	observer := session.observer
+	var done func(error)
+	if observer != nil {
+		_, done = observer.OnHandshakeStart(context.Background())
 	}
 
-	// Receive ServerHello
-	serverHello, err := h.codec.ReadMessage(rw)
-	if err != nil {
-		return err
-	}
-	if err := h.ProcessServerHello(serverHello); err != nil {
-		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
-		return err
+	err := func() error {
+		h := NewHandshake(session)
+		h.SetTicket(ticket, secret)
+
+		// Send ClientHello
+		clientHello, err := h.CreateClientHello()
+		if err != nil {
+			return err
+		}
+		if _, err := rw.Write(clientHello); err != nil {
+			return err
+		}
+
+		// Receive ServerHello
+		serverHello, err := h.codec.ReadMessage(rw)
+		if err != nil {
+			return err
+		}
+		if err := h.ProcessServerHello(serverHello); err != nil {
+			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
+			return err
+		}
+
+		// Send ClientFinished (encrypted, with length framing)
+		clientFinished, err := h.CreateClientFinished()
+		if err != nil {
+			return err
+		}
+		if err := writeEncryptedRecord(rw, clientFinished); err != nil {
+			return err
+		}
+
+		// Receive ServerFinished (encrypted, with length framing)
+		serverFinished, err := readEncryptedRecord(rw)
+		if err != nil {
+			return err
+		}
+		if err := h.ProcessServerFinished(serverFinished); err != nil {
+			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
+			return err
+		}
+
+		return nil
+	}()
+
+	if observer != nil {
+		if err != nil {
+			if qerrors.Is(err, qerrors.ErrAuthenticationFailed) {
+				observer.OnAuthFailure()
+			}
+			if isProtocolError(err) {
+				observer.OnProtocolError(err)
+			}
+		}
+		if done != nil {
+			done(err)
+		}
 	}
 
-	// Send ClientFinished (encrypted, with length framing)
-	clientFinished, err := h.CreateClientFinished()
-	if err != nil {
-		return err
-	}
-	if err := writeEncryptedRecord(rw, clientFinished); err != nil {
-		return err
-	}
-
-	// Receive ServerFinished (encrypted, with length framing)
-	serverFinished, err := readEncryptedRecord(rw)
-	if err != nil {
-		return err
-	}
-	if err := h.ProcessServerFinished(serverFinished); err != nil {
-		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, err.Error())
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // ResponderResumptionHandshake performs the complete handshake as responder with resumption.

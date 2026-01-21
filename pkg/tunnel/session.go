@@ -10,6 +10,7 @@
 package tunnel
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -108,6 +109,9 @@ type Session struct {
 	CreatedAt     time.Time
 	EstablishedAt time.Time
 	LastActivity  time.Time
+
+	// Observability hooks
+	observer Observer
 
 	// Statistics
 	BytesSent     atomic.Uint64
@@ -220,6 +224,12 @@ func (s *Session) SetState(state SessionState) {
 	s.state.Store(int32(state))
 }
 
+// SetObserver sets an observer for session lifecycle and metrics.
+// Should be called during initialization before any data is sent.
+func (s *Session) SetObserver(observer Observer) {
+	s.observer = observer
+}
+
 // InitializeKeys derives and sets up encryption keys from the master secret.
 func (s *Session) InitializeKeys(masterSecret []byte, cipherSuite constants.CipherSuite) error {
 	s.mu.Lock()
@@ -286,7 +296,19 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 	cipher := s.sendCipher
 	s.mu.RUnlock()
 
+	observer := s.observer
+	var done func(error)
+	if observer != nil {
+		_, done = observer.OnEncrypt(context.Background(), len(plaintext))
+	}
+
 	if cipher == nil {
+		if observer != nil {
+			observer.OnProtocolError(qerrors.ErrInvalidState)
+		}
+		if done != nil {
+			done(qerrors.ErrInvalidState)
+		}
 		return nil, 0, qerrors.ErrInvalidState
 	}
 
@@ -300,7 +322,13 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 
 	ciphertext, err := cipher.Seal(plaintext, aad)
 	if err != nil {
+		if done != nil {
+			done(err)
+		}
 		return nil, 0, err
+	}
+	if done != nil {
+		done(nil)
 	}
 
 	s.BytesSent.Add(uint64(len(plaintext)))
@@ -319,12 +347,24 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 	s.mu.RUnlock()
 
 	if cipher == nil {
+		if s.observer != nil {
+			s.observer.OnProtocolError(qerrors.ErrInvalidState)
+		}
 		return nil, qerrors.ErrInvalidState
 	}
 
 	// Check replay window
 	if !s.replayWindow.Check(seq) {
+		if s.observer != nil {
+			s.observer.OnReplayDetected()
+		}
 		return nil, qerrors.ErrReplayDetected
+	}
+
+	observer := s.observer
+	var done func(error)
+	if observer != nil {
+		_, done = observer.OnDecrypt(context.Background(), len(ciphertext))
 	}
 
 	// Use sequence number as additional authenticated data
@@ -337,7 +377,18 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 
 	plaintext, err := cipher.Open(ciphertext, aad)
 	if err != nil {
+		if observer != nil {
+			if qerrors.Is(err, qerrors.ErrAuthenticationFailed) {
+				observer.OnAuthFailure()
+			}
+		}
+		if done != nil {
+			done(err)
+		}
 		return nil, err
+	}
+	if done != nil {
+		done(nil)
 	}
 
 	s.BytesReceived.Add(uint64(len(plaintext)))

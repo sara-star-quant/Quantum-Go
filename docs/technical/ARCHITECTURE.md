@@ -404,6 +404,7 @@ session.Close()
 config := tunnel.TransportConfig{
     ReadTimeout:  30 * time.Second,
     WriteTimeout: 30 * time.Second,
+    // ObserverFactory: func(session *tunnel.Session) tunnel.Observer { ... },
 }
 
 transport, err := tunnel.NewTransport(session, conn, config)
