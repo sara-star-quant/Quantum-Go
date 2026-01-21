@@ -17,28 +17,32 @@ import (
 // Collector aggregates metrics from tunnel sessions and transports.
 type Collector struct {
 	// Session metrics
-	sessionsActive   atomic.Uint64
-	sessionsTotal    atomic.Uint64
-	sessionsFailed   atomic.Uint64
+	sessionsActive   atomic.Int64
+	sessionsTotal    atomic.Int64
+	sessionsFailed   atomic.Int64
 	handshakeLatency *Histogram
 
 	// Traffic metrics
-	bytesSent     atomic.Uint64
-	bytesReceived atomic.Uint64
-	packetsSent   atomic.Uint64
-	packetsRecv   atomic.Uint64
+	bytesSent     atomic.Int64
+	bytesReceived atomic.Int64
+	packetsSent   atomic.Int64
+	packetsRecv   atomic.Int64
 
 	// Security metrics
-	replayAttacksBlocked atomic.Uint64
-	authFailures         atomic.Uint64
-	rekeysInitiated      atomic.Uint64
-	rekeysCompleted      atomic.Uint64
-	rekeysFailed         atomic.Uint64
+	replayAttacksBlocked atomic.Int64
+	authFailures         atomic.Int64
+	rekeysInitiated      atomic.Int64
+	rekeysCompleted      atomic.Int64
+	rekeysFailed         atomic.Int64
 
 	// Error metrics
-	encryptErrors  atomic.Uint64
-	decryptErrors  atomic.Uint64
-	protocolErrors atomic.Uint64
+	encryptErrors  atomic.Int64
+	decryptErrors  atomic.Int64
+	protocolErrors atomic.Int64
+
+	// Rate limit metrics
+	connectionRateLimits atomic.Int64
+	handshakeRateLimits  atomic.Int64
 
 	// Performance histograms
 	encryptLatency *Histogram
@@ -90,7 +94,7 @@ func (c *Collector) SessionStarted() {
 func (c *Collector) SessionEnded() {
 	for {
 		current := c.sessionsActive.Load()
-		if current == 0 {
+		if current <= 0 {
 			return
 		}
 		if c.sessionsActive.CompareAndSwap(current, current-1) {
@@ -112,13 +116,19 @@ func (c *Collector) RecordHandshakeLatency(d time.Duration) {
 // --- Traffic Metrics ---
 
 // RecordBytesSent adds to the bytes sent counter.
-func (c *Collector) RecordBytesSent(n uint64) {
-	c.bytesSent.Add(n)
+func (c *Collector) RecordBytesSent(n int) {
+	if n < 0 {
+		return
+	}
+	c.bytesSent.Add(int64(n))
 }
 
 // RecordBytesReceived adds to the bytes received counter.
-func (c *Collector) RecordBytesReceived(n uint64) {
-	c.bytesReceived.Add(n)
+func (c *Collector) RecordBytesReceived(n int) {
+	if n < 0 {
+		return
+	}
+	c.bytesReceived.Add(int64(n))
 }
 
 // RecordPacketSent increments packets sent counter.
@@ -175,6 +185,16 @@ func (c *Collector) RecordProtocolError() {
 	c.protocolErrors.Add(1)
 }
 
+// RecordConnectionRateLimit increments the connection rate limit counter.
+func (c *Collector) RecordConnectionRateLimit() {
+	c.connectionRateLimits.Add(1)
+}
+
+// RecordHandshakeRateLimit increments the handshake rate limit counter.
+func (c *Collector) RecordHandshakeRateLimit() {
+	c.handshakeRateLimits.Add(1)
+}
+
 // --- Performance Metrics ---
 
 // RecordEncryptLatency records encryption operation latency.
@@ -198,27 +218,31 @@ type Snapshot struct {
 	Uptime time.Duration
 
 	// Session metrics
-	SessionsActive uint64
-	SessionsTotal  uint64
-	SessionsFailed uint64
+	SessionsActive int64
+	SessionsTotal  int64
+	SessionsFailed int64
 
 	// Traffic metrics
-	BytesSent     uint64
-	BytesReceived uint64
-	PacketsSent   uint64
-	PacketsRecv   uint64
+	BytesSent     int64
+	BytesReceived int64
+	PacketsSent   int64
+	PacketsRecv   int64
 
 	// Security metrics
-	ReplayAttacksBlocked uint64
-	AuthFailures         uint64
-	RekeysInitiated      uint64
-	RekeysCompleted      uint64
-	RekeysFailed         uint64
+	ReplayAttacksBlocked int64
+	AuthFailures         int64
+	RekeysInitiated      int64
+	RekeysCompleted      int64
+	RekeysFailed         int64
 
 	// Error metrics
-	EncryptErrors  uint64
-	DecryptErrors  uint64
-	ProtocolErrors uint64
+	EncryptErrors  int64
+	DecryptErrors  int64
+	ProtocolErrors int64
+
+	// Rate limit metrics
+	ConnectionRateLimits int64
+	HandshakeRateLimits  int64
 
 	// Histogram summaries
 	HandshakeLatency HistogramSummary
@@ -249,6 +273,8 @@ func (c *Collector) Snapshot() Snapshot {
 		EncryptErrors:        c.encryptErrors.Load(),
 		DecryptErrors:        c.decryptErrors.Load(),
 		ProtocolErrors:       c.protocolErrors.Load(),
+		ConnectionRateLimits: c.connectionRateLimits.Load(),
+		HandshakeRateLimits:  c.handshakeRateLimits.Load(),
 		HandshakeLatency:     c.handshakeLatency.Summary(),
 		EncryptLatency:       c.encryptLatency.Summary(),
 		DecryptLatency:       c.decryptLatency.Summary(),
@@ -273,6 +299,8 @@ func (c *Collector) Reset() {
 	c.encryptErrors.Store(0)
 	c.decryptErrors.Store(0)
 	c.protocolErrors.Store(0)
+	c.connectionRateLimits.Store(0)
+	c.handshakeRateLimits.Store(0)
 	c.handshakeLatency.Reset()
 	c.encryptLatency.Reset()
 	c.decryptLatency.Reset()

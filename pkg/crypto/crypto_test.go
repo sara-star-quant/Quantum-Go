@@ -461,7 +461,7 @@ func TestAEADSetCounter(t *testing.T) {
 	}
 
 	// Set counter to max value should fail
-	err = aead.SetCounter(uint64(constants.MaxPacketsBeforeRekey))
+	err = aead.SetCounter(constants.MaxPacketsBeforeRekey)
 	if err == nil {
 		t.Error("Expected error for counter at max")
 	}
@@ -482,7 +482,7 @@ func TestAEADNeedsRekey(t *testing.T) {
 	}
 
 	// Set counter to 90% of capacity
-	threshold := uint64(constants.MaxPacketsBeforeRekey) * 9 / 10
+	var threshold uint64 = constants.MaxPacketsBeforeRekey * 9 / 10
 	_ = aead.SetCounter(threshold)
 
 	// Now should need rekey

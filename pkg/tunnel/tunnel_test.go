@@ -157,14 +157,15 @@ func TestReplayWindow(t *testing.T) {
 	rw := tunnel.NewReplayWindow()
 
 	// Test normal sequence
-	for i := uint64(0); i < 100; i++ {
+	var i uint64
+	for i = 0; i < 100; i++ {
 		if !rw.Check(i) {
 			t.Errorf("Sequence %d should be valid", i)
 		}
 	}
 
 	// Test replay (already seen)
-	for i := uint64(36); i < 100; i++ {
+	for i = 36; i < 100; i++ {
 		if rw.Check(i) {
 			t.Errorf("Sequence %d should be rejected as replay", i)
 		}

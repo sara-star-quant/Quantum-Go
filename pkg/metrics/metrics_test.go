@@ -211,7 +211,7 @@ func TestCollectorConcurrency(t *testing.T) {
 		go func() {
 			for j := 0; j < 100; j++ {
 				c.SessionStarted()
-				c.RecordBytesSent(uint64(j))
+				c.RecordBytesSent(j)
 				c.RecordHandshakeLatency(time.Duration(j) * time.Millisecond)
 				c.SessionEnded()
 			}

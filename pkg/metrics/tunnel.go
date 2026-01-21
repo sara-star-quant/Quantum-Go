@@ -104,7 +104,7 @@ func (o *TunnelObserver) OnHandshakeStart(ctx context.Context) (context.Context,
 }
 
 // OnEncrypt records encryption metrics.
-func (o *TunnelObserver) OnEncrypt(ctx context.Context, plaintextLen uint64) (context.Context, func(error)) {
+func (o *TunnelObserver) OnEncrypt(ctx context.Context, plaintextLen int) (context.Context, func(error)) {
 	start := time.Now()
 	ctx, endSpan := o.tracer.StartSpan(ctx, SpanEncrypt)
 
@@ -125,7 +125,7 @@ func (o *TunnelObserver) OnEncrypt(ctx context.Context, plaintextLen uint64) (co
 }
 
 // OnDecrypt records decryption metrics.
-func (o *TunnelObserver) OnDecrypt(ctx context.Context, ciphertextLen uint64) (context.Context, func(error)) {
+func (o *TunnelObserver) OnDecrypt(ctx context.Context, ciphertextLen int) (context.Context, func(error)) {
 	start := time.Now()
 	ctx, endSpan := o.tracer.StartSpan(ctx, SpanDecrypt)
 
@@ -201,7 +201,7 @@ func NewInstrumentedSession(observer *TunnelObserver) *InstrumentedSession {
 }
 
 // WrapEncrypt wraps an encrypt operation with metrics.
-func (s *InstrumentedSession) WrapEncrypt(ctx context.Context, plaintextLen uint64, fn func() error) error {
+func (s *InstrumentedSession) WrapEncrypt(ctx context.Context, plaintextLen int, fn func() error) error {
 	_, done := s.observer.OnEncrypt(ctx, plaintextLen)
 	err := fn()
 	done(err)
@@ -209,7 +209,7 @@ func (s *InstrumentedSession) WrapEncrypt(ctx context.Context, plaintextLen uint
 }
 
 // WrapDecrypt wraps a decrypt operation with metrics.
-func (s *InstrumentedSession) WrapDecrypt(ctx context.Context, ciphertextLen uint64, fn func() error) error {
+func (s *InstrumentedSession) WrapDecrypt(ctx context.Context, ciphertextLen int, fn func() error) error {
 	_, done := s.observer.OnDecrypt(ctx, ciphertextLen)
 	err := fn()
 	done(err)

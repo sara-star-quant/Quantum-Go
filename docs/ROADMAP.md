@@ -28,23 +28,23 @@
 - [x] Add connection rate limiting (per IP)
 - [x] Add handshake rate limiting
 - [x] Add configurable limits via `TransportConfig`
-- [ ] Add metrics for rate limit events
+- [x] Add metrics for rate limit events
 
 ### 2. Metrics & Observability
 **Priority:** High | **Effort:** Medium
 
-- [ ] Add Prometheus-compatible metrics export
-- [ ] Add OpenTelemetry tracing support
-- [ ] Add structured logging with levels
-- [ ] Add health check endpoint for CLI server mode
+- [x] Add Prometheus-compatible metrics export
+- [x] Add OpenTelemetry tracing support
+- [x] Add structured logging with levels
+- [x] Add health check endpoint for CLI server mode
 
 ### 3. Connection Pooling
 **Priority:** Medium | **Effort:** Medium
 
-- [ ] Implement connection pool with configurable size
-- [ ] Add idle connection timeout
-- [ ] Add health checking for pooled connections
-- [ ] Add pool statistics
+- [x] Implement connection pool with configurable size
+- [x] Add idle connection timeout
+- [x] Add health checking for pooled connections
+- [x] Add pool statistics
 
 ### 4. Buffer Pooling
 **Priority:** Low | **Effort:** Low

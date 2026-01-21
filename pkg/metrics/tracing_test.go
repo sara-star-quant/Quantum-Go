@@ -207,10 +207,10 @@ func TestSpanAttributes(t *testing.T) {
 	if m["crypto.cipher_suite"] != "AES-256-GCM" {
 		t.Error("expected crypto.cipher_suite")
 	}
-	if m["network.bytes_sent"] != uint64(1000) {
+	if m["network.bytes_sent"] != int64(1000) {
 		t.Error("expected network.bytes_sent")
 	}
-	if m["network.bytes_received"] != uint64(2000) {
+	if m["network.bytes_received"] != int64(2000) {
 		t.Error("expected network.bytes_received")
 	}
 	if m["error.message"] != "test error" {

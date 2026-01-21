@@ -85,7 +85,7 @@ func (h *Histogram) Summary() HistogramSummary {
 
 	// Build cumulative bucket counts
 	buckets := make([]BucketCount, len(h.buckets)+1)
-	cumulative := uint64(0)
+	var cumulative uint64
 	for i, bound := range h.buckets {
 		cumulative += h.counts[i]
 		buckets[i] = BucketCount{
@@ -125,7 +125,7 @@ func (h *Histogram) calculatePercentiles(ps []float64) map[float64]float64 {
 
 	for _, p := range ps {
 		rank := p * float64(h.count)
-		cumulative := uint64(0)
+		var cumulative uint64
 
 		for i, c := range h.counts {
 			cumulative += c

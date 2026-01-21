@@ -95,6 +95,18 @@ var (
 	ErrTimeout = errors.New("tunnel: operation timed out")
 )
 
+// Sentinel errors for connection pool operations
+var (
+	// ErrPoolClosed indicates the pool has been closed
+	ErrPoolClosed = errors.New("pool: pool is closed")
+
+	// ErrPoolTimeout indicates a pool acquire operation timed out
+	ErrPoolTimeout = errors.New("pool: acquire timed out")
+
+	// ErrPoolExhausted indicates the pool has no available connections
+	ErrPoolExhausted = errors.New("pool: no connections available")
+)
+
 // CryptoError wraps a cryptographic error with additional context
 type CryptoError struct {
 	Op  string // Operation that failed

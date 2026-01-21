@@ -114,10 +114,10 @@ type Session struct {
 	observer Observer
 
 	// Statistics
-	BytesSent     atomic.Uint64
-	BytesReceived atomic.Uint64
-	PacketsSent   atomic.Uint64
-	PacketsRecv   atomic.Uint64
+	BytesSent     atomic.Int64
+	BytesReceived atomic.Int64
+	PacketsSent   atomic.Int64
+	PacketsRecv   atomic.Int64
 
 	// Handshake transcript for key derivation
 	transcriptHash []byte //nolint:unused // Reserved for future session verification
@@ -165,7 +165,8 @@ func (rw *ReplayWindow) Check(seq uint64) bool {
 	// Sequence number is within the window
 	if seq <= rw.highSeq {
 		diff := rw.highSeq - seq
-		bit := uint64(1) << diff
+		var bit uint64 = 1
+		bit <<= diff
 		if rw.bitmap&bit != 0 {
 			return false // Already received
 		}
@@ -299,7 +300,7 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 	observer := s.observer
 	var done func(error)
 	if observer != nil {
-		_, done = observer.OnEncrypt(context.Background(), uint64(len(plaintext)))
+		_, done = observer.OnEncrypt(context.Background(), len(plaintext))
 	}
 
 	if cipher == nil {
@@ -331,7 +332,7 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 		done(nil)
 	}
 
-	s.BytesSent.Add(uint64(len(plaintext)))
+	s.BytesSent.Add(int64(len(plaintext)))
 	s.PacketsSent.Add(1)
 	s.mu.Lock()
 	s.LastActivity = time.Now()
@@ -364,7 +365,7 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 	observer := s.observer
 	var done func(error)
 	if observer != nil {
-		_, done = observer.OnDecrypt(context.Background(), uint64(len(ciphertext)))
+		_, done = observer.OnDecrypt(context.Background(), len(ciphertext))
 	}
 
 	// Use sequence number as additional authenticated data
@@ -391,7 +392,7 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 		done(nil)
 	}
 
-	s.BytesReceived.Add(uint64(len(plaintext)))
+	s.BytesReceived.Add(int64(len(plaintext)))
 	s.PacketsRecv.Add(1)
 	s.mu.Lock()
 	s.LastActivity = time.Now()
@@ -554,10 +555,10 @@ func (s *Session) Close() {
 
 // Stats returns session statistics.
 type Stats struct {
-	BytesSent     uint64
-	BytesReceived uint64
-	PacketsSent   uint64
-	PacketsRecv   uint64
+	BytesSent     int64
+	BytesReceived int64
+	PacketsSent   int64
+	PacketsRecv   int64
 	Duration      time.Duration
 	State         SessionState
 }
