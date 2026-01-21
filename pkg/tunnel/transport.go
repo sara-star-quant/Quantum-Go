@@ -10,6 +10,7 @@ package tunnel
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -174,8 +175,14 @@ func (t *Transport) Receive() ([]byte, error) {
 		return t.Receive()
 
 	case protocol.MessageTypeAlert:
-		code, desc, _ := t.codec.DecodeAlert(msg)
-		return nil, qerrors.NewProtocolError("alert", &alertError{code: code, desc: desc})
+		level, code, desc, _ := t.codec.DecodeAlert(msg)
+		if code == protocol.AlertCodeCloseNotify {
+			t.closedMu.Lock()
+			t.closed = true
+			t.closedMu.Unlock()
+			return nil, qerrors.ErrTunnelClosed
+		}
+		return nil, qerrors.NewProtocolError("alert", &alertError{level: level, code: code, desc: desc})
 
 	default:
 		return nil, qerrors.ErrInvalidMessage
@@ -257,6 +264,19 @@ func (t *Transport) encodePong() []byte {
 	return buf
 }
 
+// sendAlert sends an alert message to the peer.
+func (t *Transport) sendAlert(level protocol.AlertLevel, code protocol.AlertCode, desc string) error {
+	msg := t.codec.EncodeAlert(level, code, desc)
+
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
+	// Use a short timeout for alerts
+	_ = t.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_, err := t.conn.Write(msg)
+	return err
+}
+
 // Close gracefully closes the transport.
 func (t *Transport) Close() error {
 	t.closedMu.Lock()
@@ -267,14 +287,19 @@ func (t *Transport) Close() error {
 	t.closed = true
 	t.closedMu.Unlock()
 
-	// Send close notification with short timeout (best effort)
-	closeMsg := t.encodeClose()
+	// Send close notification alert with short timeout (best effort)
+	t.closedMu.RLock()
+	isEstablished := t.session.State() == SessionStateEstablished
+	t.closedMu.RUnlock()
 
-	t.writeMu.Lock()
-	// Use a short timeout for close notification to avoid blocking
-	_ = t.conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
-	_, _ = t.conn.Write(closeMsg) // Best effort, ignore errors
-	t.writeMu.Unlock()
+	if isEstablished {
+		// Use a very short timeout for close notification to avoid blocking
+		_ = t.conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+		msg := t.codec.EncodeAlert(protocol.AlertLevelWarning, protocol.AlertCodeCloseNotify, "connection closed")
+		t.writeMu.Lock()
+		_, _ = t.conn.Write(msg)
+		t.writeMu.Unlock()
+	}
 
 	// Close session
 	t.session.Close()
@@ -283,14 +308,6 @@ func (t *Transport) Close() error {
 	_ = t.conn.Close()
 
 	return nil
-}
-
-// encodeClose creates a close notification message.
-func (t *Transport) encodeClose() []byte {
-	buf := make([]byte, protocol.HeaderSize)
-	buf[0] = byte(protocol.MessageTypeClose)
-	binary.BigEndian.PutUint32(buf[1:], 0)
-	return buf
 }
 
 // --- Rekey Protocol Methods ---
@@ -423,15 +440,21 @@ func (t *Transport) SetWriteTimeout(d time.Duration) {
 
 // alertError represents an alert received from the peer.
 type alertError struct {
-	code protocol.AlertCode
-	desc string
+	level protocol.AlertLevel
+	code  protocol.AlertCode
+	desc  string
 }
 
 func (e *alertError) Error() string {
-	if e.desc != "" {
-		return "alert: " + e.desc
+	prefix := "alert (warning): "
+	if e.level == protocol.AlertLevelFatal {
+		prefix = "alert (fatal): "
 	}
-	return "alert: code " + string(rune('0'+int(e.code)))
+
+	if e.desc != "" {
+		return prefix + e.desc
+	}
+	return fmt.Sprintf("%scode %d", prefix, e.code)
 }
 
 // --- Tunnel (Convenience Wrapper) ---

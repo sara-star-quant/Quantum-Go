@@ -26,7 +26,8 @@ Quantum-Go is a production-ready, quantum-resistant VPN encryption library imple
 | Post-Quantum Security | ML-KEM-1024 (NIST Category 5) |
 | Classical Security | X25519 (128-bit) |
 | Hybrid Guarantee | Secure if EITHER algorithm is secure |
-| Forward Secrecy | Ephemeral keys per session |
+| Forward Secrecy | Ephemeral keys per session (and per rekey) |
+| Session Resumption | Secure abbreviated handshake with encrypted tickets |
 | FIPS Compliance | Roadmap for FIPS 140-3 |
 
 ## Quick Start
@@ -141,6 +142,10 @@ Initiator                              Responder
     │                                      │
     │═══════ Encrypted Tunnel ═════════════│
 ```
+
+### Session Resumption
+
+Quantum-Go supports secure session resumption using encrypted tickets. Following a successful full handshake, the server can issue a session ticket that allows for an abbreviated handshake (skipping the heavy CH-KEM exchange) while maintaining forward secrecy and security parity with the full handshake.
 
 ## Performance
 
@@ -306,3 +311,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 **Disclaimer:** This software is provided for educational and research purposes. For production use in high-security environments, conduct independent security audits and consider FIPS validation requirements.
+
+**Regulatory Warning:** This software contains high-strength encryption which may be subject to export/import and usage restrictions in your jurisdiction (e.g., United States EAR, EU Dual-Use Regulations, Wassenaar Arrangement). **Quantum-Go must not be used to bypass telecommunications regulations, including VoIP censorship or VPN restrictions, in highly regulated regions such as the United Arab Emirates, Saudi Arabia, China, and others.** Users are solely responsible for ensuring compliance with all local laws and regulations.
