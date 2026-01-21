@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.5] - 2026-01-21
+
+### Added
+- **Global Compliance**: Comprehensive regulatory documentation for 15+ jurisdictions (docs/ROADMAP.md) and strict liability guidelines.
+- **Protocol Hardening**: Added `pkg/version` for semantic versioning and build metadata.
+- **Test Coverage**: New error-path test suite (`coverage_test.go`), pushing core package coverage >90%.
+- **Documentation**: Refactored `README.md` into modular usage guides (`docs/usage/`).
+
+### Fixed
+- **Security**: Fixed potential panic in benchmark tool (G602 bounds check).
+- **Code Quality**: Resolved all `errcheck` lint errors in integration tests.
+- **Stability**: Improved connection tear-down stability in transport layer.
+
+
 ## [0.0.4] - 2026-01-20
 
 ### Added
@@ -103,7 +117,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.4...HEAD
+[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.5...HEAD
+[0.0.5]: https://github.com/pzverkov/quantum-go/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/pzverkov/quantum-go/compare/v0.0.3...v0.0.4
 [0.0.3]: https://github.com/pzverkov/quantum-go/compare/v0.0.2...v0.0.3
 [0.0.2]: https://github.com/pzverkov/quantum-go/compare/v0.0.1...v0.0.2

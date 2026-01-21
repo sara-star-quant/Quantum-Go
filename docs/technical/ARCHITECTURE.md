@@ -312,11 +312,11 @@ Errors are designed to prevent information leakage:
 
 | Operation | Time | Throughput |
 |-----------|------|------------|
-| CH-KEM KeyGen | ~1.5ms | 666 ops/s |
-| CH-KEM Encapsulate | ~0.8ms | 1250 ops/s |
-| CH-KEM Decapsulate | ~0.7ms | 1428 ops/s |
-| AES-256-GCM Encrypt (1400B) | ~1μs | 1.3 GB/s |
-| Full Handshake | ~5ms | 200 handshakes/s |
+| CH-KEM KeyGen | ~0.1ms | 10,000 ops/s |
+| CH-KEM Encapsulate | ~0.12ms | 8,000 ops/s |
+| CH-KEM Decapsulate | ~0.11ms | 9,000 ops/s |
+| AES-256-GCM Encrypt (1400B) | ~460ns | 3.0 GB/s |
+| Full Handshake | ~0.5ms | 1,800 handshakes/s |
 
 ### 7.2 Memory Usage
 
