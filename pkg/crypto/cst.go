@@ -362,11 +362,7 @@ func SecureRandomWithCST(b []byte) error {
 	}
 
 	// Run periodic health check
-	if err := runRNGHealthCheck(); err != nil {
-		return err
-	}
-
-	return nil
+	return runRNGHealthCheck()
 }
 
 // CSTEnabled returns true if Conditional Self-Tests are enabled.
