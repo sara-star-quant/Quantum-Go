@@ -42,10 +42,10 @@ var (
 	// Nonce: 0x000000000000000000000000 (12 bytes)
 	// Plaintext: "POST-KAT-TEST"
 	// Expected ciphertext + tag
-	postKATAESKey, _        = hex.DecodeString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-	postKATAESNonce, _      = hex.DecodeString("000000000000000000000000")
-	postKATAESPlaintext, _  = hex.DecodeString("504f53542d4b41542d54455354") // "POST-KAT-TEST"
-	postKATAESExpected, _   = hex.DecodeString("5a48b3005aeb1b0a8cd6767b8cded311eb6185c16343d286e3541e9d98")
+	postKATAESKey, _       = hex.DecodeString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	postKATAESNonce, _     = hex.DecodeString("000000000000000000000000")
+	postKATAESPlaintext, _ = hex.DecodeString("504f53542d4b41542d54455354") // "POST-KAT-TEST"
+	postKATAESExpected, _  = hex.DecodeString("5a48b3005aeb1b0a8cd6767b8cded311eb6185c16343d286e3541e9d98")
 
 	// ML-KEM KAT
 	// Using a deterministic seed to generate a known key pair and verify encap/decap

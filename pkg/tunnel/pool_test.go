@@ -980,12 +980,12 @@ func TestPoolObserver(t *testing.T) {
 
 // testPoolObserver is a test implementation of PoolObserver.
 type testPoolObserver struct {
-	acquireCount      atomic.Int32
-	releaseCount      atomic.Int32
-	timeoutCount      atomic.Int32
-	connCreatedCount  atomic.Int32
-	connClosedCount   atomic.Int32
-	healthCheckCount  atomic.Int32
+	acquireCount     atomic.Int32
+	releaseCount     atomic.Int32
+	timeoutCount     atomic.Int32
+	connCreatedCount atomic.Int32
+	connClosedCount  atomic.Int32
+	healthCheckCount atomic.Int32
 }
 
 func (o *testPoolObserver) OnAcquire(_ time.Duration, _ bool) {

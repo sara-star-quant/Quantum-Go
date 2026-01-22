@@ -28,8 +28,8 @@ type BufferPool struct {
 
 // Buffer size class thresholds for crypto operations.
 const (
-	nonceBufferSize       = constants.AESNonceSize // 12 bytes
-	smallCryptoBufferSize = 1024 + constants.AESNonceSize + constants.AESTagSize
+	nonceBufferSize        = constants.AESNonceSize // 12 bytes
+	smallCryptoBufferSize  = 1024 + constants.AESNonceSize + constants.AESTagSize
 	mediumCryptoBufferSize = 16*1024 + constants.AESNonceSize + constants.AESTagSize
 	largeCryptoBufferSize  = 64*1024 + constants.AESNonceSize + constants.AESTagSize
 )
@@ -143,7 +143,7 @@ func (p *BufferPool) PutCiphertext(buf []byte) {
 		p.medium.Put(bufPtr)
 	case largeCryptoBufferSize:
 		p.large.Put(bufPtr)
-	// Non-standard sizes are not returned to pool
+		// Non-standard sizes are not returned to pool
 	}
 }
 

@@ -9,18 +9,18 @@ import (
 // All fields use atomic operations for thread safety.
 type PoolStats struct {
 	// Gauges (current state)
-	connectionsTotal  atomic.Int64
-	connectionsIdle   atomic.Int64
-	connectionsInUse  atomic.Int64
-	waitingCount      atomic.Int64
+	connectionsTotal atomic.Int64
+	connectionsIdle  atomic.Int64
+	connectionsInUse atomic.Int64
+	waitingCount     atomic.Int64
 
 	// Counters (cumulative since pool creation)
-	acquiresTotal          atomic.Uint64
-	acquireTimeoutsTotal   atomic.Uint64
-	connectionsCreated     atomic.Uint64
-	connectionsClosed      atomic.Uint64
-	healthChecksTotal      atomic.Uint64
-	healthChecksFailed     atomic.Uint64
+	acquiresTotal        atomic.Uint64
+	acquireTimeoutsTotal atomic.Uint64
+	connectionsCreated   atomic.Uint64
+	connectionsClosed    atomic.Uint64
+	healthChecksTotal    atomic.Uint64
+	healthChecksFailed   atomic.Uint64
 
 	// Timing accumulators for averages
 	totalAcquireWaitNanos atomic.Int64
@@ -159,10 +159,10 @@ type PoolStatsSnapshot struct {
 	Uptime time.Duration
 
 	// Current state (gauges)
-	ConnectionsTotal  int64
-	ConnectionsIdle   int64
-	ConnectionsInUse  int64
-	WaitingCount      int64
+	ConnectionsTotal int64
+	ConnectionsIdle  int64
+	ConnectionsInUse int64
+	WaitingCount     int64
 
 	// Cumulative counters
 	AcquiresTotal        uint64

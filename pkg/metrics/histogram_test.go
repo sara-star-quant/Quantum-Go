@@ -9,10 +9,10 @@ func TestHistogramBasic(t *testing.T) {
 	h := NewHistogram([]float64{10, 50, 100, 500})
 
 	// Add observations
-	h.Observe(5)   // bucket 0 (<=10)
-	h.Observe(25)  // bucket 1 (<=50)
-	h.Observe(75)  // bucket 2 (<=100)
-	h.Observe(200) // bucket 3 (<=500)
+	h.Observe(5)    // bucket 0 (<=10)
+	h.Observe(25)   // bucket 1 (<=50)
+	h.Observe(75)   // bucket 2 (<=100)
+	h.Observe(200)  // bucket 3 (<=500)
 	h.Observe(1000) // bucket 4 (overflow)
 
 	if h.Count() != 5 {

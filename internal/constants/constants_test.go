@@ -55,9 +55,9 @@ func TestConstants(t *testing.T) {
 
 func testKeySizes(t *testing.T) {
 	tests := []struct {
-		name  string
-		got   int
-		want  int
+		name string
+		got  int
+		want int
 	}{
 		{"X25519PublicKeySize", X25519PublicKeySize, 32},
 		{"MLKEMPublicKeySize", MLKEMPublicKeySize, 1568},
@@ -73,9 +73,9 @@ func testKeySizes(t *testing.T) {
 
 func testCHKEMSizes(t *testing.T) {
 	tests := []struct {
-		name  string
-		got   int
-		want  int
+		name string
+		got  int
+		want int
 	}{
 		{"CHKEMPublicKeySize", CHKEMPublicKeySize, X25519PublicKeySize + MLKEMPublicKeySize},
 		{"CHKEMCiphertextSize", CHKEMCiphertextSize, X25519PublicKeySize + MLKEMCiphertextSize},
@@ -90,9 +90,9 @@ func testCHKEMSizes(t *testing.T) {
 
 func testAEADParameters(t *testing.T) {
 	tests := []struct {
-		name  string
-		got   int
-		want  int
+		name string
+		got  int
+		want int
 	}{
 		{"AESNonceSize", AESNonceSize, 12},
 		{"AESTagSize", AESTagSize, 16},
@@ -172,11 +172,11 @@ func TestCipherSuiteIsFIPSApproved(t *testing.T) {
 		suite CipherSuite
 		want  bool
 	}{
-		{CipherSuiteAES256GCM, true},          // AES-256-GCM is FIPS approved
-		{CipherSuiteChaCha20Poly1305, false},  // ChaCha20-Poly1305 is NOT FIPS approved
-		{CipherSuite(0x0000), false},          // Unknown suites are not approved
-		{CipherSuite(0xFFFF), false},          // Unknown suites are not approved
-		{CipherSuite(0x0003), false},          // Unknown suites are not approved
+		{CipherSuiteAES256GCM, true},         // AES-256-GCM is FIPS approved
+		{CipherSuiteChaCha20Poly1305, false}, // ChaCha20-Poly1305 is NOT FIPS approved
+		{CipherSuite(0x0000), false},         // Unknown suites are not approved
+		{CipherSuite(0xFFFF), false},         // Unknown suites are not approved
+		{CipherSuite(0x0003), false},         // Unknown suites are not approved
 	}
 
 	for _, tt := range tests {

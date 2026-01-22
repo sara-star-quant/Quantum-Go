@@ -117,7 +117,7 @@ func (p *BufferPool) Put(buf []byte) {
 		p.large.Put(bufPtr)
 	case xlargeBufferSize:
 		p.xlarge.Put(bufPtr)
-	// Non-standard sizes are not returned to pool (they were allocated directly)
+		// Non-standard sizes are not returned to pool (they were allocated directly)
 	}
 }
 
@@ -167,9 +167,9 @@ func (pb *PooledBuffer) Release() {
 
 // BufferPoolStats contains statistics about buffer pool usage.
 type BufferPoolStats struct {
-	SmallGets  int64
-	MediumGets int64
-	LargeGets  int64
-	XLargeGets int64
+	SmallGets    int64
+	MediumGets   int64
+	LargeGets    int64
+	XLargeGets   int64
 	DirectAllocs int64
 }

@@ -56,12 +56,12 @@ func (h *Histogram) Observe(v float64) {
 
 // HistogramSummary contains summarized histogram data.
 type HistogramSummary struct {
-	Count   uint64             `json:"count"`
-	Sum     float64            `json:"sum"`
-	Min     float64            `json:"min"`
-	Max     float64            `json:"max"`
-	Mean    float64            `json:"mean"`
-	Buckets []BucketCount      `json:"buckets"`
+	Count       uint64              `json:"count"`
+	Sum         float64             `json:"sum"`
+	Min         float64             `json:"min"`
+	Max         float64             `json:"max"`
+	Mean        float64             `json:"mean"`
+	Buckets     []BucketCount       `json:"buckets"`
 	Percentiles map[float64]float64 `json:"percentiles,omitempty"`
 }
 
@@ -78,7 +78,7 @@ func (h *Histogram) Summary() HistogramSummary {
 
 	if h.count == 0 {
 		return HistogramSummary{
-			Buckets: make([]BucketCount, 0),
+			Buckets:     make([]BucketCount, 0),
 			Percentiles: make(map[float64]float64),
 		}
 	}

@@ -17,12 +17,12 @@ type Pool struct {
 	address string
 	config  PoolConfig
 
-	mu       sync.Mutex
-	conns    []*pooledConn // All connections (idle + in-use)
-	idle     []*pooledConn // Available connections (LIFO for cache locality)
-	waiters  []chan *pooledConn
-	closed   bool
-	stats    *PoolStats
+	mu      sync.Mutex
+	conns   []*pooledConn // All connections (idle + in-use)
+	idle    []*pooledConn // Available connections (LIFO for cache locality)
+	waiters []chan *pooledConn
+	closed  bool
+	stats   *PoolStats
 
 	healthCtx    context.Context
 	healthCancel context.CancelFunc

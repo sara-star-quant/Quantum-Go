@@ -154,10 +154,10 @@ func (o *PoolMetricsObserver) OnPoolStats(stats tunnel.PoolStatsSnapshot) {
 // PoolMetricsSnapshot is a snapshot of pool metrics.
 type PoolMetricsSnapshot struct {
 	// Current state (gauges)
-	ConnectionsTotal  int64
-	ConnectionsIdle   int64
-	ConnectionsInUse  int64
-	WaitingCount      int64
+	ConnectionsTotal int64
+	ConnectionsIdle  int64
+	ConnectionsInUse int64
+	WaitingCount     int64
 
 	// Cumulative counters
 	AcquiresTotal        uint64
