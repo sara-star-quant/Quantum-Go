@@ -165,3 +165,34 @@ func TestCipherSuiteUniqueness(t *testing.T) {
 		t.Error("Cipher suite IDs must be unique")
 	}
 }
+
+// TestCipherSuiteIsFIPSApproved tests IsFIPSApproved method for CipherSuite.
+func TestCipherSuiteIsFIPSApproved(t *testing.T) {
+	tests := []struct {
+		suite CipherSuite
+		want  bool
+	}{
+		{CipherSuiteAES256GCM, true},          // AES-256-GCM is FIPS approved
+		{CipherSuiteChaCha20Poly1305, false},  // ChaCha20-Poly1305 is NOT FIPS approved
+		{CipherSuite(0x0000), false},          // Unknown suites are not approved
+		{CipherSuite(0xFFFF), false},          // Unknown suites are not approved
+		{CipherSuite(0x0003), false},          // Unknown suites are not approved
+	}
+
+	for _, tt := range tests {
+		got := tt.suite.IsFIPSApproved()
+		if got != tt.want {
+			t.Errorf("CipherSuite(%d).IsFIPSApproved() = %v, want %v", tt.suite, got, tt.want)
+		}
+	}
+}
+
+// TestFIPSApprovedImpliesSupported verifies that all FIPS approved suites are also supported.
+func TestFIPSApprovedImpliesSupported(t *testing.T) {
+	suites := []CipherSuite{CipherSuiteAES256GCM, CipherSuiteChaCha20Poly1305}
+	for _, s := range suites {
+		if s.IsFIPSApproved() && !s.IsSupported() {
+			t.Errorf("CipherSuite %v is FIPS approved but not supported", s)
+		}
+	}
+}

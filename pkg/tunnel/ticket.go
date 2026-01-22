@@ -125,6 +125,11 @@ func (tm *TicketManager) DecryptTicket(data []byte) (*SessionTicket, error) {
 		return nil, qerrors.ErrExpiredTicket
 	}
 
+	// In FIPS mode, reject tickets with non-FIPS approved cipher suites
+	if crypto.FIPSMode() && !ticket.CipherSuite.IsFIPSApproved() {
+		return nil, qerrors.ErrCipherSuiteNotFIPSApproved
+	}
+
 	return ticket, nil
 }
 

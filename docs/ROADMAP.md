@@ -62,11 +62,11 @@
 ### 1. FIPS Build Mode
 **Priority:** High | **Effort:** Medium
 
-- [ ] Add `//go:build fips` conditional compilation
-- [ ] Disable ChaCha20-Poly1305 in FIPS mode (AES-GCM only)
-- [ ] Add FIPS mode indicator in session/transport
-- [ ] Add runtime FIPS mode check
-- [ ] Document FIPS deployment requirements
+- [x] Add `//go:build fips` conditional compilation
+- [x] Disable ChaCha20-Poly1305 in FIPS mode (AES-GCM only)
+- [x] Add FIPS mode indicator in session/transport
+- [x] Add runtime FIPS mode check
+- [x] Document FIPS deployment requirements
 
 ### 2. Power-On Self-Tests (POST)
 **Priority:** High | **Effort:** Medium

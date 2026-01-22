@@ -561,6 +561,8 @@ type Stats struct {
 	PacketsRecv   int64
 	Duration      time.Duration
 	State         SessionState
+	CipherSuite   constants.CipherSuite
+	FIPSMode      bool
 }
 
 // Stats returns current session statistics.
@@ -572,7 +574,15 @@ func (s *Session) Stats() Stats {
 		PacketsRecv:   s.PacketsRecv.Load(),
 		Duration:      time.Since(s.CreatedAt),
 		State:         s.State(),
+		CipherSuite:   s.CipherSuite,
+		FIPSMode:      crypto.FIPSMode(),
 	}
+}
+
+// IsFIPSCompliant returns true if the session is using FIPS-compliant settings.
+// This requires both FIPS mode to be enabled and a FIPS-approved cipher suite to be in use.
+func (s *Session) IsFIPSCompliant() bool {
+	return crypto.FIPSMode() && s.CipherSuite.IsFIPSApproved()
 }
 
 // --- Rekey Protocol Methods ---

@@ -11,8 +11,16 @@ import (
 func TestNewAEADInvalidSuite(t *testing.T) {
 	key := make([]byte, 32)
 	_, err := NewAEAD(constants.CipherSuite(0xFF), key)
-	if !errors.Is(err, qerrors.ErrUnsupportedCipherSuite) {
-		t.Errorf("expected ErrUnsupportedCipherSuite, got %v", err)
+	// In FIPS mode, an invalid suite returns ErrCipherSuiteNotFIPSApproved (checked first)
+	// In standard mode, it returns ErrUnsupportedCipherSuite
+	if FIPSMode() {
+		if !errors.Is(err, qerrors.ErrCipherSuiteNotFIPSApproved) {
+			t.Errorf("FIPS mode: expected ErrCipherSuiteNotFIPSApproved, got %v", err)
+		}
+	} else {
+		if !errors.Is(err, qerrors.ErrUnsupportedCipherSuite) {
+			t.Errorf("Standard mode: expected ErrUnsupportedCipherSuite, got %v", err)
+		}
 	}
 }
 

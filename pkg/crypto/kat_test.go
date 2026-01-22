@@ -333,6 +333,11 @@ func TestKATAEADRoundtrip(t *testing.T) {
 		for _, tc := range testCases {
 			name := suite.String() + "/" + tc.name
 			t.Run(name, func(t *testing.T) {
+				// Skip ChaCha20-Poly1305 tests in FIPS mode
+				if crypto.FIPSMode() && !suite.IsFIPSApproved() {
+					t.Skip("Skipping non-FIPS approved cipher suite in FIPS mode")
+				}
+
 				aead, err := crypto.NewAEAD(suite, key)
 				if err != nil {
 					t.Fatalf("NewAEAD failed: %v", err)
