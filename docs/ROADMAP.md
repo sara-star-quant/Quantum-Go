@@ -73,11 +73,11 @@
 
 Required for FIPS 140-3 validation.
 
-- [ ] Implement POST for ML-KEM (KAT check on init)
-- [ ] Implement POST for AES-GCM (KAT check on init)
-- [ ] Implement POST for SHAKE-256 (KAT check on init)
-- [ ] Add integrity check (hash of module binary)
-- [ ] Add failure handling (panic or degraded mode)
+- [x] Implement POST for ML-KEM (KAT check on init)
+- [x] Implement POST for AES-GCM (KAT check on init)
+- [x] Implement POST for SHAKE-256 (KAT check on init)
+- [x] Add integrity check (hash of module binary)
+- [x] Add failure handling (panic or degraded mode)
 
 ### 3. Conditional Self-Tests
 **Priority:** Medium | **Effort:** Low
