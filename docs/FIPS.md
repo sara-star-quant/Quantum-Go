@@ -189,13 +189,54 @@ Session statistics include FIPS mode status and the negotiated cipher suite.
 
 4. **Testing**: Always run the full test suite with `-tags fips` before deploying FIPS builds.
 
+## Power-On Self-Tests (POST)
+
+Quantum-Go includes FIPS 140-3 compliant Power-On Self-Tests that run automatically when the crypto package is loaded.
+
+### What POST Verifies
+
+| Algorithm | Test Type | Description |
+|-----------|-----------|-------------|
+| SHAKE-256 | KAT | Verifies key derivation produces expected output |
+| AES-256-GCM | KAT | Verifies encryption/decryption with known vectors |
+| ML-KEM-1024 | Consistency | Verifies encapsulation/decapsulation roundtrip |
+
+### POST Behavior
+
+```go
+import "github.com/pzverkov/quantum-go/pkg/crypto"
+
+// POST runs automatically on package import
+// Check if POST passed:
+if crypto.POSTPassed() {
+    fmt.Println("All self-tests passed")
+}
+
+// Get detailed results:
+result := crypto.RunPOST()
+fmt.Printf("KDF: %v, AES: %v, ML-KEM: %v\n",
+    result.KDFPassed, result.AESPassed, result.MLKEMPassed)
+```
+
+### Failure Handling
+
+| Mode | Behavior on POST Failure |
+|------|--------------------------|
+| FIPS Mode | **Panic** - prevents use of compromised crypto |
+| Standard Mode | Log error - continues operation |
+
+### Module Integrity Check
+
+```go
+integrity := crypto.CheckModuleIntegrity()
+fmt.Printf("Verified: %v\n", integrity.Verified)
+```
+
 ## Limitations
 
 - **Not a Certified Module**: This implementation provides FIPS-compliant algorithm selection but is not itself a FIPS 140-3 certified cryptographic module.
 
 - **Go Runtime**: The Go runtime's cryptographic implementations are used. For full FIPS certification, consider using a FIPS-certified cryptographic provider.
-
-- **Future Work**: Power-On Self-Tests (POST) and other FIPS 140-3 requirements are planned for future releases (see ROADMAP.md v0.0.7).
 
 ## Troubleshooting
 
