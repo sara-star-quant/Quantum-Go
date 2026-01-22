@@ -27,12 +27,25 @@ package crypto
 
 import (
 	"encoding/binary"
+	"math"
 
 	"golang.org/x/crypto/sha3"
 
 	"github.com/pzverkov/quantum-go/internal/constants"
 	qerrors "github.com/pzverkov/quantum-go/internal/errors"
 )
+
+// maxKDFInputSize is the maximum size for KDF inputs (1GB).
+// This prevents integer overflow when casting len() to uint32.
+const maxKDFInputSize = 1 << 30
+
+// safeUint32 safely converts an int to uint32, returning false if overflow would occur.
+func safeUint32(n int) (uint32, bool) {
+	if n < 0 || n > math.MaxUint32 {
+		return 0, false
+	}
+	return uint32(n), true
+}
 
 // DeriveKey derives a key using SHAKE-256 with domain separation.
 //
@@ -59,18 +72,28 @@ func DeriveKey(domain string, input []byte, outputLen int) ([]byte, error) {
 		return nil, qerrors.NewCryptoError("DeriveKey", qerrors.ErrInvalidKeySize)
 	}
 
+	// Validate input sizes to prevent uint32 overflow
+	domainBytes := []byte(domain)
+	domainLen, ok := safeUint32(len(domainBytes))
+	if !ok {
+		return nil, qerrors.NewCryptoError("DeriveKey", qerrors.ErrInvalidKeySize)
+	}
+	inputLen, ok := safeUint32(len(input))
+	if !ok {
+		return nil, qerrors.NewCryptoError("DeriveKey", qerrors.ErrInvalidKeySize)
+	}
+
 	h := sha3.NewShake256()
+	lenBuf := make([]byte, 4)
 
 	// Write domain separator with length prefix
 	// Note: sha3.ShakeHash.Write never returns an error (in-memory operation)
-	domainBytes := []byte(domain)
-	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(domainBytes)))
+	binary.BigEndian.PutUint32(lenBuf, domainLen)
 	_, _ = h.Write(lenBuf)
 	_, _ = h.Write(domainBytes)
 
 	// Write input with length prefix
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(input)))
+	binary.BigEndian.PutUint32(lenBuf, inputLen)
 	_, _ = h.Write(lenBuf)
 	_, _ = h.Write(input)
 
@@ -102,23 +125,37 @@ func DeriveKeyMultiple(domain string, inputs [][]byte, outputLen int) ([]byte, e
 		return nil, qerrors.NewCryptoError("DeriveKeyMultiple", qerrors.ErrInvalidKeySize)
 	}
 
+	// Validate input sizes to prevent uint32 overflow
+	domainBytes := []byte(domain)
+	domainLen, ok := safeUint32(len(domainBytes))
+	if !ok {
+		return nil, qerrors.NewCryptoError("DeriveKeyMultiple", qerrors.ErrInvalidKeySize)
+	}
+	inputsCount, ok := safeUint32(len(inputs))
+	if !ok {
+		return nil, qerrors.NewCryptoError("DeriveKeyMultiple", qerrors.ErrInvalidKeySize)
+	}
+
 	h := sha3.NewShake256()
 	lenBuf := make([]byte, 4)
 
 	// Write domain separator with length prefix
 	// Note: sha3.ShakeHash.Write never returns an error (in-memory operation)
-	domainBytes := []byte(domain)
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(domainBytes)))
+	binary.BigEndian.PutUint32(lenBuf, domainLen)
 	_, _ = h.Write(lenBuf)
 	_, _ = h.Write(domainBytes)
 
 	// Write number of inputs
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(inputs)))
+	binary.BigEndian.PutUint32(lenBuf, inputsCount)
 	_, _ = h.Write(lenBuf)
 
 	// Write each input with length prefix
 	for _, input := range inputs {
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(input)))
+		inputLen, ok := safeUint32(len(input))
+		if !ok {
+			return nil, qerrors.NewCryptoError("DeriveKeyMultiple", qerrors.ErrInvalidKeySize)
+		}
+		binary.BigEndian.PutUint32(lenBuf, inputLen)
 		_, _ = h.Write(lenBuf)
 		_, _ = h.Write(input)
 	}
@@ -153,12 +190,22 @@ func TranscriptHash(components ...[]byte) []byte {
 
 	// Write number of components
 	// Note: sha3.Hash.Write never returns an error (in-memory operation)
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(components)))
+	// Components count is bounded by protocol (typically 3-5 items)
+	componentsCount, ok := safeUint32(len(components))
+	if !ok {
+		panic("TranscriptHash: components count overflow")
+	}
+	binary.BigEndian.PutUint32(lenBuf, componentsCount)
 	_, _ = h.Write(lenBuf)
 
 	// Write each component with length prefix
+	// Component sizes are bounded by protocol message limits
 	for _, component := range components {
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(component)))
+		componentLen, ok := safeUint32(len(component))
+		if !ok {
+			panic("TranscriptHash: component size overflow")
+		}
+		binary.BigEndian.PutUint32(lenBuf, componentLen)
 		_, _ = h.Write(lenBuf)
 		_, _ = h.Write(component)
 	}
