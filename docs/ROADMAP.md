@@ -82,8 +82,8 @@ Required for FIPS 140-3 validation.
 ### 3. Conditional Self-Tests
 **Priority:** Medium | **Effort:** Low
 
-- [ ] Add pairwise consistency test on key generation
-- [ ] Add DRBG health check on RNG output
+- [x] Add pairwise consistency test on key generation
+- [x] Add DRBG health check on RNG output
 
 ---
 

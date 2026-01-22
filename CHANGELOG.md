@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.7][] - 2026-01-22
+
+### Added
+- **FIPS 140-3 Compliance** (`pkg/crypto/`)
+  - FIPS build mode via `//go:build fips` conditional compilation
+  - Runtime FIPS mode detection with `crypto.FIPSMode()`
+  - ChaCha20-Poly1305 disabled in FIPS mode (AES-256-GCM only)
+  - FIPS mode indicator in session statistics and transport
+  - Comprehensive FIPS deployment documentation (`docs/FIPS.md`)
+
+- **Power-On Self-Tests (POST)** (`pkg/crypto/post.go`)
+  - Known Answer Tests (KAT) for SHAKE-256, AES-256-GCM, ML-KEM-1024
+  - Automatic execution on package initialization
+  - Module integrity check mechanism
+  - FIPS mode: failures cause panic; Standard mode: failures logged
+  - `POSTRan()`, `POSTPassed()`, `RunPOST()`, `CheckModuleIntegrity()` API
+
+- **Conditional Self-Tests (CST)** (`pkg/crypto/cst.go`)
+  - Pairwise consistency tests for X25519 and ML-KEM key generation
+  - DRBG/RNG continuous health check
+  - Configurable via `CSTConfig` struct
+  - `GenerateX25519KeyPairWithCST()`, `GenerateMLKEMKeyPairWithCST()`
+  - `SecureRandomWithCST()` with continuous RNG test
+  - FIPS mode: enabled by default with panic on failure
+  - Standard mode: disabled by default with error return on failure
+
+- **FIPS Cipher Suite Validation** (`pkg/protocol/`, `pkg/tunnel/`)
+  - `CipherSuite.IsFIPSApproved()` method
+  - `Session.IsFIPSCompliant()` for compliance verification
+  - Session ticket rejection for non-FIPS cipher suites in FIPS mode
+  - `ErrCipherSuiteNotFIPSApproved` error type
+
+### Changed
+- **Cipher negotiation**: In FIPS mode, only AES-256-GCM is offered/accepted
+- **Session stats**: Added `FIPSMode` and `CipherSuite` fields to `Stats` struct
+
+### Security
+- FIPS 140-3 compliant self-test implementation
+- Cryptographic algorithm validation at module load time
+- Continuous RNG health monitoring prevents use of degraded randomness
+- Pairwise consistency tests catch key generation failures before use
+
 ## [0.0.6][] - 2026-01-22
 
 ### Added
@@ -169,7 +211,8 @@ Benchmark results (Apple M-series):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.6...HEAD
+[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.7...HEAD
+[0.0.7]: https://github.com/pzverkov/quantum-go/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/pzverkov/quantum-go/compare/v0.0.5...v0.0.6
 [0.0.5]: https://github.com/pzverkov/quantum-go/compare/v0.0.4...v0.0.5
 [0.0.4]: https://github.com/pzverkov/quantum-go/compare/v0.0.3...v0.0.4
