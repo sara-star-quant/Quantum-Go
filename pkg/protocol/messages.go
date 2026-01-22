@@ -25,21 +25,29 @@ import (
 // MessageType identifies the type of protocol message.
 type MessageType uint8
 
+// Protocol message types for handshake, tunnel, and error signaling.
 const (
-	// Handshake messages
-	MessageTypeClientHello    MessageType = 0x01
-	MessageTypeServerHello    MessageType = 0x02
+	// MessageTypeClientHello initiates the handshake from the client.
+	MessageTypeClientHello MessageType = 0x01
+	// MessageTypeServerHello responds to ClientHello with server parameters.
+	MessageTypeServerHello MessageType = 0x02
+	// MessageTypeClientFinished confirms handshake completion from client.
 	MessageTypeClientFinished MessageType = 0x03
+	// MessageTypeServerFinished confirms handshake completion from server.
 	MessageTypeServerFinished MessageType = 0x04
 
-	// Tunnel messages
-	MessageTypeData  MessageType = 0x10
+	// MessageTypeData carries encrypted application data.
+	MessageTypeData MessageType = 0x10
+	// MessageTypeRekey initiates a key rotation.
 	MessageTypeRekey MessageType = 0x11
-	MessageTypePing  MessageType = 0x12
-	MessageTypePong  MessageType = 0x13
+	// MessageTypePing requests a keepalive response.
+	MessageTypePing MessageType = 0x12
+	// MessageTypePong responds to a Ping.
+	MessageTypePong MessageType = 0x13
+	// MessageTypeClose signals graceful connection termination.
 	MessageTypeClose MessageType = 0x14
 
-	// Error messages
+	// MessageTypeAlert signals an error condition.
 	MessageTypeAlert MessageType = 0xF0
 )
 
@@ -74,15 +82,24 @@ func (mt MessageType) String() string {
 // AlertCode identifies specific error conditions.
 type AlertCode uint8
 
+// Alert codes identifying specific error conditions.
 const (
-	AlertCodeUnexpectedMessage  AlertCode = 0x01
-	AlertCodeBadCiphertext      AlertCode = 0x02
-	AlertCodeHandshakeFailure   AlertCode = 0x03
+	// AlertCodeUnexpectedMessage indicates an unexpected message was received.
+	AlertCodeUnexpectedMessage AlertCode = 0x01
+	// AlertCodeBadCiphertext indicates ciphertext validation failed.
+	AlertCodeBadCiphertext AlertCode = 0x02
+	// AlertCodeHandshakeFailure indicates the handshake could not complete.
+	AlertCodeHandshakeFailure AlertCode = 0x03
+	// AlertCodeUnsupportedVersion indicates no common protocol version.
 	AlertCodeUnsupportedVersion AlertCode = 0x04
-	AlertCodeUnsupportedCipher  AlertCode = 0x05
-	AlertCodeDecryptionFailed   AlertCode = 0x06
-	AlertCodeInternalError      AlertCode = 0x07
-	AlertCodeCloseNotify        AlertCode = 0x08
+	// AlertCodeUnsupportedCipher indicates no common cipher suite.
+	AlertCodeUnsupportedCipher AlertCode = 0x05
+	// AlertCodeDecryptionFailed indicates decryption or MAC verification failed.
+	AlertCodeDecryptionFailed AlertCode = 0x06
+	// AlertCodeInternalError indicates an internal implementation error.
+	AlertCodeInternalError AlertCode = 0x07
+	// AlertCodeCloseNotify indicates graceful connection closure.
+	AlertCodeCloseNotify AlertCode = 0x08
 )
 
 // ClientHello is sent by the initiator to begin the handshake.
@@ -156,9 +173,12 @@ type RekeyMessage struct {
 // AlertLevel indicates the severity of the alert.
 type AlertLevel uint8
 
+// Alert severity levels.
 const (
+	// AlertLevelWarning indicates a non-fatal condition that may be recoverable.
 	AlertLevelWarning AlertLevel = 0x01
-	AlertLevelFatal   AlertLevel = 0x02
+	// AlertLevelFatal indicates an unrecoverable error requiring connection termination.
+	AlertLevelFatal AlertLevel = 0x02
 )
 
 // AlertMessage signals an error condition or connection closure.

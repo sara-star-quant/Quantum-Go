@@ -36,7 +36,7 @@ This document provides the mathematical foundation for the Cascaded Hybrid Key E
 | Symbol | Description |
 |--------|-------------|
 | ℤ_q | Integers modulo q |
-| R_q | Polynomial ring ℤ_q[X]/(X^n + 1) |
+| R_q | Polynomial ring ℤ_q\[X\]/(X^n + 1) |
 | ←$ | Sampled uniformly at random |
 | ← | Deterministic assignment |
 | || | Concatenation |
@@ -78,7 +78,7 @@ Unlike factoring and discrete logarithm problems (broken by Shor's algorithm), l
 
 ### 3.1 Definition
 
-Let n, k, q be positive integers and let R_q = ℤ_q[X]/(X^n + 1) be a polynomial ring.
+Let n, k, q be positive integers and let R_q = ℤ_q\[X\]/(X^n + 1) be a polynomial ring.
 
 **MLWE Distribution:** For a secret s ∈ R_q^k and error distribution χ over R_q:
 

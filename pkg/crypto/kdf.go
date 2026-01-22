@@ -62,16 +62,17 @@ func DeriveKey(domain string, input []byte, outputLen int) ([]byte, error) {
 	h := sha3.NewShake256()
 
 	// Write domain separator with length prefix
+	// Note: sha3.ShakeHash.Write never returns an error (in-memory operation)
 	domainBytes := []byte(domain)
 	lenBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(lenBuf, uint32(len(domainBytes)))
-	h.Write(lenBuf)
-	h.Write(domainBytes)
+	_, _ = h.Write(lenBuf)
+	_, _ = h.Write(domainBytes)
 
 	// Write input with length prefix
 	binary.BigEndian.PutUint32(lenBuf, uint32(len(input)))
-	h.Write(lenBuf)
-	h.Write(input)
+	_, _ = h.Write(lenBuf)
+	_, _ = h.Write(input)
 
 	// Extract output
 	output := make([]byte, outputLen)
@@ -105,20 +106,21 @@ func DeriveKeyMultiple(domain string, inputs [][]byte, outputLen int) ([]byte, e
 	lenBuf := make([]byte, 4)
 
 	// Write domain separator with length prefix
+	// Note: sha3.ShakeHash.Write never returns an error (in-memory operation)
 	domainBytes := []byte(domain)
 	binary.BigEndian.PutUint32(lenBuf, uint32(len(domainBytes)))
-	h.Write(lenBuf)
-	h.Write(domainBytes)
+	_, _ = h.Write(lenBuf)
+	_, _ = h.Write(domainBytes)
 
 	// Write number of inputs
 	binary.BigEndian.PutUint32(lenBuf, uint32(len(inputs)))
-	h.Write(lenBuf)
+	_, _ = h.Write(lenBuf)
 
 	// Write each input with length prefix
 	for _, input := range inputs {
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(input)))
-		h.Write(lenBuf)
-		h.Write(input)
+		_, _ = h.Write(lenBuf)
+		_, _ = h.Write(input)
 	}
 
 	// Extract output
@@ -150,14 +152,15 @@ func TranscriptHash(components ...[]byte) []byte {
 	lenBuf := make([]byte, 4)
 
 	// Write number of components
+	// Note: sha3.Hash.Write never returns an error (in-memory operation)
 	binary.BigEndian.PutUint32(lenBuf, uint32(len(components)))
-	h.Write(lenBuf)
+	_, _ = h.Write(lenBuf)
 
 	// Write each component with length prefix
 	for _, component := range components {
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(component)))
-		h.Write(lenBuf)
-		h.Write(component)
+		_, _ = h.Write(lenBuf)
+		_, _ = h.Write(component)
 	}
 
 	return h.Sum(nil)
