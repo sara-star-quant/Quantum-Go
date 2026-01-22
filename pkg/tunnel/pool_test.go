@@ -85,73 +85,94 @@ func TestNewPool(t *testing.T) {
 	})
 }
 
-// TestPoolBasicFlow tests basic acquire/release flow with a real server.
-func TestPoolBasicFlow(t *testing.T) {
-	// Start a listener
+// startEchoServer starts an echo server and returns the address.
+func startEchoServer(t *testing.T) (string, func()) {
+	t.Helper()
 	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
-	defer func() { _ = listener.Close() }()
 
-	addr := listener.Addr().String()
+	go runEchoServer(listener)
 
-	// Server goroutine to accept connections
-	serverDone := make(chan struct{})
-	go func() {
-		defer close(serverDone)
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return // Listener closed
-			}
-			// Keep connection alive for pool reuse testing
-			go func(c *tunnel.Tunnel) {
-				for {
-					data, err := c.Receive()
-					if err != nil {
-						_ = c.Close()
-						return
-					}
-					// Echo back
-					if err := c.Send(data); err != nil {
-						_ = c.Close()
-						return
-					}
-				}
-			}(conn)
+	return listener.Addr().String(), func() { _ = listener.Close() }
+}
+
+// runEchoServer runs the echo server accept loop.
+func runEchoServer(listener *tunnel.Listener) {
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
 		}
-	}()
+		go echoHandler(conn)
+	}
+}
 
-	// Create pool
+// echoHandler handles a single echo connection.
+func echoHandler(c *tunnel.Tunnel) {
+	defer func() { _ = c.Close() }()
+	for {
+		data, err := c.Receive()
+		if err != nil {
+			return
+		}
+		if err := c.Send(data); err != nil {
+			return
+		}
+	}
+}
+
+// createTestPool creates a pool for testing.
+func createTestPool(t *testing.T, addr string) *tunnel.Pool {
+	t.Helper()
 	cfg := tunnel.DefaultPoolConfig()
-	cfg.MinConns = 0 // Start with no connections
+	cfg.MinConns = 0
 	cfg.MaxConns = 5
-	cfg.HealthCheckInterval = 0 // Disable background checks for this test
+	cfg.HealthCheckInterval = 0
 
 	pool, err := tunnel.NewPool("tcp", addr, cfg)
 	if err != nil {
 		t.Fatalf("NewPool failed: %v", err)
 	}
-	defer func() { _ = pool.Close() }()
 
-	ctx := context.Background()
-	if err := pool.Start(ctx); err != nil {
+	if err := pool.Start(context.Background()); err != nil {
 		t.Fatalf("Pool.Start failed: %v", err)
 	}
 
-	// Wait a bit for server to be ready
-	time.Sleep(50 * time.Millisecond)
+	return pool
+}
 
-	// Acquire a connection
+// TestPoolBasicFlow tests basic acquire/release flow with a real server.
+func TestPoolBasicFlow(t *testing.T) {
+	addr, cleanup := startEchoServer(t)
+	defer cleanup()
+
+	pool := createTestPool(t, addr)
+	defer func() { _ = pool.Close() }()
+
+	time.Sleep(50 * time.Millisecond)
+	ctx := context.Background()
+
+	// First acquire and use
+	conn := acquireAndVerify(t, pool, ctx, "Hello, Pool!")
+	mustRelease(t, conn)
+	verifyPoolState(t, pool, 1, 1)
+
+	// Second acquire (reuse)
+	conn2 := acquireAndVerify(t, pool, ctx, "Second message")
+	mustRelease(t, conn2)
+}
+
+// acquireAndVerify acquires a connection and verifies echo works.
+func acquireAndVerify(t *testing.T, pool *tunnel.Pool, ctx context.Context, msg string) *tunnel.PoolConn {
+	t.Helper()
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		t.Fatalf("Acquire failed: %v", err)
 	}
 
-	// Verify we can use it
-	testData := []byte("Hello, Pool!")
-	if err := conn.Send(testData); err != nil {
+	if err := conn.Send([]byte(msg)); err != nil {
 		t.Fatalf("Send failed: %v", err)
 	}
 
@@ -159,38 +180,28 @@ func TestPoolBasicFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Receive failed: %v", err)
 	}
-	if string(response) != string(testData) {
-		t.Errorf("Response = %q, want %q", response, testData)
+	if string(response) != msg {
+		t.Errorf("Response = %q, want %q", response, msg)
 	}
+	return conn
+}
 
-	// Release connection back to pool
+// mustRelease releases a connection, failing the test on error.
+func mustRelease(t *testing.T, conn *tunnel.PoolConn) {
+	t.Helper()
 	if err := conn.Release(); err != nil {
 		t.Errorf("Release failed: %v", err)
 	}
+}
 
-	// Verify pool size
-	if pool.Size() != 1 {
-		t.Errorf("Pool size = %d, want 1", pool.Size())
+// verifyPoolState checks pool size and idle count.
+func verifyPoolState(t *testing.T, pool *tunnel.Pool, size, idle int) {
+	t.Helper()
+	if pool.Size() != size {
+		t.Errorf("Pool size = %d, want %d", pool.Size(), size)
 	}
-	if pool.IdleCount() != 1 {
-		t.Errorf("Idle count = %d, want 1", pool.IdleCount())
-	}
-
-	// Acquire again - should get the same connection (reused)
-	conn2, err := pool.Acquire(ctx)
-	if err != nil {
-		t.Fatalf("Second Acquire failed: %v", err)
-	}
-
-	// Use it
-	if err := conn2.Send([]byte("Second message")); err != nil {
-		t.Fatalf("Second Send failed: %v", err)
-	}
-	_, _ = conn2.Receive()
-
-	// Release
-	if err := conn2.Release(); err != nil {
-		t.Errorf("Second Release failed: %v", err)
+	if pool.IdleCount() != idle {
+		t.Errorf("Idle count = %d, want %d", pool.IdleCount(), idle)
 	}
 }
 

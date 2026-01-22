@@ -149,86 +149,122 @@ func (t *Transport) Send(data []byte) error {
 
 // Receive reads and decrypts data from the tunnel.
 func (t *Transport) Receive() ([]byte, error) {
-	t.closedMu.RLock()
-	if t.closed {
-		t.closedMu.RUnlock()
-		return nil, qerrors.ErrTunnelClosed
+	if err := t.checkClosed(); err != nil {
+		return nil, err
 	}
-	t.closedMu.RUnlock()
 
-	// Read with timeout
+	msg, msgType, err := t.readMessage()
+	if err != nil {
+		return nil, err
+	}
+
+	return t.handleMessage(msg, msgType)
+}
+
+// checkClosed checks if the transport is closed.
+func (t *Transport) checkClosed() error {
+	t.closedMu.RLock()
+	defer t.closedMu.RUnlock()
+	if t.closed {
+		return qerrors.ErrTunnelClosed
+	}
+	return nil
+}
+
+// readMessage reads and validates a message from the connection.
+func (t *Transport) readMessage() ([]byte, protocol.MessageType, error) {
 	if t.readTimeout > 0 {
 		_ = t.conn.SetReadDeadline(time.Now().Add(t.readTimeout))
 	}
 
-	// Read message
 	msg, err := t.codec.ReadMessage(t.conn)
 	if err != nil {
 		if err == io.EOF {
-			return nil, qerrors.ErrTunnelClosed
+			return nil, 0, qerrors.ErrTunnelClosed
 		}
 		t.recordProtocolError(err)
-		return nil, err
+		return nil, 0, err
 	}
 
-	// Get message type
 	msgType, err := t.codec.GetMessageType(msg)
 	if err != nil {
 		t.recordProtocolError(err)
-		return nil, err
+		return nil, 0, err
 	}
 
+	return msg, msgType, nil
+}
+
+// handleMessage dispatches a message to the appropriate handler.
+func (t *Transport) handleMessage(msg []byte, msgType protocol.MessageType) ([]byte, error) {
 	switch msgType {
 	case protocol.MessageTypeData:
-		data, err := t.handleData(msg)
-		if err != nil {
-			t.recordProtocolError(err)
-		}
-		return data, err
-
+		return t.handleDataMessage(msg)
 	case protocol.MessageTypePing:
-		// Respond with pong
-		if err := t.sendPong(); err != nil {
-			return nil, err
-		}
-		// Continue reading
-		return t.Receive()
-
+		return t.handlePing()
 	case protocol.MessageTypePong:
-		// Keepalive response, continue reading
 		return t.Receive()
-
 	case protocol.MessageTypeClose:
-		t.closedMu.Lock()
-		t.closed = true
-		t.closedMu.Unlock()
-		return nil, qerrors.ErrTunnelClosed
-
+		return t.handleClose()
 	case protocol.MessageTypeRekey:
-		// Handle incoming rekey request/response
-		if err := t.handleRekey(msg); err != nil {
-			t.recordProtocolError(err)
-			return nil, err
-		}
-		// Continue reading after processing rekey
-		return t.Receive()
-
+		return t.handleRekeyMessage(msg)
 	case protocol.MessageTypeAlert:
-		level, code, desc, _ := t.codec.DecodeAlert(msg)
-		if code == protocol.AlertCodeCloseNotify {
-			t.closedMu.Lock()
-			t.closed = true
-			t.closedMu.Unlock()
-			return nil, qerrors.ErrTunnelClosed
-		}
-		err := qerrors.NewProtocolError("alert", &alertError{level: level, code: code, desc: desc})
-		t.recordProtocolError(err)
-		return nil, err
-
+		return t.handleAlert(msg)
 	default:
 		t.recordProtocolError(qerrors.ErrInvalidMessage)
 		return nil, qerrors.ErrInvalidMessage
 	}
+}
+
+// handleDataMessage processes a data message.
+func (t *Transport) handleDataMessage(msg []byte) ([]byte, error) {
+	data, err := t.handleData(msg)
+	if err != nil {
+		t.recordProtocolError(err)
+	}
+	return data, err
+}
+
+// handlePing responds to a ping and continues reading.
+func (t *Transport) handlePing() ([]byte, error) {
+	if err := t.sendPong(); err != nil {
+		return nil, err
+	}
+	return t.Receive()
+}
+
+// handleClose marks the transport as closed.
+func (t *Transport) handleClose() ([]byte, error) {
+	t.markClosed()
+	return nil, qerrors.ErrTunnelClosed
+}
+
+// handleRekeyMessage processes a rekey message.
+func (t *Transport) handleRekeyMessage(msg []byte) ([]byte, error) {
+	if err := t.handleRekey(msg); err != nil {
+		t.recordProtocolError(err)
+		return nil, err
+	}
+	return t.Receive()
+}
+
+// handleAlert processes an alert message.
+func (t *Transport) handleAlert(msg []byte) ([]byte, error) {
+	level, code, desc, _ := t.codec.DecodeAlert(msg)
+	if code == protocol.AlertCodeCloseNotify {
+		t.markClosed()
+		return nil, qerrors.ErrTunnelClosed
+	}
+	err := qerrors.NewProtocolError("alert", &alertError{level: level, code: code, desc: desc})
+	t.recordProtocolError(err)
+	return nil, err
+}
+
+// markClosed marks the transport as closed.
+func (t *Transport) markClosed() {
+	t.closedMu.Lock()
+	t.closed = true
+	t.closedMu.Unlock()
 }
 
 // handleData processes an encrypted data message.
@@ -609,95 +645,120 @@ func (l *Listener) Accept() (*Tunnel, error) {
 		return nil, err
 	}
 
+	remoteIP := extractRemoteIP(conn)
+
 	// Check IP rate limit
-	var remoteIP string
-	if tcpAddr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
-		remoteIP = tcpAddr.IP.String()
-	} else {
-		host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
-		if err == nil {
-			remoteIP = host
-		} else {
-			remoteIP = conn.RemoteAddr().String()
-		}
+	conn, err = l.checkIPRateLimit(conn, remoteIP)
+	if err != nil {
+		return nil, err
 	}
 
-	if l.ipLimiter != nil && !l.ipLimiter.AllowConnection(remoteIP) {
-		if l.config.RateLimitObserver != nil {
-			l.config.RateLimitObserver.OnConnectionRateLimit(remoteIP)
-		}
-		_ = conn.Close()
-		// Return a temporary error so accept loop might continue?
-		// Or just return error. For now return error.
-		return nil, qerrors.NewProtocolError("rate limit", &alertError{
-			level: protocol.AlertLevelFatal,
-			code:  protocol.AlertCodeInternalError,
-			desc:  "connection rate limit exceeded",
-		})
-	}
-
-	// Wrap connection to release IP limit on close
-	if l.ipLimiter != nil {
-		conn = &rateLimitedConn{
-			Conn:      conn,
-			limiter:   l.ipLimiter,
-			ip:        remoteIP,
-			closeOnce: sync.Once{},
-		}
-	}
-
-	// Create session as responder
-	session, err := NewSession(RoleResponder)
+	// Create session and perform handshake
+	session, err := l.createSession()
 	if err != nil {
 		_ = conn.Close()
 		return nil, err
 	}
-	if observer := observerFromConfig(l.config, session); observer != nil {
-		session.SetObserver(observer)
-		observer.OnSessionStart()
-	}
 
-	// Perform handshake
-	// Check handshake rate limit
-	if l.handshakeLimiter != nil && !l.handshakeLimiter.AllowHandshake() {
-		if l.config.RateLimitObserver != nil {
-			l.config.RateLimitObserver.OnHandshakeRateLimit(remoteIP)
-		}
-		_ = conn.Close()
-		// We don't have a specific error for this, but we can log or just return error
-		err := qerrors.NewProtocolError("rate limit", &alertError{
-			level: protocol.AlertLevelFatal,
-			code:  protocol.AlertCodeInternalError, // Or a custom code if we had one
-			desc:  "handshake rate limit exceeded",
-		})
-		if session.observer != nil {
-			session.observer.OnSessionFailed(err)
-			session.observer.OnSessionEnd()
-		}
-		return nil, err
-	}
-
-	if err := ResponderHandshake(session, conn); err != nil {
-		if session.observer != nil {
-			session.observer.OnSessionFailed(err)
-			session.observer.OnSessionEnd()
-		}
-		_ = conn.Close()
+	// Check handshake rate limit and perform handshake
+	if err := l.performHandshake(session, conn, remoteIP); err != nil {
 		return nil, err
 	}
 
 	// Create transport
 	transport, err := NewTransport(session, conn, l.config)
 	if err != nil {
-		if session.observer != nil {
-			session.observer.OnSessionFailed(err)
-			session.observer.OnSessionEnd()
-		}
+		l.failSession(session, err)
 		_ = conn.Close()
 		return nil, err
 	}
 
 	return &Tunnel{Transport: transport}, nil
+}
+
+// extractRemoteIP extracts the IP address from a connection.
+func extractRemoteIP(conn net.Conn) string {
+	if tcpAddr, ok := conn.RemoteAddr().(*net.TCPAddr); ok {
+		return tcpAddr.IP.String()
+	}
+	host, _, err := net.SplitHostPort(conn.RemoteAddr().String())
+	if err == nil {
+		return host
+	}
+	return conn.RemoteAddr().String()
+}
+
+// checkIPRateLimit checks IP rate limiting and wraps the connection if needed.
+func (l *Listener) checkIPRateLimit(conn net.Conn, remoteIP string) (net.Conn, error) {
+	if l.ipLimiter == nil {
+		return conn, nil
+	}
+
+	if !l.ipLimiter.AllowConnection(remoteIP) {
+		if l.config.RateLimitObserver != nil {
+			l.config.RateLimitObserver.OnConnectionRateLimit(remoteIP)
+		}
+		_ = conn.Close()
+		return nil, newRateLimitError("connection rate limit exceeded")
+	}
+
+	// Wrap connection to release IP limit on close
+	return &rateLimitedConn{
+		Conn:      conn,
+		limiter:   l.ipLimiter,
+		ip:        remoteIP,
+		closeOnce: sync.Once{},
+	}, nil
+}
+
+// createSession creates a new responder session with observer.
+func (l *Listener) createSession() (*Session, error) {
+	session, err := NewSession(RoleResponder)
+	if err != nil {
+		return nil, err
+	}
+	if observer := observerFromConfig(l.config, session); observer != nil {
+		session.SetObserver(observer)
+		observer.OnSessionStart()
+	}
+	return session, nil
+}
+
+// performHandshake checks handshake rate limit and performs the handshake.
+func (l *Listener) performHandshake(session *Session, conn net.Conn, remoteIP string) error {
+	if l.handshakeLimiter != nil && !l.handshakeLimiter.AllowHandshake() {
+		if l.config.RateLimitObserver != nil {
+			l.config.RateLimitObserver.OnHandshakeRateLimit(remoteIP)
+		}
+		_ = conn.Close()
+		err := newRateLimitError("handshake rate limit exceeded")
+		l.failSession(session, err)
+		return err
+	}
+
+	if err := ResponderHandshake(session, conn); err != nil {
+		l.failSession(session, err)
+		_ = conn.Close()
+		return err
+	}
+	return nil
+}
+
+// failSession notifies the session observer of failure.
+func (l *Listener) failSession(session *Session, err error) {
+	if session.observer != nil {
+		session.observer.OnSessionFailed(err)
+		session.observer.OnSessionEnd()
+	}
+}
+
+// newRateLimitError creates a protocol error for rate limiting.
+func newRateLimitError(desc string) error {
+	return qerrors.NewProtocolError("rate limit", &alertError{
+		level: protocol.AlertLevelFatal,
+		code:  protocol.AlertCodeInternalError,
+		desc:  desc,
+	})
 }
 
 // Close closes the listener.
