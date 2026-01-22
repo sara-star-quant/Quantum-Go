@@ -155,17 +155,17 @@ func TestPoolBasicFlow(t *testing.T) {
 	ctx := context.Background()
 
 	// First acquire and use
-	conn := acquireAndVerify(t, pool, ctx, "Hello, Pool!")
+	conn := acquireAndVerify(t, ctx, pool, "Hello, Pool!")
 	mustRelease(t, conn)
 	verifyPoolState(t, pool, 1, 1)
 
 	// Second acquire (reuse)
-	conn2 := acquireAndVerify(t, pool, ctx, "Second message")
+	conn2 := acquireAndVerify(t, ctx, pool, "Second message")
 	mustRelease(t, conn2)
 }
 
 // acquireAndVerify acquires a connection and verifies echo works.
-func acquireAndVerify(t *testing.T, pool *tunnel.Pool, ctx context.Context, msg string) *tunnel.PoolConn {
+func acquireAndVerify(t *testing.T, ctx context.Context, pool *tunnel.Pool, msg string) *tunnel.PoolConn {
 	t.Helper()
 	conn, err := pool.Acquire(ctx)
 	if err != nil {

@@ -98,18 +98,6 @@ func startReceiverWithErr(transport *tunnel.Transport, recv chan []byte, errCh c
 	}()
 }
 
-// receiveWithTimeout receives a message with timeout.
-func receiveWithTimeout(t *testing.T, recv <-chan []byte, timeout time.Duration, context string) []byte {
-	t.Helper()
-	select {
-	case data := <-recv:
-		return data
-	case <-time.After(timeout):
-		t.Fatalf("%s: timeout waiting for message", context)
-		return nil
-	}
-}
-
 // waitForRekeyComplete waits for rekey to complete with timeout.
 func waitForRekeyComplete(t *testing.T, session *tunnel.Session, context string) {
 	t.Helper()
