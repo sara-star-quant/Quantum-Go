@@ -362,11 +362,11 @@ For FIPS compliance, the entropy source must be a FIPS-validated DRBG:
 ## Appendix A: Contact Information
 
 **NIST CMVP:**
-- Website: https://csrc.nist.gov/projects/cryptographic-module-validation-program
-- Email: cmvp@nist.gov
+- Website: <https://csrc.nist.gov/projects/cryptographic-module-validation-program>
+- Email: <cmvp@nist.gov>
 
 **NVLAP Accredited Labs:**
-- List: https://www.nist.gov/nvlap/nvlap-lab-directory
+- List: <https://www.nist.gov/nvlap/nvlap-lab-directory>
 
 ---
 

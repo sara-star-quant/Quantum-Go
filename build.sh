@@ -166,7 +166,7 @@ create_release() {
 
     # Generate checksums
     print_info "Generating checksums..."
-    (cd "$BIN_DIR/release" && shasum -a 256 *.tar.gz *.zip 2>/dev/null > checksums-sha256.txt || true)
+    (cd "$BIN_DIR/release" && shasum -a 256 ./*.tar.gz ./*.zip > checksums-sha256.txt 2>/dev/null) || true
 
     print_success "Release files created in $BIN_DIR/release/"
     ls -lh "$BIN_DIR/release/"

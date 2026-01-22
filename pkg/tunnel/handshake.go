@@ -47,12 +47,19 @@ import (
 // HandshakeState represents the current state of the handshake.
 type HandshakeState int
 
+// Handshake state machine states.
 const (
+	// HandshakeStateInitial is the starting state before any messages.
 	HandshakeStateInitial HandshakeState = iota
+	// HandshakeStateClientHelloSent indicates ClientHello was sent (initiator).
 	HandshakeStateClientHelloSent
+	// HandshakeStateServerHelloSent indicates ServerHello was sent (responder).
 	HandshakeStateServerHelloSent
+	// HandshakeStateClientFinishedSent indicates ClientFinished was sent.
 	HandshakeStateClientFinishedSent
+	// HandshakeStateComplete indicates the handshake completed successfully.
 	HandshakeStateComplete
+	// HandshakeStateFailed indicates the handshake failed.
 	HandshakeStateFailed
 )
 
@@ -193,11 +200,7 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 	h.session.CipherSuite = msg.CipherSuite
 
 	// Derive handshake keys
-	if err := h.deriveHandshakeKeys(); err != nil {
-		return err
-	}
-
-	return nil
+	return h.deriveHandshakeKeys()
 }
 
 // CreateClientFinished generates the ClientFinished message.

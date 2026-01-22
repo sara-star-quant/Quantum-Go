@@ -63,8 +63,11 @@ func (s SessionState) String() string {
 // Role indicates whether this endpoint is the initiator or responder.
 type Role int
 
+// Session role constants.
 const (
+	// RoleInitiator indicates this endpoint initiated the connection.
 	RoleInitiator Role = iota
+	// RoleResponder indicates this endpoint accepted the connection.
 	RoleResponder
 )
 

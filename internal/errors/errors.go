@@ -120,6 +120,7 @@ func (e *CryptoError) Error() string {
 	return fmt.Sprintf("%s: %v", e.Op, e.Err)
 }
 
+// Unwrap returns the underlying error for errors.Is/As support.
 func (e *CryptoError) Unwrap() error {
 	return e.Err
 }
@@ -139,6 +140,7 @@ func (e *ProtocolError) Error() string {
 	return fmt.Sprintf("protocol %s: %v", e.Phase, e.Err)
 }
 
+// Unwrap returns the underlying error for errors.Is/As support.
 func (e *ProtocolError) Unwrap() error {
 	return e.Err
 }
