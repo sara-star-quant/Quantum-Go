@@ -232,6 +232,59 @@ integrity := crypto.CheckModuleIntegrity()
 fmt.Printf("Verified: %v\n", integrity.Verified)
 ```
 
+## Conditional Self-Tests (CST)
+
+In addition to POST, FIPS 140-3 requires Conditional Self-Tests that run during specific cryptographic operations.
+
+### Pairwise Consistency Test
+
+Verifies that newly generated key pairs are consistent (private and public keys correspond correctly).
+
+```go
+// Generate key pair with automatic pairwise consistency test
+kp, err := crypto.GenerateX25519KeyPairWithCST()
+if err != nil {
+    // In FIPS mode, CST failure causes panic
+    // In standard mode, returns error
+}
+
+// ML-KEM key pair with CST
+mlkemKP, err := crypto.GenerateMLKEMKeyPairWithCST()
+```
+
+### DRBG Health Check
+
+Verifies that the random number generator produces non-repeating, non-zero output.
+
+```go
+// Secure random with continuous RNG test
+buf := make([]byte, 32)
+err := crypto.SecureRandomWithCST(buf)
+```
+
+### CST Configuration
+
+```go
+config := crypto.CSTConfig{
+    EnablePairwiseTest:     true,
+    EnableRNGHealthCheck:   true,
+    RNGHealthCheckInterval: 1000, // Check every 1000 RNG calls
+}
+crypto.InitCST(config)
+
+// Check if CST is enabled
+if crypto.CSTEnabled() {
+    fmt.Println("Conditional Self-Tests are enabled")
+}
+```
+
+### CST Behavior
+
+| Mode | Pairwise Test | RNG Health Check | Failure Behavior |
+|------|---------------|------------------|------------------|
+| FIPS Mode | Enabled by default | Enabled by default | **Panic** |
+| Standard Mode | Disabled by default | Disabled by default | Return error |
+
 ## Limitations
 
 - **Not a Certified Module**: This implementation provides FIPS-compliant algorithm selection but is not itself a FIPS 140-3 certified cryptographic module.
