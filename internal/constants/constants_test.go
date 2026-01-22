@@ -42,92 +42,121 @@ func TestCipherSuiteIsSupported(t *testing.T) {
 	}
 }
 
-// TestConstants verifies constant values.
+// TestConstants verifies constant values using table-driven tests.
 func TestConstants(t *testing.T) {
-	t.Run("KeySizes", func(t *testing.T) {
-		if X25519PublicKeySize != 32 {
-			t.Errorf("X25519PublicKeySize = %d, want 32", X25519PublicKeySize)
-		}
-		if MLKEMPublicKeySize != 1568 {
-			t.Errorf("MLKEMPublicKeySize = %d, want 1568", MLKEMPublicKeySize)
-		}
-		if MLKEMCiphertextSize != 1568 {
-			t.Errorf("MLKEMCiphertextSize = %d, want 1568", MLKEMCiphertextSize)
-		}
-		if MLKEMSharedSecretSize != 32 {
-			t.Errorf("MLKEMSharedSecretSize = %d, want 32", MLKEMSharedSecretSize)
-		}
-	})
+	t.Run("KeySizes", testKeySizes)
+	t.Run("CHKEMSizes", testCHKEMSizes)
+	t.Run("AEADParameters", testAEADParameters)
+	t.Run("SessionParameters", testSessionParameters)
+	t.Run("RekeyThresholds", testRekeyThresholds)
+	t.Run("MessageLimits", testMessageLimits)
+	t.Run("DomainSeparators", testDomainSeparators)
+}
 
-	t.Run("CHKEMSizes", func(t *testing.T) {
-		expectedPublicKeySize := X25519PublicKeySize + MLKEMPublicKeySize
-		if CHKEMPublicKeySize != expectedPublicKeySize {
-			t.Errorf("CHKEMPublicKeySize = %d, want %d", CHKEMPublicKeySize, expectedPublicKeySize)
+func testKeySizes(t *testing.T) {
+	tests := []struct {
+		name  string
+		got   int
+		want  int
+	}{
+		{"X25519PublicKeySize", X25519PublicKeySize, 32},
+		{"MLKEMPublicKeySize", MLKEMPublicKeySize, 1568},
+		{"MLKEMCiphertextSize", MLKEMCiphertextSize, 1568},
+		{"MLKEMSharedSecretSize", MLKEMSharedSecretSize, 32},
+	}
+	for _, tt := range tests {
+		if tt.got != tt.want {
+			t.Errorf("%s = %d, want %d", tt.name, tt.got, tt.want)
 		}
+	}
+}
 
-		expectedCiphertextSize := X25519PublicKeySize + MLKEMCiphertextSize
-		if CHKEMCiphertextSize != expectedCiphertextSize {
-			t.Errorf("CHKEMCiphertextSize = %d, want %d", CHKEMCiphertextSize, expectedCiphertextSize)
+func testCHKEMSizes(t *testing.T) {
+	tests := []struct {
+		name  string
+		got   int
+		want  int
+	}{
+		{"CHKEMPublicKeySize", CHKEMPublicKeySize, X25519PublicKeySize + MLKEMPublicKeySize},
+		{"CHKEMCiphertextSize", CHKEMCiphertextSize, X25519PublicKeySize + MLKEMCiphertextSize},
+		{"CHKEMSharedSecretSize", CHKEMSharedSecretSize, 32},
+	}
+	for _, tt := range tests {
+		if tt.got != tt.want {
+			t.Errorf("%s = %d, want %d", tt.name, tt.got, tt.want)
 		}
+	}
+}
 
-		if CHKEMSharedSecretSize != 32 {
-			t.Errorf("CHKEMSharedSecretSize = %d, want 32", CHKEMSharedSecretSize)
+func testAEADParameters(t *testing.T) {
+	tests := []struct {
+		name  string
+		got   int
+		want  int
+	}{
+		{"AESNonceSize", AESNonceSize, 12},
+		{"AESTagSize", AESTagSize, 16},
+		{"ChaCha20NonceSize", ChaCha20NonceSize, 12},
+	}
+	for _, tt := range tests {
+		if tt.got != tt.want {
+			t.Errorf("%s = %d, want %d", tt.name, tt.got, tt.want)
 		}
-	})
+	}
+}
 
-	t.Run("AEADParameters", func(t *testing.T) {
-		if AESNonceSize != 12 {
-			t.Errorf("AESNonceSize = %d, want 12", AESNonceSize)
-		}
-		if AESTagSize != 16 {
-			t.Errorf("AESTagSize = %d, want 16", AESTagSize)
-		}
-		if ChaCha20NonceSize != 12 {
-			t.Errorf("ChaCha20NonceSize = %d, want 12", ChaCha20NonceSize)
-		}
-	})
+func testSessionParameters(t *testing.T) {
+	if SessionIDSize != 16 {
+		t.Errorf("SessionIDSize = %d, want 16", SessionIDSize)
+	}
+}
 
-	t.Run("SessionParameters", func(t *testing.T) {
-		if SessionIDSize != 16 {
-			t.Errorf("SessionIDSize = %d, want 16", SessionIDSize)
+func testRekeyThresholds(t *testing.T) {
+	tests := []struct {
+		name  string
+		value uint64
+	}{
+		{"MaxBytesBeforeRekey", MaxBytesBeforeRekey},
+		{"MaxSessionDurationSeconds", MaxSessionDurationSeconds},
+		{"MaxPacketsBeforeRekey", MaxPacketsBeforeRekey},
+	}
+	for _, tt := range tests {
+		if tt.value == 0 {
+			t.Errorf("%s should be non-zero", tt.name)
 		}
-	})
+	}
+}
 
-	t.Run("RekeyThresholds", func(t *testing.T) {
-		if MaxBytesBeforeRekey == 0 {
-			t.Error("MaxBytesBeforeRekey should be non-zero")
+func testMessageLimits(t *testing.T) {
+	tests := []struct {
+		name  string
+		value int
+	}{
+		{"MaxMessageSize", MaxMessageSize},
+		{"MaxPayloadSize", MaxPayloadSize},
+	}
+	for _, tt := range tests {
+		if tt.value == 0 {
+			t.Errorf("%s should be non-zero", tt.name)
 		}
-		if MaxSessionDurationSeconds == 0 {
-			t.Error("MaxSessionDurationSeconds should be non-zero")
-		}
-		if MaxPacketsBeforeRekey == 0 {
-			t.Error("MaxPacketsBeforeRekey should be non-zero")
-		}
-	})
+	}
+}
 
-	t.Run("MessageLimits", func(t *testing.T) {
-		if MaxMessageSize == 0 {
-			t.Error("MaxMessageSize should be non-zero")
+func testDomainSeparators(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{"DomainSeparatorCHKEM", DomainSeparatorCHKEM},
+		{"DomainSeparatorHandshake", DomainSeparatorHandshake},
+		{"DomainSeparatorTraffic", DomainSeparatorTraffic},
+		{"DomainSeparatorRekey", DomainSeparatorRekey},
+	}
+	for _, tt := range tests {
+		if len(tt.value) == 0 {
+			t.Errorf("%s is empty", tt.name)
 		}
-		if MaxPayloadSize == 0 {
-			t.Error("MaxPayloadSize should be non-zero")
-		}
-	})
-
-	t.Run("DomainSeparators", func(t *testing.T) {
-		if len(DomainSeparatorCHKEM) == 0 {
-			t.Error("DomainSeparatorCHKEM is empty")
-		}
-		if len(DomainSeparatorHandshake) == 0 {
-			t.Error("DomainSeparatorHandshake is empty")
-		}
-		if len(DomainSeparatorTraffic) == 0 {
-			t.Error("DomainSeparatorTraffic is empty")
-		}
-		if len(DomainSeparatorRekey) == 0 {
-			t.Error("DomainSeparatorRekey is empty")
-		}
-	})
+	}
 }
 
 // TestCipherSuiteUniqueness ensures cipher suite IDs are unique.

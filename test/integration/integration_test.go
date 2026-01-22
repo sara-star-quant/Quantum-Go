@@ -14,6 +14,101 @@ import (
 	"github.com/pzverkov/quantum-go/pkg/tunnel"
 )
 
+// testPair holds a connected client/server pair for testing.
+type testPair struct {
+	clientConn      net.Conn
+	serverConn      net.Conn
+	clientSession   *tunnel.Session
+	serverSession   *tunnel.Session
+	clientTransport *tunnel.Transport
+	serverTransport *tunnel.Transport
+}
+
+// setupTestPair creates a connected client/server pair with completed handshake.
+func setupTestPair(t *testing.T) *testPair {
+	t.Helper()
+	clientConn, serverConn := net.Pipe()
+
+	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
+	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
+
+	performHandshake(clientSession, serverSession, clientConn, serverConn)
+
+	config := tunnel.DefaultTransportConfig()
+	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
+	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
+
+	return &testPair{
+		clientConn:      clientConn,
+		serverConn:      serverConn,
+		clientSession:   clientSession,
+		serverSession:   serverSession,
+		clientTransport: clientTransport,
+		serverTransport: serverTransport,
+	}
+}
+
+// cleanup closes all resources in the test pair.
+func (tp *testPair) cleanup() {
+	_ = tp.clientTransport.Close()
+	_ = tp.serverTransport.Close()
+	_ = tp.clientConn.Close()
+	_ = tp.serverConn.Close()
+}
+
+// performHandshake performs the handshake between client and server.
+func performHandshake(clientSession, serverSession *tunnel.Session, clientConn, serverConn net.Conn) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
+	}()
+	go func() {
+		defer wg.Done()
+		_ = tunnel.ResponderHandshake(serverSession, serverConn)
+	}()
+	wg.Wait()
+}
+
+// startReceiver starts a receiver goroutine that sends received data to the channel.
+func startReceiver(transport *tunnel.Transport, recv chan []byte) {
+	go func() {
+		for {
+			data, err := transport.Receive()
+			if err != nil {
+				return
+			}
+			recv <- data
+		}
+	}()
+}
+
+// startReceiverWithErr starts a receiver goroutine that also reports errors.
+func startReceiverWithErr(transport *tunnel.Transport, recv chan []byte, errCh chan error) {
+	go func() {
+		for {
+			data, err := transport.Receive()
+			if err != nil {
+				errCh <- err
+				return
+			}
+			recv <- data
+		}
+	}()
+}
+
+// waitForRekeyComplete waits for rekey to complete with timeout.
+func waitForRekeyComplete(t *testing.T, session *tunnel.Session, context string) {
+	t.Helper()
+	for i := 0; i < 100 && session.IsRekeyInProgress(); i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if session.IsRekeyInProgress() {
+		t.Fatalf("%s: rekey still in progress", context)
+	}
+}
+
 // TestFullHandshakeAndDataTransfer verifies the complete tunnel establishment and data transfer.
 func TestFullHandshakeAndDataTransfer(t *testing.T) {
 	// Create network pipes
@@ -598,200 +693,135 @@ func TestRekeyDuringDataTransfer(t *testing.T) {
 
 // TestRekeyWithBidirectionalTraffic verifies rekey works with traffic in both directions.
 func TestRekeyWithBidirectionalTraffic(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer func() { _ = clientConn.Close() }()
-	defer func() { _ = serverConn.Close() }()
-
-	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
-	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
-	}()
-
-	go func() {
-		defer wg.Done()
-		_ = tunnel.ResponderHandshake(serverSession, serverConn)
-	}()
-
-	wg.Wait()
-
-	config := tunnel.DefaultTransportConfig()
-	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
-	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
-	defer func() { _ = clientTransport.Close() }()
-	defer func() { _ = serverTransport.Close() }()
+	tp := setupTestPair(t)
+	defer tp.cleanup()
 
 	roundCount := 20
 	rekeyAt := 10
 
-	// Channels for server-received and client-received messages
 	serverRecv := make(chan []byte, roundCount+5)
 	clientRecv := make(chan []byte, roundCount+5)
 
-	// Server receiver goroutine
-	go func() {
-		for {
-			data, err := serverTransport.Receive()
-			if err != nil {
-				return
-			}
-			serverRecv <- data
-		}
-	}()
-
-	// Client receiver goroutine - also receives rekey response (handled internally)
-	go func() {
-		for {
-			data, err := clientTransport.Receive()
-			if err != nil {
-				return
-			}
-			clientRecv <- data
-		}
-	}()
+	startReceiver(tp.serverTransport, serverRecv)
+	startReceiver(tp.clientTransport, clientRecv)
 
 	// Send client to server messages with rekey at midpoint
-	for i := 0; i < roundCount; i++ {
-		// Trigger rekey at midpoint
+	sendMessagesWithRekey(t, tp.clientTransport, roundCount, rekeyAt, "C2S:")
+
+	// Receive all C2S messages
+	receiveMessages(t, serverRecv, roundCount, "C2S")
+
+	// Send server to client messages
+	sendMessages(t, tp.serverTransport, roundCount, "S2C:")
+
+	// Receive all S2C messages
+	receiveMessages(t, clientRecv, roundCount, "S2C")
+}
+
+// sendMessages sends count messages with the given prefix.
+func sendMessages(t *testing.T, transport *tunnel.Transport, count int, prefix string) {
+	t.Helper()
+	for i := 0; i < count; i++ {
+		msg := []byte(prefix + string(rune('0'+i/10)) + string(rune('0'+i%10)))
+		if err := transport.Send(msg); err != nil {
+			t.Fatalf("%s send %d error: %v", prefix, i, err)
+		}
+	}
+}
+
+// sendMessagesWithRekey sends count messages, triggering rekey at the specified index.
+func sendMessagesWithRekey(t *testing.T, transport *tunnel.Transport, count, rekeyAt int, prefix string) {
+	t.Helper()
+	for i := 0; i < count; i++ {
 		if i == rekeyAt {
-			if err := clientTransport.SendRekey(); err != nil {
+			if err := transport.SendRekey(); err != nil {
 				t.Errorf("SendRekey error: %v", err)
 			}
 		}
-		msg := []byte("C2S:" + string(rune('0'+i/10)) + string(rune('0'+i%10)))
-		if err := clientTransport.Send(msg); err != nil {
-			t.Fatalf("C2S send %d error: %v", i, err)
+		msg := []byte(prefix + string(rune('0'+i/10)) + string(rune('0'+i%10)))
+		if err := transport.Send(msg); err != nil {
+			t.Fatalf("%s send %d error: %v", prefix, i, err)
 		}
 	}
+}
 
-	// Receive all C2S messages
-	for i := 0; i < roundCount; i++ {
+// receiveMessages receives count messages with timeout.
+func receiveMessages(t *testing.T, recv <-chan []byte, count int, context string) {
+	t.Helper()
+	for i := 0; i < count; i++ {
 		select {
-		case <-serverRecv:
+		case <-recv:
 		case <-time.After(5 * time.Second):
-			t.Fatalf("C2S message %d: timeout", i)
-		}
-	}
-
-	// Send server to client messages
-	for i := 0; i < roundCount; i++ {
-		msg := []byte("S2C:" + string(rune('0'+i/10)) + string(rune('0'+i%10)))
-		if err := serverTransport.Send(msg); err != nil {
-			t.Fatalf("S2C send %d error: %v", i, err)
-		}
-	}
-
-	// Receive all S2C messages
-	for i := 0; i < roundCount; i++ {
-		select {
-		case <-clientRecv:
-		case <-time.After(5 * time.Second):
-			t.Fatalf("S2C message %d: timeout", i)
+			t.Fatalf("%s message %d: timeout", context, i)
 		}
 	}
 }
 
 // TestMultipleSequentialRekeys verifies multiple rekey operations work correctly.
 func TestMultipleSequentialRekeys(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer func() { _ = clientConn.Close() }()
-	defer func() { _ = serverConn.Close() }()
-
-	clientSession, _ := tunnel.NewSession(tunnel.RoleInitiator)
-	serverSession, _ := tunnel.NewSession(tunnel.RoleResponder)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		_ = tunnel.InitiatorHandshake(clientSession, clientConn)
-	}()
-
-	go func() {
-		defer wg.Done()
-		_ = tunnel.ResponderHandshake(serverSession, serverConn)
-	}()
-
-	wg.Wait()
-
-	config := tunnel.DefaultTransportConfig()
-	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
-	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
-	defer func() { _ = clientTransport.Close() }()
-	defer func() { _ = serverTransport.Close() }()
+	tp := setupTestPair(t)
+	defer tp.cleanup()
 
 	rekeyCount := 3
 	messagesPerCycle := 25 // Must be > 16 (activation offset) to complete rekey
 
 	// Client receiver goroutine - needed to receive rekey responses
-	go func() {
-		for {
-			_, err := clientTransport.Receive()
-			if err != nil {
-				return
-			}
-		}
-	}()
+	clientRecv := make(chan []byte, 100)
+	startReceiver(tp.clientTransport, clientRecv)
 
-	// Server receiver goroutine with channel for received messages
+	// Server receiver goroutine with error channel
 	serverRecv := make(chan []byte, 100)
 	serverErr := make(chan error, 1)
-	go func() {
-		for {
-			data, err := serverTransport.Receive()
-			if err != nil {
-				serverErr <- err
-				return
-			}
-			serverRecv <- data
-		}
-	}()
+	startReceiverWithErr(tp.serverTransport, serverRecv, serverErr)
 
 	for rekey := 0; rekey < rekeyCount; rekey++ {
-		// Send messages, with rekey in the middle
-		for i := 0; i < messagesPerCycle; i++ {
-			// Trigger rekey at the 5th message
-			if i == 5 {
-				if err := clientTransport.SendRekey(); err != nil {
-					t.Fatalf("Rekey %d: SendRekey error: %v", rekey, err)
-				}
-			}
+		runRekeyCycle(t, tp, rekey, messagesPerCycle, serverRecv, serverErr)
+	}
+}
 
-			msg := []byte("Cycle" + string(rune('0'+rekey)) + "-Msg" + string(rune('0'+i/10)) + string(rune('0'+i%10)))
-			if err := clientTransport.Send(msg); err != nil {
-				t.Fatalf("Rekey %d, message %d: send error: %v", rekey, i, err)
-			}
-		}
+// runRekeyCycle runs one rekey cycle with message verification.
+func runRekeyCycle(t *testing.T, tp *testPair, cycle, msgCount int, recv <-chan []byte, errCh <-chan error) {
+	t.Helper()
 
-		// Receive all messages
-		for i := 0; i < messagesPerCycle; i++ {
-			select {
-			case received := <-serverRecv:
-				expected := []byte("Cycle" + string(rune('0'+rekey)) + "-Msg" + string(rune('0'+i/10)) + string(rune('0'+i%10)))
-				if !bytes.Equal(expected, received) {
-					t.Errorf("Rekey %d, message %d: got %q, want %q", rekey, i, received, expected)
-				}
-			case err := <-serverErr:
-				t.Fatalf("Rekey %d, message %d: receive error: %v", rekey, i, err)
-			case <-time.After(5 * time.Second):
-				t.Fatalf("Rekey %d, message %d: timeout waiting for message", rekey, i)
+	// Send messages with rekey at message 5
+	for i := 0; i < msgCount; i++ {
+		if i == 5 {
+			if err := tp.clientTransport.SendRekey(); err != nil {
+				t.Fatalf("Cycle %d: SendRekey error: %v", cycle, err)
 			}
 		}
-
-		// Wait for rekey to complete
-		for i := 0; i < 100 && clientSession.IsRekeyInProgress(); i++ {
-			time.Sleep(10 * time.Millisecond)
+		msg := formatCycleMessage(cycle, i)
+		if err := tp.clientTransport.Send(msg); err != nil {
+			t.Fatalf("Cycle %d, msg %d: send error: %v", cycle, i, err)
 		}
+	}
 
-		if clientSession.IsRekeyInProgress() {
-			t.Fatalf("Rekey %d: still in progress after receiving all messages", rekey)
+	// Receive and verify all messages
+	for i := 0; i < msgCount; i++ {
+		verifyCycleMessage(t, recv, errCh, cycle, i)
+	}
+
+	waitForRekeyComplete(t, tp.clientSession, "Cycle "+string(rune('0'+cycle)))
+}
+
+// formatCycleMessage creates a message for a cycle/message index.
+func formatCycleMessage(cycle, msg int) []byte {
+	return []byte("Cycle" + string(rune('0'+cycle)) + "-Msg" + string(rune('0'+msg/10)) + string(rune('0'+msg%10)))
+}
+
+// verifyCycleMessage receives and verifies a cycle message.
+func verifyCycleMessage(t *testing.T, recv <-chan []byte, errCh <-chan error, cycle, msg int) {
+	t.Helper()
+	select {
+	case received := <-recv:
+		expected := formatCycleMessage(cycle, msg)
+		if !bytes.Equal(expected, received) {
+			t.Errorf("Cycle %d, msg %d: got %q, want %q", cycle, msg, received, expected)
 		}
+	case err := <-errCh:
+		t.Fatalf("Cycle %d, msg %d: receive error: %v", cycle, msg, err)
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Cycle %d, msg %d: timeout", cycle, msg)
 	}
 }
 

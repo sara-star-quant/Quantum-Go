@@ -116,9 +116,7 @@ func (p *Pool) Close() error {
 	// Close all connections outside the lock
 	for _, pc := range connsToClose {
 		_ = pc.tunnel.Close()
-		if p.config.Observer != nil {
-			p.config.Observer.OnConnectionClosed("pool_closed")
-		}
+		p.notifyConnectionClosed("pool_closed")
 	}
 
 	return nil
@@ -136,31 +134,9 @@ func (p *Pool) Acquire(ctx context.Context) (*PoolConn, error) {
 	}
 
 	// Try to get an idle connection
-	for len(p.idle) > 0 {
-		// Pop from end (LIFO for better cache locality)
-		pc := p.idle[len(p.idle)-1]
-		p.idle = p.idle[:len(p.idle)-1]
-
-		// Quick health check
-		if p.isHealthy(pc) {
-			pc.inUse.Store(true)
-			p.stats.recordAcquire(time.Since(startTime), true)
-			p.mu.Unlock()
-
-			if p.config.Observer != nil {
-				p.config.Observer.OnAcquire(time.Since(startTime), true)
-			}
-			return newPoolConn(pc), nil
-		}
-
-		// Connection is unhealthy, close it
-		p.removeConnLocked(pc)
-		go func(pc *pooledConn) {
-			_ = pc.tunnel.Close()
-			if p.config.Observer != nil {
-				p.config.Observer.OnConnectionClosed("unhealthy")
-			}
-		}(pc)
+	if pc := p.tryGetIdleLocked(); pc != nil {
+		p.mu.Unlock()
+		return p.finishAcquire(pc, startTime, true), nil
 	}
 
 	// Check if we can create a new connection
@@ -169,13 +145,43 @@ func (p *Pool) Acquire(ctx context.Context) (*PoolConn, error) {
 		return p.createAndAcquire(ctx, startTime)
 	}
 
-	// Pool is exhausted, wait for a connection
+	// Pool is exhausted, wait for a connection or return error
+	return p.waitForConnection(ctx, startTime)
+}
+
+// tryGetIdleLocked attempts to get a healthy idle connection. Must hold lock.
+// Returns nil if no healthy connection available.
+func (p *Pool) tryGetIdleLocked() *pooledConn {
+	for len(p.idle) > 0 {
+		// Pop from end (LIFO for better cache locality)
+		pc := p.idle[len(p.idle)-1]
+		p.idle = p.idle[:len(p.idle)-1]
+
+		if p.isHealthy(pc) {
+			pc.inUse.Store(true)
+			return pc
+		}
+
+		// Connection is unhealthy, close it
+		p.removeConnLocked(pc)
+		p.closeConnAsync(pc, "unhealthy")
+	}
+	return nil
+}
+
+// finishAcquire completes the acquire and returns a PoolConn.
+func (p *Pool) finishAcquire(pc *pooledConn, startTime time.Time, fromPool bool) *PoolConn {
+	duration := time.Since(startTime)
+	p.stats.recordAcquire(duration, fromPool)
+	p.notifyAcquire(duration, fromPool)
+	return newPoolConn(pc)
+}
+
+// waitForConnection waits for a connection to become available or times out.
+func (p *Pool) waitForConnection(ctx context.Context, startTime time.Time) (*PoolConn, error) {
 	if p.config.WaitTimeout == 0 {
 		p.mu.Unlock()
-		p.stats.recordAcquireTimeout()
-		if p.config.Observer != nil {
-			p.config.Observer.OnAcquireTimeout()
-		}
+		p.recordTimeout()
 		return nil, qerrors.ErrPoolExhausted
 	}
 
@@ -185,69 +191,115 @@ func (p *Pool) Acquire(ctx context.Context) (*PoolConn, error) {
 	p.stats.incrementWaiting()
 	p.mu.Unlock()
 
-	// Wait with timeout
-	timeout := p.config.WaitTimeout
-	if deadline, ok := ctx.Deadline(); ok {
-		remaining := time.Until(deadline)
-		if remaining < timeout {
-			timeout = remaining
-		}
-	}
-
+	timeout := p.effectiveTimeout(ctx)
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
 	select {
 	case pc := <-ch:
-		p.stats.decrementWaiting()
-		if pc == nil {
-			// Channel closed, pool is closing
-			return nil, qerrors.ErrPoolClosed
-		}
-
-		// Quick health check
-		if !p.isHealthy(pc) {
-			p.mu.Lock()
-			p.removeConnLocked(pc)
-			p.mu.Unlock()
-			go func() {
-				_ = pc.tunnel.Close()
-				if p.config.Observer != nil {
-					p.config.Observer.OnConnectionClosed("unhealthy")
-				}
-			}()
-			// Try again recursively
-			return p.Acquire(ctx)
-		}
-
-		pc.inUse.Store(true)
-		p.stats.recordAcquire(time.Since(startTime), true)
-		if p.config.Observer != nil {
-			p.config.Observer.OnAcquire(time.Since(startTime), true)
-		}
-		return newPoolConn(pc), nil
-
+		return p.handleWaitResult(ctx, pc, startTime)
 	case <-timer.C:
-		p.mu.Lock()
-		p.removeWaiter(ch)
-		p.mu.Unlock()
-		p.stats.decrementWaiting()
-		p.stats.recordAcquireTimeout()
-		if p.config.Observer != nil {
-			p.config.Observer.OnAcquireTimeout()
-		}
-		return nil, qerrors.ErrPoolTimeout
-
+		return p.handleWaitTimeout(ch, qerrors.ErrPoolTimeout)
 	case <-ctx.Done():
-		p.mu.Lock()
-		p.removeWaiter(ch)
-		p.mu.Unlock()
-		p.stats.decrementWaiting()
-		p.stats.recordAcquireTimeout()
-		if p.config.Observer != nil {
-			p.config.Observer.OnAcquireTimeout()
+		return p.handleWaitTimeout(ch, ctx.Err())
+	}
+}
+
+// effectiveTimeout returns the smaller of WaitTimeout and context deadline.
+func (p *Pool) effectiveTimeout(ctx context.Context) time.Duration {
+	timeout := p.config.WaitTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining < timeout {
+			timeout = remaining
 		}
-		return nil, ctx.Err()
+	}
+	return timeout
+}
+
+// handleWaitResult processes a connection received from wait channel.
+func (p *Pool) handleWaitResult(ctx context.Context, pc *pooledConn, startTime time.Time) (*PoolConn, error) {
+	p.stats.decrementWaiting()
+	if pc == nil {
+		return nil, qerrors.ErrPoolClosed
+	}
+
+	if !p.isHealthy(pc) {
+		p.mu.Lock()
+		p.removeConnLocked(pc)
+		p.mu.Unlock()
+		p.closeConnAsync(pc, "unhealthy")
+		return p.Acquire(ctx)
+	}
+
+	pc.inUse.Store(true)
+	return p.finishAcquire(pc, startTime, true), nil
+}
+
+// handleWaitTimeout cleans up after a timeout or context cancellation.
+func (p *Pool) handleWaitTimeout(ch chan *pooledConn, err error) (*PoolConn, error) {
+	p.mu.Lock()
+	p.removeWaiter(ch)
+	p.mu.Unlock()
+	p.stats.decrementWaiting()
+	p.recordTimeout()
+	return nil, err
+}
+
+// closeConnAsync closes a connection asynchronously and notifies observer.
+func (p *Pool) closeConnAsync(pc *pooledConn, reason string) {
+	go func() {
+		_ = pc.tunnel.Close()
+		p.notifyConnectionClosed(reason)
+	}()
+}
+
+// recordTimeout records an acquire timeout in stats and notifies observer.
+func (p *Pool) recordTimeout() {
+	p.stats.recordAcquireTimeout()
+	if p.config.Observer != nil {
+		p.config.Observer.OnAcquireTimeout()
+	}
+}
+
+// notifyAcquire notifies observer of successful acquire.
+func (p *Pool) notifyAcquire(duration time.Duration, fromPool bool) {
+	if p.config.Observer != nil {
+		p.config.Observer.OnAcquire(duration, fromPool)
+	}
+}
+
+// notifyConnectionClosed notifies observer of connection close.
+func (p *Pool) notifyConnectionClosed(reason string) {
+	if p.config.Observer != nil {
+		p.config.Observer.OnConnectionClosed(reason)
+	}
+}
+
+// notifyRelease notifies observer of connection release.
+func (p *Pool) notifyRelease() {
+	if p.config.Observer != nil {
+		p.config.Observer.OnRelease()
+	}
+}
+
+// notifyConnectionCreated notifies observer of connection creation.
+func (p *Pool) notifyConnectionCreated(duration time.Duration) {
+	if p.config.Observer != nil {
+		p.config.Observer.OnConnectionCreated(duration)
+	}
+}
+
+// notifyHealthCheck notifies observer of health check result.
+func (p *Pool) notifyHealthCheck(healthy bool) {
+	if p.config.Observer != nil {
+		p.config.Observer.OnHealthCheck(healthy)
+	}
+}
+
+// notifyPoolStats notifies observer of pool statistics.
+func (p *Pool) notifyPoolStats() {
+	if p.config.Observer != nil {
+		p.config.Observer.OnPoolStats(p.stats.Snapshot())
 	}
 }
 
@@ -317,12 +369,7 @@ func (p *Pool) release(pc *pooledConn) error {
 	if pc.unhealthy.Load() {
 		p.removeConnLocked(pc)
 		p.stats.recordConnectionClosed(false)
-		go func() {
-			_ = pc.tunnel.Close()
-			if p.config.Observer != nil {
-				p.config.Observer.OnConnectionClosed("marked_unhealthy")
-			}
-		}()
+		p.closeConnAsync(pc, "marked_unhealthy")
 		return nil
 	}
 
@@ -338,10 +385,7 @@ func (p *Pool) release(pc *pooledConn) error {
 	// Return to idle pool
 	p.idle = append(p.idle, pc)
 	p.stats.recordRelease()
-
-	if p.config.Observer != nil {
-		p.config.Observer.OnRelease()
-	}
+	p.notifyRelease()
 
 	return nil
 }
@@ -363,14 +407,9 @@ func (p *Pool) createAndAcquire(ctx context.Context, startTime time.Time) (*Pool
 	pc.inUse.Store(true)
 	p.conns = append(p.conns, pc)
 	p.stats.setTotalCount(int64(len(p.conns)))
-	p.stats.recordAcquire(time.Since(startTime), false)
 	p.mu.Unlock()
 
-	if p.config.Observer != nil {
-		p.config.Observer.OnAcquire(time.Since(startTime), false)
-	}
-
-	return newPoolConn(pc), nil
+	return p.finishAcquire(pc, startTime, false), nil
 }
 
 // createConn creates a new tunnel connection.
@@ -413,10 +452,7 @@ func (p *Pool) createConn(ctx context.Context) (*pooledConn, error) {
 
 	dialDuration := time.Since(dialStart)
 	p.stats.recordConnectionCreated(dialDuration)
-
-	if p.config.Observer != nil {
-		p.config.Observer.OnConnectionCreated(dialDuration)
-	}
+	p.notifyConnectionCreated(dialDuration)
 
 	return pc, nil
 }
@@ -511,10 +547,7 @@ func (p *Pool) runHealthCheck() {
 
 	for _, pc := range p.idle {
 		healthy := p.isHealthy(pc)
-
-		if p.config.Observer != nil {
-			p.config.Observer.OnHealthCheck(healthy)
-		}
+		p.notifyHealthCheck(healthy)
 		p.stats.recordHealthCheck(healthy)
 
 		if healthy {
@@ -535,9 +568,7 @@ func (p *Pool) runHealthCheck() {
 	// Close unhealthy connections outside the lock
 	for _, pc := range unhealthy {
 		_ = pc.tunnel.Close()
-		if p.config.Observer != nil {
-			p.config.Observer.OnConnectionClosed("health_check_failed")
-		}
+		p.notifyConnectionClosed("health_check_failed")
 	}
 
 	// Try to maintain minimum connections
@@ -569,7 +600,5 @@ func (p *Pool) runHealthCheck() {
 	}
 
 	// Report stats to observer
-	if p.config.Observer != nil {
-		p.config.Observer.OnPoolStats(p.stats.Snapshot())
-	}
+	p.notifyPoolStats()
 }
