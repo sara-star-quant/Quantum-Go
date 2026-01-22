@@ -54,8 +54,13 @@ type AEAD struct {
 //
 // Returns:
 //   - AEAD: The initialized cipher
-//   - error: Non-nil if the key size is wrong or suite unsupported
+//   - error: Non-nil if the key size is wrong, suite unsupported, or not FIPS approved in FIPS mode
 func NewAEAD(suite constants.CipherSuite, key []byte) (*AEAD, error) {
+	// In FIPS mode, reject non-FIPS approved cipher suites
+	if FIPSMode() && !suite.IsFIPSApproved() {
+		return nil, qerrors.ErrCipherSuiteNotFIPSApproved
+	}
+
 	if len(key) != constants.AESKeySize {
 		return nil, qerrors.ErrInvalidKeySize
 	}

@@ -248,6 +248,11 @@ func FuzzAEADOpen(f *testing.F) {
 
 // FuzzAEADOpenChaCha20 fuzzes ChaCha20-Poly1305 decryption.
 func FuzzAEADOpenChaCha20(f *testing.F) {
+	// Skip in FIPS mode as ChaCha20-Poly1305 is not available
+	if crypto.FIPSMode() {
+		f.Skip("Skipping ChaCha20-Poly1305 fuzz test in FIPS mode")
+	}
+
 	key := make([]byte, 32)
 	_ = crypto.SecureRandom(key)
 	aead, _ := crypto.NewAEAD(constants.CipherSuiteChaCha20Poly1305, key)

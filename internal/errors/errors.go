@@ -73,6 +73,9 @@ var (
 	// ErrReplayDetected indicates a potential replay attack
 	ErrReplayDetected = errors.New("protocol: replay detected")
 
+	// ErrCipherSuiteNotFIPSApproved indicates a cipher suite is not FIPS 140-3 approved
+	ErrCipherSuiteNotFIPSApproved = errors.New("protocol: cipher suite not FIPS approved")
+
 	// ErrInvalidTicket indicates a session ticket is invalid or malformed
 	ErrInvalidTicket = errors.New("protocol: invalid ticket")
 

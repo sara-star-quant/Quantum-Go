@@ -324,6 +324,10 @@ func TestAEADAES256GCM(t *testing.T) {
 }
 
 func TestAEADChaCha20Poly1305(t *testing.T) {
+	if crypto.FIPSMode() {
+		t.Skip("Skipping ChaCha20-Poly1305 test in FIPS mode")
+	}
+
 	key := make([]byte, 32)
 	_ = crypto.SecureRandom(key)
 
@@ -504,13 +508,16 @@ func TestAEADSuite(t *testing.T) {
 		t.Errorf("Suite: got %d, want %d", aead.Suite(), constants.CipherSuiteAES256GCM)
 	}
 
-	aead2, err := crypto.NewAEAD(constants.CipherSuiteChaCha20Poly1305, key)
-	if err != nil {
-		t.Fatalf("NewAEAD failed: %v", err)
-	}
+	// ChaCha20-Poly1305 is only available in standard mode
+	if !crypto.FIPSMode() {
+		aead2, err := crypto.NewAEAD(constants.CipherSuiteChaCha20Poly1305, key)
+		if err != nil {
+			t.Fatalf("NewAEAD failed: %v", err)
+		}
 
-	if aead2.Suite() != constants.CipherSuiteChaCha20Poly1305 {
-		t.Errorf("Suite: got %d, want %d", aead2.Suite(), constants.CipherSuiteChaCha20Poly1305)
+		if aead2.Suite() != constants.CipherSuiteChaCha20Poly1305 {
+			t.Errorf("Suite: got %d, want %d", aead2.Suite(), constants.CipherSuiteChaCha20Poly1305)
+		}
 	}
 }
 

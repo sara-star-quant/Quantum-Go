@@ -51,16 +51,3 @@ func (v Version) String() string {
 
 // ProtocolID is the protocol identifier used for domain separation.
 const ProtocolID = constants.ProtocolName
-
-// SupportedCipherSuites returns the list of cipher suites supported by this implementation.
-func SupportedCipherSuites() []constants.CipherSuite {
-	return []constants.CipherSuite{
-		constants.CipherSuiteAES256GCM,
-		constants.CipherSuiteChaCha20Poly1305,
-	}
-}
-
-// PreferredCipherSuite returns the preferred cipher suite for new connections.
-func PreferredCipherSuite() constants.CipherSuite {
-	return constants.CipherSuiteAES256GCM
-}

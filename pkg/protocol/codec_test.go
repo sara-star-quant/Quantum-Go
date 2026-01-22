@@ -930,11 +930,19 @@ func TestVersionString(t *testing.T) {
 func TestSupportedCipherSuites(t *testing.T) {
 	suites := protocol.SupportedCipherSuites()
 
-	if len(suites) != 2 {
-		t.Errorf("SupportedCipherSuites length: got %d, want 2", len(suites))
+	// In FIPS mode, only AES-256-GCM is available
+	// In standard mode, both cipher suites are available
+	if crypto.FIPSMode() {
+		if len(suites) != 1 {
+			t.Errorf("FIPS mode: SupportedCipherSuites length: got %d, want 1", len(suites))
+		}
+	} else {
+		if len(suites) != 2 {
+			t.Errorf("Standard mode: SupportedCipherSuites length: got %d, want 2", len(suites))
+		}
 	}
 
-	// Check that both supported suites are present
+	// Check that expected suites are present
 	hasAES := false
 	hasChaCha := false
 	for _, s := range suites {
@@ -949,8 +957,24 @@ func TestSupportedCipherSuites(t *testing.T) {
 	if !hasAES {
 		t.Error("SupportedCipherSuites missing AES-256-GCM")
 	}
-	if !hasChaCha {
-		t.Error("SupportedCipherSuites missing ChaCha20-Poly1305")
+
+	if crypto.FIPSMode() {
+		if hasChaCha {
+			t.Error("FIPS mode: SupportedCipherSuites should not include ChaCha20-Poly1305")
+		}
+	} else {
+		if !hasChaCha {
+			t.Error("Standard mode: SupportedCipherSuites missing ChaCha20-Poly1305")
+		}
+	}
+
+	// In FIPS mode, all supported suites should be FIPS approved
+	if crypto.FIPSMode() {
+		for _, s := range suites {
+			if !s.IsFIPSApproved() {
+				t.Errorf("FIPS mode: cipher suite %v is not FIPS approved", s)
+			}
+		}
 	}
 }
 

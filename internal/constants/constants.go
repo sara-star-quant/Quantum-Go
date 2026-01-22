@@ -158,3 +158,9 @@ func (cs CipherSuite) String() string {
 func (cs CipherSuite) IsSupported() bool {
 	return cs == CipherSuiteAES256GCM || cs == CipherSuiteChaCha20Poly1305
 }
+
+// IsFIPSApproved returns true if the cipher suite is FIPS 140-3 approved.
+// Currently only AES-256-GCM is FIPS approved; ChaCha20-Poly1305 is not.
+func (cs CipherSuite) IsFIPSApproved() bool {
+	return cs == CipherSuiteAES256GCM
+}
