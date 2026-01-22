@@ -1,5 +1,10 @@
 // Package crypto implements Power-On Self-Tests (POST) for FIPS 140-3 compliance.
 //
+// IMPORTANT: POST is production code, not test code. FIPS 140-3 requires self-tests
+// to run at module load time (not just during development testing) to verify the
+// cryptographic implementation before any operations are performed. This catches
+// issues like corrupted binaries, hardware failures, or tampered code.
+//
 // POST runs automatically when the crypto package is loaded and verifies that
 // all cryptographic primitives produce expected outputs using Known Answer Tests (KAT).
 //
@@ -154,13 +159,15 @@ func runAESGCMKAT() error {
 	}
 
 	// Test encryption
-	ciphertext := aesgcm.Seal(nil, postKATAESNonce, postKATAESPlaintext, nil)
+	// Note: Hardcoded nonce is intentional for KAT - we need deterministic values
+	// to verify the implementation produces expected outputs.
+	ciphertext := aesgcm.Seal(nil, postKATAESNonce, postKATAESPlaintext, nil) //nolint:gosec // G407: Hardcoded nonce is required for KAT
 	if !bytes.Equal(ciphertext, postKATAESExpected) {
 		return fmt.Errorf("AES-GCM encrypt mismatch: got %x, want %x", ciphertext, postKATAESExpected)
 	}
 
 	// Test decryption
-	plaintext, err := aesgcm.Open(nil, postKATAESNonce, ciphertext, nil)
+	plaintext, err := aesgcm.Open(nil, postKATAESNonce, ciphertext, nil) //nolint:gosec // G407: Hardcoded nonce is required for KAT
 	if err != nil {
 		return fmt.Errorf("AES-GCM decrypt failed: %w", err)
 	}
