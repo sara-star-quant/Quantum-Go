@@ -1,11 +1,11 @@
 # Quantum-Go Development Roadmap
 
-**Version:** 2.0  
-**Last Updated:** 2026-01-21
+**Version:** 2.1
+**Last Updated:** 2026-01-22
 
 ---
 
-## Current Status: v0.0.6
+## Current Status: v0.0.8
 
 ### Completed Features
 - [x] CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)
@@ -15,6 +15,12 @@
 - [x] Graceful shutdown with CloseNotify
 - [x] Comprehensive test suite (85%+ coverage on core packages)
 - [x] Replay protection (sliding window)
+- [x] Connection pooling with health checking
+- [x] Buffer pooling (75%+ allocation reduction)
+- [x] Rate limiting and DoS protection
+- [x] Prometheus metrics and OpenTelemetry tracing
+- [x] FIPS 140-3 build mode with POST/CST self-tests
+- [x] Regulatory clarity (EU open source exemption, user deployment guidance)
 
 ---
 
@@ -87,7 +93,29 @@ Required for FIPS 140-3 validation.
 
 ---
 
-## v0.0.8 - Enterprise Features
+## v0.0.8 - Regulatory & Documentation Clarity
+
+**Theme:** Clear regulatory guidance and documentation improvements.
+
+### 1. Open Source Export Status
+**Priority:** High | **Effort:** Low
+
+- [x] Document EU Dual-Use Regulation exemption for public domain software
+- [x] Clarify project origin (Spain/EU) and applicable regulations
+- [x] Reframe US/BIS guidance as user deployment consideration (not developer obligation)
+- [x] Distinguish developer obligations vs user deployment responsibilities
+
+### 2. User Deployment Guidance
+**Priority:** High | **Effort:** Low
+
+- [x] Reframe regulatory section as guidance for deployers
+- [x] Add "User Action" items for 15+ jurisdictions
+- [x] Document that open source on GitHub is generally exempt
+- [x] Clarify restrictions in highly regulated zones (must not bypass telecom regulations)
+
+---
+
+## v0.0.9 - Enterprise Features
 
 **Theme:** Enterprise deployment readiness.
 
@@ -117,7 +145,7 @@ Required for FIPS 140-3 validation.
 
 ---
 
-## v0.0.9 - Security Audit Preparation
+## v0.1.0 - Security Audit Preparation
 
 **Theme:** Prepare for third-party security audit.
 
@@ -175,68 +203,71 @@ Required for FIPS 140-3 validation.
 ## Global Compliance & Regulatory Considerations
 
 > **CAUTION**
-> **Advisory Only**: The following compliance roadmap is based on public regulatory documentation (EAR, dual-use lists) and is provided for **informational purposes only**. It does **NOT** constitute legal advice. Organizations must consult with their own legal counsel and trade compliance officers before exporting or deploying this software globally.
+> **Advisory Only**: The following compliance information is based on public regulatory documentation and is provided for **informational purposes only**. It does **NOT** constitute legal advice. Organizations must consult with their own legal counsel and trade compliance officers before deploying this software.
+
+> **Note for Users**: This section describes regulatory considerations for **users deploying** Quantum-Go in various jurisdictions. As an open-source project publicly available on GitHub, the software itself is generally exempt from export controls under "public domain" exemptions in most jurisdictions.
 
 ### Cryptographic Export Controls
 
-#### United States
-- **EAR (Export Administration Regulations)**: CH-KEM using ML-KEM-1024 and AES-256 may require export classification. ECCN 5D002 applies to encryption software.
-- **License Exception ENC**: Open-source and publicly available software typically qualifies.
-- **Action:** File notification with BIS (Bureau of Industry and Security) before v1.0.0 release.
+#### European Union (Project Origin)
+- **Dual-Use Regulation (EU 2021/821)**: Governs encryption exports from EU member states.
+- **Open Source Exemption**: Software "in the public domain" (publicly available without restrictions) is **exempt** from controls under Article 2(2).
+- **Status**: Quantum-Go qualifies for the public domain exemption as MIT-licensed open source on GitHub.
 
-#### European Union (Spain & General)
-- **Dual-Use Regulation (EU 2021/821)**: governs encryption exports.
-- **Open Source Exemption**: Software "in the public domain" is generally exempt from controls.
-- **Spain Specifics**: Authority is *Ministerio de Economía, Comercio y Empresa*. Commercial exporters typically register with **REOCE**.
-- **Action:** Verify "Public Domain" exemption applicability for GitHub distribution. Consider voluntary REOCE registration for corporate entities.
+#### United States
+- **EAR (Export Administration Regulations)**: ECCN 5D002 applies to encryption software.
+- **License Exception TSU**: Publicly available open-source software qualifies for exemption.
+- **For US-based deployers**: Commercial use may require BIS notification; consult compliance counsel.
+
+#### For Users Deploying in Regulated Jurisdictions
+
+The following jurisdictions have specific requirements for **users deploying** encryption software:
 
 #### China
-- **Commercial Cryptography Regulations**: Foreign cryptographic products may require certification for commercial use in China.
-- **Action:** Document limitations for China deployments; consider separate compliance track.
+- **Commercial Cryptography Regulations**: Foreign cryptographic products may require certification for commercial use.
+- **User Action**: Organizations deploying in China should consult local compliance counsel.
 
 #### Russia
-- **FSB Certification**: Required for cryptographic products used in certain sectors.
-- **Action:** Document that Quantum-Go is not certified for regulated use in Russia.
+- **FSB Certification**: Required for cryptographic products in certain regulated sectors.
+- **User Action**: Quantum-Go is not certified for regulated use in Russia.
 
 #### Australia
-- **Defence Trade Controls Act (DTCA)**: Controls supply of DSGL technology to foreign persons.
+- **Defence Trade Controls Act (DTCA)**: Controls supply of DSGL technology.
 - **Wassenaar Arrangement**: Australia is a signatory; strong encryption is controlled.
-- **Action:** Verify DSGL status before supplying software to non-citizens within Australia or exporting.
+- **User Action**: Deployers should verify DSGL status for their use case.
 
 #### France
-- **ANSSI Regulations**: Import/Supply requires **Declaration** (for standard use) or **Authorization**.
-- **Usage**: Generally unrestricted, but *supply* is strictly regulated.
-- **Action:** File ANSSI declaration (minimum 1 month notice) before distribution in France.
+- **ANSSI Regulations**: Commercial supply may require declaration or authorization.
+- **User Action**: Commercial deployers should verify ANSSI requirements.
 
 #### India
-- **Department of Telecommunications (DoT)**: ISP/Telecom licenses often require "bulk encryption" restrictions (40-bit limit historical, now focus on traceability).
+- **Department of Telecommunications (DoT)**: ISP/Telecom licenses may have encryption restrictions.
 - **DPDP Act 2023**: Mandates security but government retains decryption/interception powers.
-- **Key Escrow**: Be aware of "traceability" requirements effectively mandating escrow-like capabilities for substantial intermediaries.
-- **Action:** Clarify "traceability" vs "end-to-end encryption" stance for Indian deployments.
+- **User Action**: Deployers should understand "traceability" requirements for substantial intermediaries.
 
 #### Latin America (LATAM)
-- **Brazil (ANATEL)**: Act 77/21 prohibits hardcoded keys/backdoors in telecom equipment. New cybersecurity audits effective Nov 2025.
-- **Mexico**: Wassenaar signatory. Export of dual-use software requires Ministry of Economy permit.
-- **Action:** Ensure "Security by Design" compliance for Brazil and check export permits for Mexico.
+- **Brazil (ANATEL)**: Act 77/21 prohibits hardcoded keys/backdoors in telecom equipment.
+- **Mexico**: Wassenaar signatory with dual-use controls.
+- **User Action**: Commercial deployers should verify local requirements.
 
 #### United Kingdom
-- **Post-Brexit Rules**: Retained EU Dual-Use Regulation (2021/821). Export of controlled encryption to non-EU/Five Eyes often requires license via SPIRE/LITE.
-- **NCSC Guidance**: Adherence to NCSC "Commercial Product Assurance" (CPA) recommended for government use.
-- **Action:** Verify whether OGEL (Open General Export Licence) applies to Quantum-Go distribution.
+- **Post-Brexit**: Retained EU Dual-Use Regulation (2021/821).
+- **NCSC Guidance**: CPA recommended for government use.
+- **User Action**: Open source generally covered by OGEL; commercial use may differ.
 
 #### Israel
-- **Defense Export Control**: Strictly regulated by DECA (Ministry of Defense). "Encryption Order" revoked in 2026 for alignment with Wassenaar, but commercial/defense distinction remains critical.
-- **Action:** File for export license if targeting defense sector; follow Ministry of Economy rules for civilian use.
+- **Defense Export Control**: Strictly regulated; commercial/defense distinction is critical.
+- **User Action**: Defense sector use requires separate licensing.
 
 #### Asia-Pacific (APAC)
-- **Japan (METI)**: Strong List/Catch-all controls. Encryption is a controlled item requiring MITI license for export.
-- **Singapore**: Strategic Goods (Control) Act. Export/Transfer of ML-KEM technology may require XO Permit.
-- **Action:** Assess need for specific export licenses for Japanese/Singaporean markets.
+- **Japan (METI)**: Encryption is a controlled item under catch-all controls.
+- **Singapore**: Strategic Goods (Control) Act applies.
+- **User Action**: Commercial deployers should assess licensing requirements.
 
 #### Middle East
-- **UAE & Saudi Arabia**: Tight control on VoIP/VPN usage. VPNs used to bypass telecom restrictions are illegal.
-- **Data Residency**: Strong preference (and sometimes mandate) for in-country data storage (e.g., Saudi ECC-1:2018).
-- **Action:** Provide clear disclaimer that Quantum-Go must not be used to bypass telecom regulations in these regions.
+- **UAE & Saudi Arabia**: VPN usage to bypass telecom restrictions is illegal.
+- **Data Residency**: In-country data storage often mandated.
+- **User Action**: Must not be used to bypass telecommunications regulations.
 
 ### Data Sovereignty
 
