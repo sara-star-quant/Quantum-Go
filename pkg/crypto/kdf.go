@@ -35,10 +35,6 @@ import (
 	qerrors "github.com/pzverkov/quantum-go/internal/errors"
 )
 
-// maxKDFInputSize is the maximum size for KDF inputs (1GB).
-// This prevents integer overflow when casting len() to uint32.
-const maxKDFInputSize = 1 << 30
-
 // safeUint32 safely converts an int to uint32, returning false if overflow would occur.
 func safeUint32(n int) (uint32, bool) {
 	if n < 0 || n > math.MaxUint32 {
