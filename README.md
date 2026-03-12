@@ -130,4 +130,10 @@ Strong encryption is restricted or regulated in certain jurisdictions (e.g., Chi
 ### No Warranty
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE.
 
+### No Legal Advice
+Nothing in this repository - including documentation, compliance references, FIPS implementation details, and regulatory guidance - constitutes legal, regulatory, or compliance advice. Users should consult qualified legal counsel for guidance on applicable laws and regulations in their jurisdiction.
+
+### User Responsibility
+By using, cloning, forking, or incorporating this software, you acknowledge that you are solely responsible for determining its legality in your jurisdiction and for compliance with all applicable laws, regulations, and standards. The authors and copyright holders bear no responsibility for how this software is used or deployed.
+
 See [ROADMAP.md](docs/ROADMAP.md#global-compliance--regulatory-considerations) for detailed regulatory guidance covering 15+ jurisdictions.
