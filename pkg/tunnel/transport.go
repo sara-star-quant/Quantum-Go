@@ -148,17 +148,49 @@ func (t *Transport) Send(data []byte) error {
 }
 
 // Receive reads and decrypts data from the tunnel.
+// Uses an iterative loop instead of recursion to prevent stack overflow
+// from malicious peers sending unbounded control messages (e.g. ping floods).
 func (t *Transport) Receive() ([]byte, error) {
-	if err := t.checkClosed(); err != nil {
-		return nil, err
-	}
+	for {
+		if err := t.checkClosed(); err != nil {
+			return nil, err
+		}
 
-	msg, msgType, err := t.readMessage()
-	if err != nil {
-		return nil, err
-	}
+		msg, msgType, err := t.readMessage()
+		if err != nil {
+			return nil, err
+		}
 
-	return t.handleMessage(msg, msgType)
+		switch msgType {
+		case protocol.MessageTypeData:
+			data, err := t.handleData(msg)
+			if err != nil {
+				t.recordProtocolError(err)
+			}
+			return data, err
+		case protocol.MessageTypePing:
+			if err := t.sendPong(); err != nil {
+				return nil, err
+			}
+			continue
+		case protocol.MessageTypePong:
+			continue
+		case protocol.MessageTypeClose:
+			t.markClosed()
+			return nil, qerrors.ErrTunnelClosed
+		case protocol.MessageTypeRekey:
+			if err := t.handleRekey(msg); err != nil {
+				t.recordProtocolError(err)
+				return nil, err
+			}
+			continue
+		case protocol.MessageTypeAlert:
+			return t.handleAlert(msg)
+		default:
+			t.recordProtocolError(qerrors.ErrInvalidMessage)
+			return nil, qerrors.ErrInvalidMessage
+		}
+	}
 }
 
 // checkClosed checks if the transport is closed.
@@ -193,59 +225,6 @@ func (t *Transport) readMessage() ([]byte, protocol.MessageType, error) {
 	}
 
 	return msg, msgType, nil
-}
-
-// handleMessage dispatches a message to the appropriate handler.
-func (t *Transport) handleMessage(msg []byte, msgType protocol.MessageType) ([]byte, error) {
-	switch msgType {
-	case protocol.MessageTypeData:
-		return t.handleDataMessage(msg)
-	case protocol.MessageTypePing:
-		return t.handlePing()
-	case protocol.MessageTypePong:
-		return t.Receive()
-	case protocol.MessageTypeClose:
-		return t.handleClose()
-	case protocol.MessageTypeRekey:
-		return t.handleRekeyMessage(msg)
-	case protocol.MessageTypeAlert:
-		return t.handleAlert(msg)
-	default:
-		t.recordProtocolError(qerrors.ErrInvalidMessage)
-		return nil, qerrors.ErrInvalidMessage
-	}
-}
-
-// handleDataMessage processes a data message.
-func (t *Transport) handleDataMessage(msg []byte) ([]byte, error) {
-	data, err := t.handleData(msg)
-	if err != nil {
-		t.recordProtocolError(err)
-	}
-	return data, err
-}
-
-// handlePing responds to a ping and continues reading.
-func (t *Transport) handlePing() ([]byte, error) {
-	if err := t.sendPong(); err != nil {
-		return nil, err
-	}
-	return t.Receive()
-}
-
-// handleClose marks the transport as closed.
-func (t *Transport) handleClose() ([]byte, error) {
-	t.markClosed()
-	return nil, qerrors.ErrTunnelClosed
-}
-
-// handleRekeyMessage processes a rekey message.
-func (t *Transport) handleRekeyMessage(msg []byte) ([]byte, error) {
-	if err := t.handleRekey(msg); err != nil {
-		t.recordProtocolError(err)
-		return nil, err
-	}
-	return t.Receive()
 }
 
 // handleAlert processes an alert message.
