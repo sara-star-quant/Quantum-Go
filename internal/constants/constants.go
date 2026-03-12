@@ -87,6 +87,9 @@ const (
 
 	// DomainSeparatorRekey is used in rekey derivation
 	DomainSeparatorRekey = "CH-KEM-VPN-Rekey"
+
+	// DomainSeparatorResumption is used in resumption secret derivation
+	DomainSeparatorResumption = "CH-KEM-VPN-Resumption"
 )
 
 // Session Parameters

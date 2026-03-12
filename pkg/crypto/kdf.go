@@ -322,6 +322,34 @@ func DeriveTrafficKeys(masterSecret []byte) (initiatorKey, responderKey []byte, 
 	return initiatorKey, responderKey, nil
 }
 
+// DeriveResumptionSecret derives a new master secret for resumed sessions.
+//
+// This combines the PSK (ticket secret) with a fresh KEM shared secret,
+// providing forward secrecy even when the ticket is compromised.
+// Similar to TLS 1.3's PSK+ECDHE mode.
+//
+// Parameters:
+//   - psk: Pre-shared key from the session ticket
+//   - freshSecret: Fresh shared secret from new CH-KEM exchange
+//
+// Returns:
+//   - newSecret: New 32-byte master secret
+//   - error: Non-nil if inputs are invalid
+func DeriveResumptionSecret(psk, freshSecret []byte) ([]byte, error) {
+	if len(psk) != constants.CHKEMSharedSecretSize {
+		return nil, qerrors.NewCryptoError("DeriveResumptionSecret", qerrors.ErrInvalidKeySize)
+	}
+	if len(freshSecret) != constants.CHKEMSharedSecretSize {
+		return nil, qerrors.NewCryptoError("DeriveResumptionSecret", qerrors.ErrInvalidKeySize)
+	}
+
+	return DeriveKeyMultiple(
+		constants.DomainSeparatorResumption,
+		[][]byte{psk, freshSecret},
+		constants.CHKEMSharedSecretSize,
+	)
+}
+
 // DeriveRekeySecret derives a new master secret for session rekeying.
 //
 // The rekey process:
