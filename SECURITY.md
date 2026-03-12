@@ -45,10 +45,10 @@ The following are explicitly **not** in scope for security reports:
 
 | Version | Supported          | Notes                          |
 | ------- | ------------------ | ------------------------------ |
-| 0.0.2+  | Yes                | Current development release    |
-| < 0.0.2 | No                 | Pre-release, not supported     |
+| 0.0.9+  | Yes                | Security-hardened release       |
+| < 0.0.9 | No                 | Pre-hardening, not supported   |
 
-**Note**: This project is currently in early development (v0.0.x). Production use is **not recommended** without independent security audit.
+**Note**: Versions prior to v0.0.9 contain known protocol-level weaknesses in session resumption, rekey authentication, and transcript binding. Upgrade to v0.0.9+ for security-hardened protocol composition. Production use is **not recommended** without independent security audit.
 
 ---
 
