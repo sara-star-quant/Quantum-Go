@@ -299,3 +299,73 @@ func TestTransportInvalidMessages(t *testing.T) {
 		t.Fatal("expected error for invalid message type, got nil")
 	}
 }
+
+func TestReceiveIterativePingFlood(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
+
+	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
+	_ = crypto.SecureRandom(masterSecret)
+
+	clientSession, _ := NewSession(RoleInitiator)
+	_ = clientSession.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+
+	serverSession, _ := NewSession(RoleResponder)
+	_ = serverSession.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+
+	server := &Transport{
+		session:     serverSession,
+		conn:        serverConn,
+		codec:       protocol.NewCodec(),
+		readTimeout: 10 * time.Second,
+	}
+
+	const pingCount = 10000
+
+	// Drain pong responses from client side so sendPong doesn't block on net.Pipe
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			_, err := clientConn.Read(buf)
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	// Writer goroutine: send 10,000 pings followed by a data message
+	go func() {
+		codec := protocol.NewCodec()
+		pingMsg := make([]byte, protocol.HeaderSize)
+		pingMsg[0] = byte(protocol.MessageTypePing)
+
+		for i := 0; i < pingCount; i++ {
+			if _, err := clientConn.Write(pingMsg); err != nil {
+				return
+			}
+		}
+
+		// Send a real data message after all pings
+		plaintext := []byte("survived the flood")
+		ciphertext, seq, err := clientSession.Encrypt(plaintext)
+		if err != nil {
+			return
+		}
+		msg, err := codec.EncodeData(seq, ciphertext)
+		if err != nil {
+			return
+		}
+		_, _ = clientConn.Write(msg)
+	}()
+
+	// This should NOT stack overflow - iterative loop handles all pings
+	data, err := server.Receive()
+	if err != nil {
+		t.Fatalf("Receive failed after ping flood: %v", err)
+	}
+
+	if string(data) != "survived the flood" {
+		t.Errorf("unexpected data: %q", string(data))
+	}
+}
