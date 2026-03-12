@@ -369,41 +369,66 @@ func (c *Codec) DecodeAlert(data []byte) (AlertLevel, AlertCode, string, error) 
 	return level, code, description, nil
 }
 
-// EncodeRekey serializes a rekey message.
+// EncodeRekeyPayload serializes the plaintext inner rekey payload.
 // Format: NewPublicKey (1600B) + ActivationSequence (8B)
-func (c *Codec) EncodeRekey(newPublicKey []byte, activationSeq uint64) ([]byte, error) {
+func (c *Codec) EncodeRekeyPayload(newPublicKey []byte, activationSeq uint64) ([]byte, error) {
 	if len(newPublicKey) != constants.CHKEMPublicKeySize {
 		return nil, qerrors.ErrInvalidPublicKey
 	}
 
-	payloadSize := constants.CHKEMPublicKeySize + 8
-	buf := make([]byte, HeaderSize+payloadSize)
-
-	buf[0] = byte(MessageTypeRekey)
-	binary.BigEndian.PutUint32(buf[1:], uint32(payloadSize))
-	copy(buf[HeaderSize:], newPublicKey)
-	binary.BigEndian.PutUint64(buf[HeaderSize+constants.CHKEMPublicKeySize:], activationSeq)
+	buf := make([]byte, constants.CHKEMPublicKeySize+8)
+	copy(buf, newPublicKey)
+	binary.BigEndian.PutUint64(buf[constants.CHKEMPublicKeySize:], activationSeq)
 
 	return buf, nil
 }
 
-// DecodeRekey deserializes a rekey message.
-func (c *Codec) DecodeRekey(data []byte) ([]byte, uint64, error) {
-	minLen := HeaderSize + constants.CHKEMPublicKeySize + 8
+// DecodeRekeyPayload deserializes the plaintext inner rekey payload.
+func (c *Codec) DecodeRekeyPayload(data []byte) ([]byte, uint64, error) {
+	minLen := constants.CHKEMPublicKeySize + 8
 	if len(data) < minLen {
 		return nil, 0, qerrors.ErrInvalidMessage
 	}
 
-	if MessageType(data[0]) != MessageTypeRekey {
-		return nil, 0, qerrors.ErrInvalidMessage
-	}
-
 	newPublicKey := make([]byte, constants.CHKEMPublicKeySize)
-	copy(newPublicKey, data[HeaderSize:HeaderSize+constants.CHKEMPublicKeySize])
+	copy(newPublicKey, data[:constants.CHKEMPublicKeySize])
 
-	activationSeq := binary.BigEndian.Uint64(data[HeaderSize+constants.CHKEMPublicKeySize:])
+	activationSeq := binary.BigEndian.Uint64(data[constants.CHKEMPublicKeySize:])
 
 	return newPublicKey, activationSeq, nil
+}
+
+// EncodeRekey serializes an encrypted rekey message.
+// Format: [Rekey(1B)] [Len(4B)] [Seq(8B)] [AEAD-Ciphertext]
+func (c *Codec) EncodeRekey(seq uint64, ciphertext []byte) ([]byte, error) {
+	payloadSize := 8 + len(ciphertext)
+	buf := make([]byte, HeaderSize+payloadSize)
+
+	buf[0] = byte(MessageTypeRekey)
+	binary.BigEndian.PutUint32(buf[1:], uint32(payloadSize))
+	binary.BigEndian.PutUint64(buf[HeaderSize:], seq)
+	copy(buf[HeaderSize+8:], ciphertext)
+
+	return buf, nil
+}
+
+// DecodeRekey deserializes an encrypted rekey message.
+// Returns the sequence number and ciphertext from the outer message.
+func (c *Codec) DecodeRekey(data []byte) (uint64, []byte, error) {
+	minLen := HeaderSize + 8
+	if len(data) < minLen {
+		return 0, nil, qerrors.ErrInvalidMessage
+	}
+
+	if MessageType(data[0]) != MessageTypeRekey {
+		return 0, nil, qerrors.ErrInvalidMessage
+	}
+
+	seq := binary.BigEndian.Uint64(data[HeaderSize:])
+	ciphertext := make([]byte, len(data)-(HeaderSize+8))
+	copy(ciphertext, data[HeaderSize+8:])
+
+	return seq, ciphertext, nil
 }
 
 // ReadMessage reads a complete message from the reader.

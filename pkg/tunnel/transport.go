@@ -372,9 +372,22 @@ func (t *Transport) Close() error {
 
 // --- Rekey Protocol Methods ---
 
-// handleRekey processes an incoming rekey message.
+// handleRekey processes an incoming encrypted rekey message.
 func (t *Transport) handleRekey(msg []byte) error {
-	newPublicKey, activationSeq, err := t.codec.DecodeRekey(msg)
+	// Decode outer message to get seq + ciphertext
+	seq, ciphertext, err := t.codec.DecodeRekey(msg)
+	if err != nil {
+		return err
+	}
+
+	// Decrypt inner payload using current session keys
+	plaintext, err := t.session.Decrypt(ciphertext, seq)
+	if err != nil {
+		return err
+	}
+
+	// Decode inner payload
+	newPublicKey, activationSeq, err := t.codec.DecodeRekeyPayload(plaintext)
 	if err != nil {
 		return err
 	}
@@ -382,13 +395,13 @@ func (t *Transport) handleRekey(msg []byte) error {
 	// If we're the responder and receive a rekey request
 	if t.session.Role == RoleResponder && !t.session.IsRekeyInProgress() {
 		// Prepare response (encapsulate to new key)
-		ciphertext, err := t.session.PrepareRekeyResponse(newPublicKey, activationSeq)
+		responseCT, err := t.session.PrepareRekeyResponse(newPublicKey, activationSeq)
 		if err != nil {
 			return err
 		}
 
-		// Send rekey response back
-		return t.sendRekeyResponse(ciphertext, activationSeq)
+		// Send encrypted rekey response back
+		return t.sendRekeyResponse(responseCT, activationSeq)
 	}
 
 	// If we're the initiator and receive a rekey response (ciphertext)
@@ -424,8 +437,20 @@ func (t *Transport) SendRekey() error {
 			return err
 		}
 
-		// Encode rekey message
-		msg, err := t.codec.EncodeRekey(newPublicKey, activationSeq)
+		// Build inner payload
+		innerPayload, err := t.codec.EncodeRekeyPayload(newPublicKey, activationSeq)
+		if err != nil {
+			return err
+		}
+
+		// Encrypt with current session keys
+		ciphertext, seq, err := t.session.Encrypt(innerPayload)
+		if err != nil {
+			return err
+		}
+
+		// Encode outer message
+		msg, err := t.codec.EncodeRekey(seq, ciphertext)
 		if err != nil {
 			return err
 		}
@@ -449,11 +474,22 @@ func (t *Transport) SendRekey() error {
 	return err
 }
 
-// sendRekeyResponse sends a rekey response (called by responder).
-func (t *Transport) sendRekeyResponse(ciphertext []byte, activationSeq uint64) error {
-	// For the response, we send the ciphertext in place of public key
-	// The format is the same, responder sends ciphertext back
-	msg, err := t.codec.EncodeRekey(ciphertext, activationSeq)
+// sendRekeyResponse sends an encrypted rekey response (called by responder).
+func (t *Transport) sendRekeyResponse(responseCT []byte, activationSeq uint64) error {
+	// Build inner payload (ciphertext in place of public key for response)
+	innerPayload, err := t.codec.EncodeRekeyPayload(responseCT, activationSeq)
+	if err != nil {
+		return err
+	}
+
+	// Encrypt with current session keys
+	ciphertext, seq, err := t.session.Encrypt(innerPayload)
+	if err != nil {
+		return err
+	}
+
+	// Encode outer message
+	msg, err := t.codec.EncodeRekey(seq, ciphertext)
 	if err != nil {
 		return err
 	}
