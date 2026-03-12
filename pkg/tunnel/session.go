@@ -278,8 +278,8 @@ func (s *Session) InitializeKeys(masterSecret []byte, cipherSuite constants.Ciph
 		return err
 	}
 
-	// Zeroize key material
-	crypto.ZeroizeMultiple(initiatorKey, responderKey, sendKey, recvKey)
+	// Zeroize key material (sendKey/recvKey are aliases to initiatorKey/responderKey)
+	crypto.ZeroizeMultiple(initiatorKey, responderKey)
 
 	s.EstablishedAt = time.Now()
 	s.SetState(SessionStateEstablished)
@@ -480,8 +480,8 @@ func (s *Session) Rekey(newMasterSecret []byte) error {
 	s.masterSecret = make([]byte, len(newMasterSecret))
 	copy(s.masterSecret, newMasterSecret)
 
-	// Zeroize key material
-	crypto.ZeroizeMultiple(initiatorKey, responderKey, sendKey, recvKey)
+	// Zeroize key material (sendKey/recvKey are aliases to initiatorKey/responderKey)
+	crypto.ZeroizeMultiple(initiatorKey, responderKey)
 
 	// Reset counters
 	s.replayWindow = NewReplayWindow()

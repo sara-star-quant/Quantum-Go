@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"bytes"
 	"net"
 	"sync"
 	"testing"
@@ -464,4 +465,112 @@ func TestReceiveIterativePingFlood(t *testing.T) {
 	if string(data) != "survived the flood" {
 		t.Errorf("unexpected data: %q", string(data))
 	}
+}
+
+func TestRekeyThenDataExchange(t *testing.T) {
+	// End-to-end: perform encrypted rekey, then verify data exchange works after
+	clientConn, serverConn := net.Pipe()
+	defer func() { _ = clientConn.Close() }()
+	defer func() { _ = serverConn.Close() }()
+
+	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
+	_ = crypto.SecureRandom(masterSecret)
+
+	clientSession, _ := NewSession(RoleInitiator)
+	_ = clientSession.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+
+	serverSession, _ := NewSession(RoleResponder)
+	_ = serverSession.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
+
+	client := &Transport{
+		session:      clientSession,
+		conn:         clientConn,
+		codec:        protocol.NewCodec(),
+		writeTimeout: 5 * time.Second,
+	}
+
+	server := &Transport{
+		session:      serverSession,
+		conn:         serverConn,
+		codec:        protocol.NewCodec(),
+		readTimeout:  5 * time.Second,
+		writeTimeout: 5 * time.Second,
+	}
+
+	// Step 1: Send data before rekey
+	preRekeyData := []byte("before rekey")
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		data, err := server.Receive()
+		if err != nil {
+			t.Errorf("pre-rekey Receive failed: %v", err)
+			return
+		}
+		if !bytes.Equal(data, preRekeyData) {
+			t.Errorf("pre-rekey data mismatch: got %q", data)
+		}
+	}()
+
+	if err := client.Send(preRekeyData); err != nil {
+		t.Fatalf("pre-rekey Send failed: %v", err)
+	}
+	wg.Wait()
+
+	// Step 2: Perform rekey
+	serverRekeyDone := make(chan error, 1)
+	go func() {
+		msg, err := server.codec.ReadMessage(server.conn)
+		if err != nil {
+			serverRekeyDone <- err
+			return
+		}
+		serverRekeyDone <- server.handleRekey(msg)
+	}()
+
+	clientRekeyDone := make(chan error, 1)
+	go func() {
+		msg, err := client.codec.ReadMessage(client.conn)
+		if err != nil {
+			clientRekeyDone <- err
+			return
+		}
+		clientRekeyDone <- client.handleRekey(msg)
+	}()
+
+	if err := client.SendRekey(); err != nil {
+		t.Fatalf("SendRekey failed: %v", err)
+	}
+
+	if err := <-serverRekeyDone; err != nil {
+		t.Fatalf("server handleRekey failed: %v", err)
+	}
+	if err := <-clientRekeyDone; err != nil {
+		t.Fatalf("client handleRekey failed: %v", err)
+	}
+
+	// Force key activation
+	clientSession.ActivatePendingKeys()
+	serverSession.ActivatePendingKeys()
+
+	// Step 3: Send data after rekey - should work with new keys
+	postRekeyData := []byte("after rekey")
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		data, err := server.Receive()
+		if err != nil {
+			t.Errorf("post-rekey Receive failed: %v", err)
+			return
+		}
+		if !bytes.Equal(data, postRekeyData) {
+			t.Errorf("post-rekey data mismatch: got %q", data)
+		}
+	}()
+
+	if err := client.Send(postRekeyData); err != nil {
+		t.Fatalf("post-rekey Send failed: %v", err)
+	}
+	wg.Wait()
 }
