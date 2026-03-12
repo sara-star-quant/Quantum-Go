@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/pzverkov/quantum-go/internal/constants"
+	"github.com/pzverkov/quantum-go/pkg/crypto"
 	"github.com/pzverkov/quantum-go/pkg/protocol"
 )
 
@@ -304,5 +305,72 @@ func TestHandshakeAlerts(t *testing.T) {
 	}
 	if code != protocol.AlertCodeHandshakeFailure {
 		t.Errorf("expected HandshakeFailure code, got %v", code)
+	}
+}
+
+func TestVerifyDataDifferentSecrets(t *testing.T) {
+	// Two handshakes with different shared secrets must produce different verify_data
+	transcript := []byte("same transcript data for both")
+
+	secret1 := make([]byte, 32)
+	secret2 := make([]byte, 32)
+	for i := range secret1 {
+		secret1[i] = byte(i)
+		secret2[i] = byte(i + 128)
+	}
+
+	vd1, err := crypto.DeriveKeyMultiple(
+		"CH-KEM-VPN-ClientFinished",
+		[][]byte{secret1, transcript},
+		32,
+	)
+	if err != nil {
+		t.Fatalf("DeriveKeyMultiple failed: %v", err)
+	}
+
+	vd2, err := crypto.DeriveKeyMultiple(
+		"CH-KEM-VPN-ClientFinished",
+		[][]byte{secret2, transcript},
+		32,
+	)
+	if err != nil {
+		t.Fatalf("DeriveKeyMultiple failed: %v", err)
+	}
+
+	if bytes.Equal(vd1, vd2) {
+		t.Error("verify_data with different shared secrets should differ")
+	}
+}
+
+func TestVerifyDataIncludesSecret(t *testing.T) {
+	// Verify that transcript-only derivation differs from secret+transcript derivation
+	transcript := []byte("handshake transcript data")
+	secret := make([]byte, 32)
+	for i := range secret {
+		secret[i] = byte(i + 1)
+	}
+
+	// Old style: transcript only
+	vdOld, err := crypto.DeriveKey(
+		"CH-KEM-VPN-ClientFinished",
+		transcript,
+		32,
+	)
+	if err != nil {
+		t.Fatalf("DeriveKey failed: %v", err)
+	}
+
+	// New style: shared secret + transcript
+	vdNew, err := crypto.DeriveKeyMultiple(
+		"CH-KEM-VPN-ClientFinished",
+		[][]byte{secret, transcript},
+		32,
+	)
+	if err != nil {
+		t.Fatalf("DeriveKeyMultiple failed: %v", err)
+	}
+
+	if bytes.Equal(vdOld, vdNew) {
+		t.Error("verify_data with secret binding should differ from transcript-only derivation")
 	}
 }

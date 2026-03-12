@@ -209,10 +209,11 @@ func (h *Handshake) CreateClientFinished() ([]byte, error) {
 		return nil, qerrors.ErrInvalidState
 	}
 
-	// Compute verify_data = SHAKE-256(transcript || "client finished")
-	verifyData, err := crypto.DeriveKey(
+	// Compute verify_data = SHAKE-256(sharedSecret || transcript || "client finished")
+	// Including the shared secret proves both sides hold the same key material
+	verifyData, err := crypto.DeriveKeyMultiple(
 		"CH-KEM-VPN-ClientFinished",
-		h.transcript.Bytes(),
+		[][]byte{h.sharedSecret, h.transcript.Bytes()},
 		32,
 	)
 	if err != nil {
@@ -257,10 +258,10 @@ func (h *Handshake) ProcessServerFinished(data []byte) error {
 		return err
 	}
 
-	// Compute expected verify_data
-	expectedVerifyData, err := crypto.DeriveKey(
+	// Compute expected verify_data with shared secret binding
+	expectedVerifyData, err := crypto.DeriveKeyMultiple(
 		"CH-KEM-VPN-ServerFinished",
-		h.transcript.Bytes(),
+		[][]byte{h.sharedSecret, h.transcript.Bytes()},
 		32,
 	)
 	if err != nil {
@@ -407,10 +408,10 @@ func (h *Handshake) ProcessClientFinished(data []byte) error {
 		return err
 	}
 
-	// Compute expected verify_data
-	expectedVerifyData, err := crypto.DeriveKey(
+	// Compute expected verify_data with shared secret binding
+	expectedVerifyData, err := crypto.DeriveKeyMultiple(
 		"CH-KEM-VPN-ClientFinished",
-		h.transcript.Bytes(),
+		[][]byte{h.sharedSecret, h.transcript.Bytes()},
 		32,
 	)
 	if err != nil {
@@ -434,10 +435,10 @@ func (h *Handshake) CreateServerFinished() ([]byte, error) {
 		return nil, qerrors.ErrInvalidState
 	}
 
-	// Compute verify_data
-	verifyData, err := crypto.DeriveKey(
+	// Compute verify_data with shared secret binding
+	verifyData, err := crypto.DeriveKeyMultiple(
 		"CH-KEM-VPN-ServerFinished",
-		h.transcript.Bytes(),
+		[][]byte{h.sharedSecret, h.transcript.Bytes()},
 		32,
 	)
 	if err != nil {
