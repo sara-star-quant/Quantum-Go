@@ -173,22 +173,26 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 	// Store server random
 	h.serverRandom = msg.Random
 
-	if h.resumed {
-		// Use the MasterSecret from the ticket
-		h.sharedSecret = make([]byte, len(h.ticketSecret))
-		copy(h.sharedSecret, h.ticketSecret)
-	} else {
-		// Parse ciphertext
-		ct, err := chkem.ParseCiphertext(msg.CHKEMCiphertext)
-		if err != nil {
-			return err
-		}
+	// Always decapsulate (server always sends real ciphertext now)
+	ct, err := chkem.ParseCiphertext(msg.CHKEMCiphertext)
+	if err != nil {
+		return err
+	}
 
-		// Decapsulate to get shared secret
-		h.sharedSecret, err = chkem.Decapsulate(ct, h.session.LocalKeyPair)
+	freshSecret, err := chkem.Decapsulate(ct, h.session.LocalKeyPair)
+	if err != nil {
+		return err
+	}
+
+	if h.resumed {
+		// PSK+KEM mode: mix ticket secret with fresh KEM secret
+		h.sharedSecret, err = crypto.DeriveResumptionSecret(h.ticketSecret, freshSecret)
 		if err != nil {
 			return err
 		}
+		crypto.Zeroize(freshSecret)
+	} else {
+		h.sharedSecret = freshSecret
 	}
 
 	// Add to transcript
@@ -312,19 +316,17 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 		secret, err := h.session.Resume(msg.SessionID, h.ticketManager)
 		if err == nil {
 			h.resumed = true
-			h.sharedSecret = secret
+			h.ticketSecret = secret
 			h.session.ID = msg.SessionID
 		}
 	}
 
-	if !h.resumed {
-		// Parse client's public key
-		clientPublicKey, err := chkem.ParsePublicKey(msg.CHKEMPublicKey)
-		if err != nil {
-			return err
-		}
-		h.session.RemotePublicKey = clientPublicKey
+	// Always parse client's public key (needed for fresh KEM exchange even during resumption)
+	clientPublicKey, err := chkem.ParsePublicKey(msg.CHKEMPublicKey)
+	if err != nil {
+		return err
 	}
+	h.session.RemotePublicKey = clientPublicKey
 
 	// Select cipher suite (first mutually supported)
 	h.session.CipherSuite = selectCipherSuite(msg.CipherSuites)
@@ -343,25 +345,29 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 
 // CreateServerHello generates the ServerHello message.
 func (h *Handshake) CreateServerHello() ([]byte, error) {
-	if !h.resumed && h.session.RemotePublicKey == nil {
+	if h.session.RemotePublicKey == nil {
 		return nil, qerrors.ErrInvalidState
 	}
 
 	// Generate server random
 	h.serverRandom = crypto.MustSecureRandomBytes(32)
 
-	var ctBytes []byte
+	// Always perform fresh KEM exchange (even during resumption for forward secrecy)
+	ct, freshSecret, err := chkem.Encapsulate(h.session.RemotePublicKey)
+	if err != nil {
+		return nil, err
+	}
+	ctBytes := ct.Bytes()
+
 	if h.resumed {
-		// Send empty/zero ciphertext if resuming
-		ctBytes = make([]byte, constants.CHKEMCiphertextSize)
-	} else {
-		// Encapsulate with client's public key
-		ct, sharedSecret, err := chkem.Encapsulate(h.session.RemotePublicKey)
+		// PSK+KEM mode: mix ticket secret with fresh KEM secret
+		h.sharedSecret, err = crypto.DeriveResumptionSecret(h.ticketSecret, freshSecret)
 		if err != nil {
 			return nil, err
 		}
-		h.sharedSecret = sharedSecret
-		ctBytes = ct.Bytes()
+		crypto.Zeroize(freshSecret)
+	} else {
+		h.sharedSecret = freshSecret
 	}
 
 	msg := &protocol.ServerHello{

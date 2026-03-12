@@ -515,21 +515,18 @@ func (s *Session) ExportTicket(tm *TicketManager) ([]byte, error) {
 }
 
 // Resume restores a session from an encrypted ticket (called by responder).
+// Returns the ticket's master secret (PSK) for mixing with a fresh KEM secret.
+// Does NOT initialize traffic keys - that happens after the fresh KEM exchange.
 func (s *Session) Resume(ticketBytes []byte, tm *TicketManager) ([]byte, error) {
 	ticket, err := tm.DecryptTicket(ticketBytes)
 	if err != nil {
 		return nil, err
 	}
 
-	// Initialize session state from ticket
+	// Store cipher suite from ticket
 	s.mu.Lock()
 	s.CipherSuite = ticket.CipherSuite
 	s.mu.Unlock()
-
-	// Initialize traffic keys
-	if err := s.InitializeKeys(ticket.MasterSecret, ticket.CipherSuite); err != nil {
-		return nil, err
-	}
 
 	return ticket.MasterSecret, nil
 }

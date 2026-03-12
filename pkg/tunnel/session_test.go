@@ -139,7 +139,7 @@ func TestSessionExportTicketResume(t *testing.T) {
 		t.Fatal("exported empty ticket")
 	}
 
-	// Test Resume
+	// Test Resume - returns PSK without initializing keys (keys are set after fresh KEM exchange)
 	session2, _ := NewSession(RoleResponder)
 	resumedSecret, err := session2.Resume(ticket, tm)
 	if err != nil {
@@ -150,7 +150,8 @@ func TestSessionExportTicketResume(t *testing.T) {
 		t.Errorf("resumed secret mismatch:\nwant: %x\ngot:  %x", masterSecret, resumedSecret)
 	}
 
-	if session2.State() != SessionStateEstablished {
-		t.Errorf("expected Established state after Resume, got %v", session2.State())
+	// Resume should NOT set state to Established - that happens after fresh KEM exchange
+	if session2.State() == SessionStateEstablished {
+		t.Error("Resume should not set state to Established (keys are initialized later after KEM exchange)")
 	}
 }
