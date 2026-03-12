@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Fixed
+- **Lint**: Use `fmt.Fprintf` instead of `WriteString(Sprintf)` in `pkg/metrics/logger.go` (staticcheck QF1012)
+
+### Security
+- **Dependency**: Bump `cloudflare/circl` v1.6.2 to v1.6.3 (fixes secp384r1 CombinedMult)
+
+### Documentation
+- **Legal**: Add "No Legal Advice" and "User Responsibility" sections to README
+- **Roadmap**: Add v0.0.9 and v0.0.10 security hardening milestones based on internal protocol audit
+
+### Planned: v0.0.9 - Security Hardening Phase 1
+- Session resumption forward secrecy (fresh DH + PSK mixing)
+- Verify data binding to shared secret
+- Rekey message authentication (encrypt with session keys)
+- Key material zeroization improvements
+- Iterative message handling (replace recursive Receive)
+
+### Planned: v0.0.10 - Security Hardening Phase 2
+- Rekey secret chaining (use existing DeriveRekeySecret)
+- Handshake timeout on server Accept
+- Module integrity verification (fix always-true check)
+- Error message sanitization (generic alerts to remote peers)
+- CI security improvements (FIPS testing, Gosec enforcement)
+
 ## [0.0.8][] - 2026-01-22
 
 ### Added
@@ -231,6 +255,8 @@ Benchmark results (Apple M-series):
 - Unit tests for crypto primitives
 
 [Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.8...HEAD
+[0.0.10]: https://github.com/pzverkov/quantum-go/compare/v0.0.9...v0.0.10
+[0.0.9]: https://github.com/pzverkov/quantum-go/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/pzverkov/quantum-go/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/pzverkov/quantum-go/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/pzverkov/quantum-go/compare/v0.0.5...v0.0.6
