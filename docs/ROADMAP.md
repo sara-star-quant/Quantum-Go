@@ -26,8 +26,7 @@
 
 ## Completed Releases
 
-### v0.0.6 - Hardening & Observability [COMPLETED]
-
+### v0.0.6 - Hardening & Observability
 **Theme:** Production hardening and operational visibility.
 
 #### 1. Rate Limiting & DoS Protection
@@ -63,8 +62,7 @@
 
 ---
 
-### v0.0.7 - FIPS Mode [COMPLETED]
-
+### v0.0.7 - FIPS Mode
 **Theme:** FIPS 140-3 compliance preparation.
 
 #### 1. FIPS Build Mode
@@ -95,8 +93,7 @@ Required for FIPS 140-3 validation.
 
 ---
 
-### v0.0.8 - Regulatory & Documentation Clarity [COMPLETED]
-
+### v0.0.8 - Regulatory & Documentation Clarity
 **Theme:** Clear regulatory guidance and documentation improvements.
 
 #### 1. Open Source Export Status
