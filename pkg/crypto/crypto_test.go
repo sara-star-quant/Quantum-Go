@@ -310,6 +310,60 @@ func TestDeriveKeyMultiple(t *testing.T) {
 	}
 }
 
+func TestDeriveResumptionSecret(t *testing.T) {
+	psk := make([]byte, 32)
+	freshSecret := make([]byte, 32)
+	for i := range psk {
+		psk[i] = byte(i)
+		freshSecret[i] = byte(i + 100)
+	}
+
+	// Valid derivation
+	secret, err := crypto.DeriveResumptionSecret(psk, freshSecret)
+	if err != nil {
+		t.Fatalf("DeriveResumptionSecret failed: %v", err)
+	}
+	if len(secret) != 32 {
+		t.Errorf("secret size: got %d, want 32", len(secret))
+	}
+
+	// Deterministic
+	secret2, _ := crypto.DeriveResumptionSecret(psk, freshSecret)
+	if !bytes.Equal(secret, secret2) {
+		t.Error("DeriveResumptionSecret should be deterministic")
+	}
+
+	// Different PSK produces different secret
+	psk2 := make([]byte, 32)
+	copy(psk2, psk)
+	psk2[0] ^= 0xFF
+	secret3, _ := crypto.DeriveResumptionSecret(psk2, freshSecret)
+	if bytes.Equal(secret, secret3) {
+		t.Error("different PSK should produce different secret")
+	}
+
+	// Different fresh secret produces different secret
+	freshSecret2 := make([]byte, 32)
+	copy(freshSecret2, freshSecret)
+	freshSecret2[0] ^= 0xFF
+	secret4, _ := crypto.DeriveResumptionSecret(psk, freshSecret2)
+	if bytes.Equal(secret, secret4) {
+		t.Error("different fresh secret should produce different secret")
+	}
+
+	// Invalid PSK size
+	_, err = crypto.DeriveResumptionSecret([]byte("short"), freshSecret)
+	if err == nil {
+		t.Error("expected error for invalid PSK size")
+	}
+
+	// Invalid fresh secret size
+	_, err = crypto.DeriveResumptionSecret(psk, []byte("short"))
+	if err == nil {
+		t.Error("expected error for invalid fresh secret size")
+	}
+}
+
 func TestDeriveCHKEMSecret(t *testing.T) {
 	x25519Secret := make([]byte, 32)
 	mlkemSecret := make([]byte, 32)
