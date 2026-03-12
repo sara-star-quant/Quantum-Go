@@ -1046,7 +1046,7 @@ func TestServerFinishedValidation(t *testing.T) {
 
 // --- Rekey Codec Tests ---
 
-func TestEncodeDecodeRekey(t *testing.T) {
+func TestEncodeDecodeRekeyPayload(t *testing.T) {
 	codec := protocol.NewCodec()
 
 	// Generate a valid public key for testing
@@ -1057,21 +1057,16 @@ func TestEncodeDecodeRekey(t *testing.T) {
 	publicKey := kp.PublicKey().Bytes()
 	var activationSeq uint64 = 12345
 
-	// Encode
-	encoded, err := codec.EncodeRekey(publicKey, activationSeq)
+	// Encode inner payload
+	payload, err := codec.EncodeRekeyPayload(publicKey, activationSeq)
 	if err != nil {
-		t.Fatalf("EncodeRekey failed: %v", err)
+		t.Fatalf("EncodeRekeyPayload failed: %v", err)
 	}
 
-	// Verify message type
-	if protocol.MessageType(encoded[0]) != protocol.MessageTypeRekey {
-		t.Errorf("wrong message type: got %d, want %d", encoded[0], protocol.MessageTypeRekey)
-	}
-
-	// Decode
-	decodedKey, decodedSeq, err := codec.DecodeRekey(encoded)
+	// Decode inner payload
+	decodedKey, decodedSeq, err := codec.DecodeRekeyPayload(payload)
 	if err != nil {
-		t.Fatalf("DecodeRekey failed: %v", err)
+		t.Fatalf("DecodeRekeyPayload failed: %v", err)
 	}
 
 	if !bytes.Equal(publicKey, decodedKey) {
@@ -1083,11 +1078,43 @@ func TestEncodeDecodeRekey(t *testing.T) {
 	}
 }
 
-func TestEncodeRekeyInvalidKey(t *testing.T) {
+func TestEncodeDecodeRekey(t *testing.T) {
+	codec := protocol.NewCodec()
+
+	var seq uint64 = 42
+	ciphertext := []byte("encrypted-rekey-payload-data")
+
+	// Encode outer message
+	encoded, err := codec.EncodeRekey(seq, ciphertext)
+	if err != nil {
+		t.Fatalf("EncodeRekey failed: %v", err)
+	}
+
+	// Verify message type
+	if protocol.MessageType(encoded[0]) != protocol.MessageTypeRekey {
+		t.Errorf("wrong message type: got %d, want %d", encoded[0], protocol.MessageTypeRekey)
+	}
+
+	// Decode outer message
+	decodedSeq, decodedCT, err := codec.DecodeRekey(encoded)
+	if err != nil {
+		t.Fatalf("DecodeRekey failed: %v", err)
+	}
+
+	if decodedSeq != seq {
+		t.Errorf("decoded seq: got %d, want %d", decodedSeq, seq)
+	}
+
+	if !bytes.Equal(ciphertext, decodedCT) {
+		t.Error("decoded ciphertext doesn't match")
+	}
+}
+
+func TestEncodeRekeyPayloadInvalidKey(t *testing.T) {
 	codec := protocol.NewCodec()
 
 	// Try with invalid key size
-	_, err := codec.EncodeRekey([]byte("short"), 100)
+	_, err := codec.EncodeRekeyPayload([]byte("short"), 100)
 	if err == nil {
 		t.Error("expected error for invalid key size")
 	}
@@ -1100,8 +1127,8 @@ func TestDecodeRekeyInvalid(t *testing.T) {
 		name string
 		data []byte
 	}{
-		{"too short", make([]byte, 10)},
-		{"wrong type", append([]byte{byte(protocol.MessageTypeData)}, make([]byte, 1700)...)},
+		{"too short", make([]byte, 4)},
+		{"wrong type", append([]byte{byte(protocol.MessageTypeData)}, make([]byte, 20)...)},
 	}
 
 	for _, tc := range tests {
