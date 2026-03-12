@@ -8,7 +8,9 @@ package crypto
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"io"
+	"runtime"
 
 	qerrors "github.com/pzverkov/quantum-go/internal/errors"
 )
@@ -62,26 +64,21 @@ var Reader = rand.Reader
 // Returns true if the slices are equal, false otherwise.
 // This prevents timing attacks when comparing secrets.
 func ConstantTimeCompare(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	var result byte
-	for i := range a {
-		result |= a[i] ^ b[i]
-	}
-	return result == 0
+	return subtle.ConstantTimeCompare(a, b) == 1
 }
 
 // Zeroize securely erases sensitive data from memory by overwriting with zeros.
 // This should be called on sensitive keys and secrets when they are no longer needed.
 //
-// Note: The Go runtime may have already copied the data, and the compiler may
-// optimize away the zeroing. For maximum security, consider using memory
-// protections at the OS level in production deployments.
+// Note: The Go runtime may have already copied the data. runtime.KeepAlive
+// prevents the compiler from optimizing away the zeroing as dead stores.
+// For maximum security, consider using memory protections at the OS level
+// in production deployments.
 func Zeroize(b []byte) {
 	for i := range b {
 		b[i] = 0
 	}
+	runtime.KeepAlive(b)
 }
 
 // ZeroizeMultiple securely erases multiple byte slices.

@@ -70,6 +70,66 @@ func TestZeroize(t *testing.T) {
 	}
 }
 
+func TestZeroizeActuallyZeros(t *testing.T) {
+	// Write non-zero pattern to a buffer
+	buf := make([]byte, 64)
+	for i := range buf {
+		buf[i] = byte(0xFF)
+	}
+
+	// Verify non-zero before zeroize
+	allZero := true
+	for _, b := range buf {
+		if b != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		t.Fatal("buffer should be non-zero before Zeroize")
+	}
+
+	crypto.Zeroize(buf)
+
+	// Verify all zeros after zeroize
+	for i, b := range buf {
+		if b != 0 {
+			t.Errorf("Zeroize failed at index %d: got %d, want 0", i, b)
+		}
+	}
+}
+
+func TestConstantTimeCompareUsesSubtle(t *testing.T) {
+	// Verify correctness - equal slices
+	a := []byte{1, 2, 3, 4, 5}
+	b := []byte{1, 2, 3, 4, 5}
+	if !crypto.ConstantTimeCompare(a, b) {
+		t.Error("equal slices should compare equal")
+	}
+
+	// Different content
+	c := []byte{1, 2, 3, 4, 6}
+	if crypto.ConstantTimeCompare(a, c) {
+		t.Error("different slices should not compare equal")
+	}
+
+	// Different lengths
+	d := []byte{1, 2, 3}
+	if crypto.ConstantTimeCompare(a, d) {
+		t.Error("different length slices should not compare equal")
+	}
+
+	// Both empty
+	if !crypto.ConstantTimeCompare([]byte{}, []byte{}) {
+		t.Error("empty slices should compare equal")
+	}
+
+	// Both nil
+	if !crypto.ConstantTimeCompare(nil, nil) {
+		t.Error("nil slices should compare equal")
+	}
+}
+
 // --- X25519 Tests ---
 
 func TestX25519KeyGeneration(t *testing.T) {
