@@ -498,8 +498,8 @@ func (h *Handshake) deriveHandshakeKeys() error {
 		return err
 	}
 
-	// Zeroize key material
-	crypto.ZeroizeMultiple(initiatorKey, responderKey, sendKey, recvKey)
+	// Zeroize key material (sendKey/recvKey are aliases to initiatorKey/responderKey)
+	crypto.ZeroizeMultiple(initiatorKey, responderKey)
 
 	return nil
 }
