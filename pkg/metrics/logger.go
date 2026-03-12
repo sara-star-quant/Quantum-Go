@@ -268,7 +268,7 @@ func (l *Logger) writeText(level Level, msg string, fields Fields) {
 
 	// Level with color codes (if supported)
 	b.WriteString(levelColor(level))
-	b.WriteString(fmt.Sprintf("%-5s", level.String()))
+	fmt.Fprintf(&b, "%-5s", level.String())
 	b.WriteString(colorReset)
 	b.WriteString(" ")
 
