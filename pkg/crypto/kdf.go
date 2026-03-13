@@ -352,6 +352,11 @@ func DeriveResumptionSecret(psk, freshSecret []byte) ([]byte, error) {
 
 // DeriveRekeySecret derives a new master secret for session rekeying.
 //
+// The ratcheting pattern mixes the current master secret with fresh KEM output,
+// ensuring forward secrecy: compromise of a single rekey does not expose prior
+// or subsequent traffic. Inspired by Rosenpass's frequent key refresh cadence
+// and standard KDF composition (NIST SP 800-56C).
+//
 // The rekey process:
 // 1. Derive new secret from current master secret + additional entropy
 // 2. Use new secret to derive fresh traffic keys
