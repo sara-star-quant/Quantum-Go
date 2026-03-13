@@ -1,10 +1,5 @@
 # Design Influences
 
-**Version:** 1.0
-**Last Updated:** 2026-03-13
-
----
-
 ## 1. Design Philosophy
 
 Quantum-Go's Cascaded Hybrid KEM (CH-KEM) is an original protocol designed from first principles. It is not a fork, derivative, or reimplementation of any existing VPN protocol, including WireGuard, Noise Framework, or any post-quantum WireGuard variant.
@@ -122,19 +117,19 @@ The following normative standards directly govern our implementation:
 
 ## 5. Academic References
 
-1. Karolin Varner, Wai Yi Feng, David Koisser, Lisa Schmidt, Benjamin Lipp, Prabhanjan Ananth, and Cas Cremers. "Rosenpass: A Formally Verified, Post-Quantum Secure VPN." 2023. https://rosenpass.eu/
+1. IETF RFC 8446: "The Transport Layer Security (TLS) Protocol Version 1.3." 2018.
 
-2. Pascal Lafourcade, Dhekra Mahmoud, and Sylvain Music. "A Tale of Two Worlds: A Formal Story of WireGuard Hybridization." USENIX Security Symposium, 2025.
+2. Karolin Varner, Wai Yi Feng, David Koisser, Lisa Schmidt, Benjamin Lipp, Prabhanjan Ananth, and Cas Cremers. "Rosenpass: A Formally Verified, Post-Quantum Secure VPN." 2023. https://rosenpass.eu/
 
 3. Kudelski Security. "Post-Quantum WireGuard." NIST 3rd Post-Quantum Cryptography Standardization Conference, 2021.
 
-4. Andreas Hulsing, Kai-Chun Ning, Peter Schwabe, Fiona Johanna Weber, and Philip R. Zimmermann. "Post-quantum WireGuard." IEEE Symposium on Security and Privacy (S&P), 2021.
+4. Douglas Stebila and Michele Mosca. "Post-Quantum Key Exchange for the Internet and the Open Quantum Safe Project." Selected Areas in Cryptography (SAC), 2016.
 
 5. Cas Cremers, Alexander Dax, and Niklas Medinger. "Keeping Up with the KEMs: Stronger Security Notions for KEMs and Automated Analysis of KEM-based Protocols." ACM Conference on Computer and Communications Security (CCS), 2024.
 
-6. IETF RFC 8446: "The Transport Layer Security (TLS) Protocol Version 1.3." 2018.
+6. Pascal Lafourcade, Dhekra Mahmoud, and Sylvain Music. "A Tale of Two Worlds: A Formal Story of WireGuard Hybridization." USENIX Security Symposium, 2025.
 
-7. Douglas Stebila and Michele Mosca. "Post-Quantum Key Exchange for the Internet and the Open Quantum Safe Project." Selected Areas in Cryptography (SAC), 2016.
+7. Andreas Hulsing, Kai-Chun Ning, Peter Schwabe, Fiona Johanna Weber, and Philip R. Zimmermann. "Post-quantum WireGuard." IEEE Symposium on Security and Privacy (S&P), 2021.
 
 ---
 
