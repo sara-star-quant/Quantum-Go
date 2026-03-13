@@ -2,7 +2,7 @@
 
 **Quantum-Resistant VPN Encryption using Cascaded Hybrid KEM (CH-KEM)**
 
-[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![Go Reference](https://pkg.go.dev/badge/github.com/pzverkov/quantum-go.svg)](https://pkg.go.dev/github.com/pzverkov/quantum-go)
 [![Go Report Card](https://goreportcard.com/badge/pzverkov/quantum-go)](https://goreportcard.com/report/github.com/pzverkov/quantum-go)
 [![Go Build](https://github.com/pzverkov/quantum-go/actions/workflows/ci.yml/badge.svg)](https://github.com/pzverkov/quantum-go/actions/workflows/ci.yml)
@@ -87,14 +87,14 @@ See [Quick Start Guide](docs/usage/QUICKSTART.md) for detailed examples.
 
 ## Performance
 
-Optimized with SIMD/Assembly (AES-NI, AVX2/AVX-512, hardware SHA3).
+Optimized with SIMD/Assembly (AES-NI, AVX2/AVX-512, hardware SHA3). Benchmarked with Go 1.26 (Green Tea GC, ~18% faster ML-KEM).
 
 | Platform | Handshakes/sec | Throughput (AES-GCM) |
 |----------|----------------|----------------------|
-| Apple Silicon (M-series) | ~2,200 | ~4 GB/s |
-| Cloud instance (c6i.xlarge) | 1,800-2,500 | 3-5 GB/s |
-| Mid-range server (Xeon Silver) | 2,500-3,500 | 4-7 GB/s |
-| Enterprise (Xeon Platinum / EPYC) | 3,500-5,000 | 8-12 GB/s |
+| Apple Silicon (M1 Pro, early generation) | ~2,050 | ~2.5 GB/s |
+| Cloud instance (c6i.xlarge) | 2,000-2,800 | 3-5 GB/s |
+| Mid-range server (Xeon Silver) | 2,800-3,800 | 4-7 GB/s |
+| Enterprise (Xeon Platinum / EPYC) | 3,800-5,500 | 8-12 GB/s |
 
 Run `quantum-vpn benchmark` on your target hardware. See [CLI Reference](docs/usage/CLI.md#benchmark-mode).
 

@@ -181,12 +181,15 @@ func Encapsulate(recipientPublic *PublicKey) (*Ciphertext, []byte, error) {
 
 	// Compute transcript hash for domain binding
 	// transcript = SHA3-256(pk_x25519 || pk_mlkem || ct_x25519_eph || ct_mlkem)
-	transcriptHash := crypto.TranscriptHash(
+	transcriptHash, err := crypto.TranscriptHash(
 		recipientPublic.x25519.Bytes(),
 		recipientPublic.mlkem.Bytes(),
 		ct.x25519Ephemeral,
 		ct.mlkemCiphertext,
 	)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	// Derive final shared secret
 	// K = SHAKE-256(K_x25519 || K_mlkem || transcript, 256)
@@ -242,12 +245,15 @@ func Decapsulate(ct *Ciphertext, kp *KeyPair) ([]byte, error) {
 	}
 
 	// Compute transcript hash (must match encapsulation)
-	transcriptHash := crypto.TranscriptHash(
+	transcriptHash, err := crypto.TranscriptHash(
 		kp.x25519Public.Bytes(),
 		kp.mlkemPublic.Bytes(),
 		ct.x25519Ephemeral,
 		ct.mlkemCiphertext,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	// Derive final shared secret
 	sharedSecret, err := crypto.DeriveCHKEMSecret(x25519Secret, mlkemSecret, transcriptHash)

@@ -4,7 +4,7 @@ This document explains how to build the `quantum-vpn` binary from source.
 
 ## Prerequisites
 
-- **Go 1.24 or later** (required)
+- **Go 1.26 or later** (required)
 - Git (for version information)
 - Make (optional, can use build.sh instead)
 
@@ -266,7 +266,7 @@ git push origin v0.0.3
 
 ### Build Fails: "Go version too old"
 
-Update to Go 1.24 or later:
+Update to Go 1.26 or later:
 
 ```bash
 # Check version

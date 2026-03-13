@@ -1120,6 +1120,28 @@ func TestEncodeRekeyPayloadInvalidKey(t *testing.T) {
 	}
 }
 
+func TestDecodeRekeyPayloadInvalid(t *testing.T) {
+	codec := protocol.NewCodec()
+
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{"empty", []byte{}},
+		{"too short for public key", make([]byte, 100)},
+		{"public key only no seq", make([]byte, constants.CHKEMPublicKeySize)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := codec.DecodeRekeyPayload(tc.data)
+			if err == nil {
+				t.Error("expected error for invalid input")
+			}
+		})
+	}
+}
+
 func TestDecodeRekeyInvalid(t *testing.T) {
 	codec := protocol.NewCodec()
 

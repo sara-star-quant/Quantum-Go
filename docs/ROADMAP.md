@@ -1,7 +1,7 @@
 # Quantum-Go Development Roadmap
 
-**Version:** 3.0
-**Last Updated:** 2026-03-12
+**Version:** 4.0
+**Last Updated:** 2026-03-13
 
 ---
 
@@ -114,134 +114,184 @@ Required for FIPS 140-3 validation.
 
 ---
 
-## Upcoming Releases
+## Completed Releases
 
-### v0.0.9 - Security Hardening Phase 1
+### v0.0.9 - Security Hardening Phase 1 (Completed)
 
 **Theme:** Critical protocol-level security fixes identified by internal security audit.
-**Target:** Q2 2026
+**Released:** 2026-03-13
 
-> These findings address protocol composition weaknesses. The cryptographic primitives
+> These findings addressed protocol composition weaknesses. The cryptographic primitives
 > (ML-KEM, X25519, SHAKE-256, AEAD) are correctly implemented at the algorithm level.
-> The issues are in how they are composed in the handshake, resumption, and rekey protocols.
+> The fixes are in how they are composed in the handshake, resumption, and rekey protocols.
 
 #### 1. Session Resumption Forward Secrecy
 **Priority:** Critical | **Effort:** High
 
-Session resumption currently reuses the original master secret without fresh key exchange,
-producing identical traffic keys and causing AEAD nonce reuse. This completely breaks
-forward secrecy for resumed sessions.
-
-- [ ] Perform fresh ephemeral X25519 exchange during resumption (PSK + ECDHE mode)
-- [ ] Mix ticket master secret with fresh KEM shared secret and transcript
-- [ ] Ensure resumed sessions derive unique traffic keys per session
-- [ ] Add test: verify resumed session keys differ from original session keys
-- [ ] Add test: verify forward secrecy holds when ticket key is compromised
+- [x] Perform fresh CH-KEM exchange during resumption (PSK + ECDHE mode)
+- [x] Mix ticket master secret with fresh KEM shared secret via `DeriveResumptionSecret`
+- [x] Ensure resumed sessions derive unique traffic keys per session
+- [x] Add test: verify resumed session keys differ from original session keys
+- [x] Add test: verify forward secrecy holds when ticket key is compromised
 
 **Reference:** TLS 1.3 PSK with (EC)DHE key exchange (RFC 8446, Section 2.2)
 
 #### 2. Verify Data Shared Secret Binding
 **Priority:** Critical | **Effort:** Medium
 
-Verify data in ClientFinished/ServerFinished is derived only from the transcript (public
-data). It does not incorporate the shared secret, providing no independent proof of key
-possession beyond the AEAD encryption.
-
-- [ ] Include shared secret in verify_data derivation via `DeriveKeyMultiple`
-- [ ] Use domain-separated construction: `SHAKE-256(shared_secret || transcript || label)`
-- [ ] Add test: verify that different shared secrets produce different verify_data
-- [ ] Add test: verify that transcript-only derivation is rejected
+- [x] Include shared secret in verify_data derivation via `DeriveKeyMultiple`
+- [x] Use domain-separated construction: `SHAKE-256(shared_secret || transcript || label)`
+- [x] Add test: verify that different shared secrets produce different verify_data
 
 **Reference:** TLS 1.3 Finished = HMAC(finished_key, transcript_hash) (RFC 8446, Section 4.4.4)
 
 #### 3. Rekey Message Authentication
 **Priority:** Critical | **Effort:** High
 
-Rekey messages (containing new CH-KEM public keys) are sent as unauthenticated plaintext.
-An active MITM can inject a forged rekey with an attacker-controlled public key, hijacking
-all subsequent traffic.
-
-- [ ] Encrypt rekey messages using current session traffic keys
-- [ ] Include activation sequence number in AEAD additional authenticated data
-- [ ] Add test: verify forged rekey messages are rejected
-- [ ] Add test: verify rekey succeeds through encrypted channel
-- [ ] Authenticate Ping/Pong/Close control messages (or document as accepted risk)
+- [x] Encrypt rekey messages using current session AEAD keys
+- [x] Rekey wire format changed to `[Type] [Len] [Seq(8B)] [AEAD-Ciphertext]`
+- [x] Add test: verify forged rekey messages are rejected
+- [x] Add test: verify rekey succeeds through encrypted channel
+- [x] Add test: verify public key not visible in plaintext on the wire
+- [ ] Authenticate Ping/Pong/Close control messages (deferred to v0.0.10)
 
 #### 4. Key Material Zeroization
 **Priority:** Critical | **Effort:** Medium
 
-`Zeroize()` uses a plain loop the compiler may optimize away. `KeyPair.Zeroize()` methods
-only nil pointer references without zeroing the underlying key bytes held by CIRCL/ecdh
-structs.
-
-- [ ] Use `runtime.KeepAlive` after zeroing to prevent dead store elimination
-- [ ] Replace custom `ConstantTimeCompare` with `crypto/subtle.ConstantTimeCompare`
-- [ ] Document CIRCL/ecdh limitation: private key bytes cannot be zeroed externally
-- [ ] Remove fragile alias-based zeroization pattern in `deriveHandshakeKeys`
-- [ ] Add test: verify `Zeroize` actually writes zeros (read back after call)
+- [x] Use `runtime.KeepAlive` after zeroing to prevent dead store elimination
+- [x] Replace custom `ConstantTimeCompare` with `crypto/subtle.ConstantTimeCompare`
+- [x] Remove fragile alias-based zeroization pattern in `deriveHandshakeKeys`, `InitializeKeys`, and `Rekey`
+- [x] Add test: verify `Zeroize` actually writes zeros (read back after call)
+- [ ] Document CIRCL/ecdh limitation: private key bytes cannot be zeroed externally (deferred)
 
 #### 5. Iterative Message Handling
 **Priority:** High | **Effort:** Low
 
-`Receive()` recursively calls itself when handling Ping/Pong/Rekey messages. A malicious
-peer sending unbounded Ping messages causes stack overflow (DoS).
+- [x] Replace recursive `Receive()` with iterative loop
+- [x] Add test: verify handling of 10,000+ consecutive Ping messages without crash
 
-- [ ] Replace recursive `Receive()` with iterative loop
-- [ ] Add test: verify handling of 10,000+ consecutive Ping messages without crash
+#### 6. Rekey Forward Secrecy (Key Ratcheting)
+**Priority:** Critical | **Effort:** Low
+
+- [x] Wire existing `DeriveRekeySecret(oldMasterSecret, freshKEMSecret)` into rekey flow
+- [x] Derive traffic keys from ratcheted secret, not raw KEM output
+- [x] Zeroize intermediate fresh KEM secret after mixing
+
+**Impact:** Compromise of a single rekey no longer exposes all subsequent traffic.
+
+#### 7. KDF Error Handling (Panic Elimination)
+**Priority:** Critical | **Effort:** Low
+
+- [x] Replace `panic()` with error returns in `TranscriptHash`
+- [x] Update all callers (chkem `Encapsulate`/`Decapsulate`, tests, benchmarks)
+
+**Impact:** Malformed peer data can no longer crash the tunnel process.
+
+#### 8. Error Message Sanitization
+**Priority:** High | **Effort:** Low
+
+- [x] Replace `err.Error()` with generic "handshake failed" in all 8 `sendHandshakeAlert` calls
+- [x] Add test: verify alert wire data contains only generic description
+- [x] Add IP address masking in rate limit logging (`maskIP()`)
+- [x] Remove crypto material from test log output (`t.Logf`)
+
+#### 9. Dependency Upgrades & Go 1.26
+**Priority:** High | **Effort:** Low
+
+- [x] Upgrade Go from 1.24 to 1.26 (`runtime/secret`, Green Tea GC, ~18% faster ML-KEM)
+- [x] Upgrade `golang.org/x/crypto` v0.47.0 -> v0.49.0 (SSH CVE fixes)
+- [x] Upgrade `go.opentelemetry.io/otel` v1.39.0 -> v1.42.0
+- [x] Upgrade `golang.org/x/sys` v0.40.0 -> v0.42.0
 
 ---
 
-### v0.0.10 - Security Hardening Phase 2
+## Upcoming Releases
 
-**Theme:** Defense-in-depth improvements and hardening.
+### v0.0.10 - Cryptographic Protocol Hardening
+
+**Theme:** Address identified mathematical and protocol-level weaknesses in how
+cryptographic primitives are composed. The primitives themselves are sound; the
+composition needs strengthening.
 **Target:** Q2 2026
 
-#### 1. Rekey Secret Chaining
-**Priority:** High | **Effort:** Medium
+#### 1. Role Binding in CH-KEM Transcript
+**Priority:** Critical | **Effort:** Small
 
-`DeriveRekeySecret` exists and properly chains old + new material, but is never called.
-Rekeying derives traffic keys solely from the new CH-KEM shared secret, breaking
-continuous forward secrecy.
+The CH-KEM transcript hash includes public keys and ciphertext but NOT the role
+(initiator/responder) or protocol version. This enables reflection attacks where
+an initiator can be tricked into completing a handshake with itself.
 
-- [ ] Call `DeriveRekeySecret(oldMasterSecret, newSharedSecret)` during rekey
-- [ ] Derive traffic keys from the chained secret, not the raw KEM output
-- [ ] Add test: verify compromise of single rekey does not expose previous traffic
-- [ ] Use derived IVs in handshake key derivation (currently discarded)
+- [ ] Add role indicator byte to `TranscriptHash` components in `Encapsulate`/`Decapsulate`
+- [ ] Add protocol version to transcript hash
+- [ ] Add test: verify Encapsulate(role=initiator) and Decapsulate(role=responder) produce matching secrets
+- [ ] Add test: verify same role on both sides produces mismatched secrets (reflection resistance)
 
-#### 2. Handshake Timeout
+**Reference:** NIST SP 800-56C Rev. 2 (context/role in KDF)
+
+#### 2. AEAD Nonce Session Binding
+**Priority:** Critical | **Effort:** Small
+
+AEAD nonces use format `[0000 || counter(8B)]`. Two sessions with the same key
+produce identical nonce sequences, breaking GCM confidentiality guarantees.
+
+- [ ] Add 4-byte `noncePrefix` field to AEAD struct, populated from session ID
+- [ ] Nonce format becomes `[sessionID[0:4] || counter(8B)]`
+- [ ] Update all 10 `NewAEAD()` call sites to pass session ID prefix
+- [ ] Add test: verify two sessions with same key produce different nonces
+
+**Reference:** NIST SP 800-38D Section 8.2 (deterministic nonce construction)
+
+#### 3. Resumption Ticket Server Binding
+**Priority:** High | **Effort:** Small
+
+Resumption tickets are not bound to the server that issued them. A captured ticket
+can be replayed against a different server that shares the same ticket encryption key.
+
+- [ ] Include `SHA-256(server_public_key)` in ticket plaintext
+- [ ] Validate server identity on ticket decryption
+- [ ] Add test: verify ticket from server A is rejected by server B
+
+#### 4. Handshake Timeout
 **Priority:** High | **Effort:** Low
 
-`Listener.Accept()` calls `ResponderHandshake` with no timeout. A malicious client can
-connect and never send data, exhausting goroutines and file descriptors.
+`Listener.Accept()` calls `ResponderHandshake` with no timeout. A malicious client
+can connect and never send data, exhausting goroutines and file descriptors.
 
 - [ ] Set `conn.SetDeadline` before `ResponderHandshake`
 - [ ] Make handshake timeout configurable via `TransportConfig` (default: 30s)
 - [ ] Add test: verify slow-loris style connections are terminated
 
-#### 3. Module Integrity Verification
+#### 5. Replay Window Expansion
+**Priority:** Medium | **Effort:** Small
+
+Current replay window is only 64 packets. At 1 Gbps with 1500-byte packets
+(~83,000 pps), this gives <1ms tolerance for out-of-order delivery.
+
+- [ ] Increase replay window to 1024+ using multi-word bitmap
+- [ ] Add test: verify out-of-order packets within window are accepted
+- [ ] Add benchmark: measure replay check overhead at larger window sizes
+
+#### 6. Rekey Activation Confirmation
+**Priority:** Medium | **Effort:** Medium
+
+Rekey activation uses a fixed sequence offset (+16 packets). If the responder
+hasn't processed the rekey message by then, decryption fails.
+
+- [ ] Add explicit rekey-ack message type
+- [ ] Both sides activate only after confirmation exchange
+- [ ] Add test: verify rekey completes under high-latency conditions
+
+#### 7. Module Integrity Verification
 **Priority:** Medium | **Effort:** Medium
 
 `CheckModuleIntegrity()` unconditionally returns `Verified: true` with a placeholder hash.
-This is a FIPS 140-3 compliance violation.
 
 - [ ] Implement build-time hash embedding (HMAC of `.text` section or binary)
 - [ ] Compare actual vs expected hash at runtime
 - [ ] In FIPS mode: fail hard if integrity check fails
-- [ ] In standard mode: log warning if integrity check fails
 - [ ] Alternative: remove `Verified: true` and document as not-yet-implemented
 
-#### 4. Error Message Sanitization
-**Priority:** Medium | **Effort:** Low
-
-Handshake alerts send `err.Error()` verbatim to the remote peer, leaking internal
-implementation details that enable oracle attacks.
-
-- [ ] Send generic "handshake failed" description in all alerts
-- [ ] Log detailed error locally at debug level
-- [ ] Add server-preference cipher suite selection (iterate server list first)
-- [ ] Add bounds checking for `sessionIDLen` in codec parsing
-
-#### 5. CI Security Improvements
+#### 8. CI Security Improvements
 **Priority:** Medium | **Effort:** Low
 
 - [ ] Remove `-no-fail` from Gosec scanner configuration
@@ -282,12 +332,27 @@ implementation details that enable oracle attacks.
 
 ---
 
-### v0.1.0 - Security Audit Preparation
+### v0.1.0 - Authentication & Audit Preparation
 
-**Theme:** Prepare for third-party security audit.
+**Theme:** Add endpoint authentication and prepare for third-party security audit.
 **Target:** Q4 2026
 
-#### 1. Code Quality
+#### 1. Endpoint Authentication
+**Priority:** Critical | **Effort:** High
+
+The protocol provides no pre-handshake authentication. Any party can impersonate
+any server. This is the most fundamental missing security property.
+
+- [ ] PSK-based mutual authentication mode (pre-shared symmetric key)
+- [ ] Static key verification mode (pin remote public key)
+- [ ] Include authentication proof in ClientHello/ServerHello
+- [ ] Add test: verify unauthenticated peer is rejected
+- [ ] Add test: verify authenticated peer is accepted
+- [ ] Document authentication modes in SECURITY.md
+
+**Reference:** WireGuard static key authentication, TLS 1.3 PSK mode (RFC 8446 Section 2.2)
+
+#### 2. Code Quality
 **Priority:** High | **Effort:** Medium
 
 - [ ] Static analysis report (golangci-lint, gosec)
@@ -295,7 +360,7 @@ implementation details that enable oracle attacks.
 - [ ] Architecture documentation
 - [ ] Threat model documentation
 
-#### 2. Security Testing
+#### 3. Security Testing
 **Priority:** High | **Effort:** High
 
 - [ ] Fuzzing infrastructure for protocol parsing
@@ -303,7 +368,7 @@ implementation details that enable oracle attacks.
 - [ ] Timing attack resistance verification
 - [ ] Memory safety validation
 
-#### 3. Compliance Documentation
+#### 4. Compliance Documentation
 **Priority:** High | **Effort:** Medium
 
 - [ ] NIST SP 800-131A compliance checklist
@@ -460,5 +525,5 @@ When picking up a task:
 
 ---
 
-*Document Version: 3.0*
-*Last Updated: 2026-03-12*
+*Document Version: 4.0*
+*Last Updated: 2026-03-13*

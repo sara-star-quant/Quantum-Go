@@ -1,7 +1,7 @@
 # Quantum-Go Technical Architecture
 
-**Version:** 1.0
-**Go Version:** 1.24+
+**Version:** 1.1
+**Go Version:** 1.26+
 
 ---
 
@@ -33,7 +33,7 @@ Quantum-Go is a quantum-resistant VPN encryption library implementing the Cascad
 
 | Component | Technology |
 |-----------|------------|
-| Language | Go 1.24+ |
+| Language | Go 1.26+ |
 | Post-Quantum KEM | ML-KEM-1024 (crypto/mlkem) |
 | Classical ECDH | X25519 (crypto/ecdh) |
 | KDF | SHAKE-256 (golang.org/x/crypto/sha3) |
@@ -179,9 +179,11 @@ Initiator                              Responder
     │                                      │
     │───────── ClientFinished ────────────>│
     │  • Encrypted(verify_data)            │
+    │  • verify_data = KDF(K, transcript)  │
     │                                      │
     │<──────── ServerFinished ─────────────│
     │  • Encrypted(verify_data)            │
+    │  • verify_data = KDF(K, transcript)  │
     │                                      │
     │═══════ Tunnel Established ═══════════│
 ```
@@ -206,7 +208,7 @@ All messages follow this structure:
 | ClientFinished | 0x03 | Client confirmation |
 | ServerFinished | 0x04 | Server confirmation |
 | Data | 0x10 | Encrypted payload |
-| Rekey | 0x11 | Key rotation |
+| Rekey | 0x11 | Key rotation (AEAD-encrypted payload) |
 | Ping | 0x12 | Keepalive request |
 | Pong | 0x13 | Keepalive response |
 | Close | 0x14 | Graceful close |
@@ -221,7 +223,24 @@ Master Secret (32B)
         │
         ├──> SHAKE-256("CH-KEM-VPN-Traffic") ──> Traffic Keys
         │
-        └──> SHAKE-256("CH-KEM-VPN-Rekey") ──> Rekey Secrets
+        ├──> SHAKE-256("CH-KEM-VPN-Rekey") ──> Ratcheted Rekey Secret
+        │         input: [old_master_secret || fresh_KEM_secret]
+        │
+        └──> SHAKE-256("CH-KEM-VPN-ClientFinished/ServerFinished")
+                  input: [shared_secret || transcript]
+                  output: verify_data (32B)
+```
+
+**Session Resumption Key Derivation (PSK + ECDHE):**
+
+```
+Ticket Secret (PSK, 32B)
+        │
+        └──> Fresh CH-KEM Exchange ──> Fresh Secret (32B)
+                │
+                └──> SHAKE-256("CH-KEM-VPN-Resumption")
+                          input: [PSK || Fresh Secret]
+                          output: Resumed Master Secret (32B)
 ```
 
 ---
@@ -248,12 +267,27 @@ Sessions automatically rekey when:
 2. Bytes transmitted exceed 1 GB
 3. Session duration exceeds 1 hour
 
+The rekey protocol performs a fresh CH-KEM exchange and **ratchets** the new secret
+by mixing the current master secret with the fresh KEM output:
+
+```
+new_master = SHAKE-256("CH-KEM-VPN-Rekey", [old_master || fresh_KEM_secret])
+```
+
+This ensures forward secrecy: compromise of a single rekey does not expose prior
+traffic, and the fresh KEM exchange prevents future traffic from being compromised
+even if the current master secret leaks.
+
 ### 5.3 Key Zeroization
 
 All sensitive key material is zeroized when:
 - Session closes
 - Keys are rotated
 - Handshake completes (intermediate keys)
+
+Zeroization uses `runtime.KeepAlive` to prevent the compiler from eliminating
+zeroing loops as dead stores. Constant-time comparison uses `crypto/subtle` from
+the Go standard library.
 
 ```go
 // Example zeroization
@@ -262,6 +296,10 @@ func (s *Session) Close() {
     s.LocalKeyPair.Zeroize()
 }
 ```
+
+> **Note:** Go 1.26 introduces the experimental `runtime/secret` package for
+> hardware-backed secure erasure of cryptographic temporaries. Future versions
+> may adopt this for stronger guarantees on supported platforms (amd64/arm64 Linux).
 
 ---
 
@@ -310,13 +348,18 @@ Errors are designed to prevent information leakage:
 
 ### 7.1 Benchmark Results (Typical)
 
+Measured on Apple M1 Pro, Go 1.26, single-threaded:
+
 | Operation | Time | Throughput |
 |-----------|------|------------|
-| CH-KEM KeyGen | ~0.1ms | 10,000 ops/s |
-| CH-KEM Encapsulate | ~0.12ms | 8,000 ops/s |
-| CH-KEM Decapsulate | ~0.11ms | 9,000 ops/s |
-| AES-256-GCM Encrypt (1400B) | ~460ns | 3.0 GB/s |
-| Full Handshake | ~0.5ms | 1,800 handshakes/s |
+| CH-KEM KeyGen | ~99us | ~10,100 ops/s |
+| CH-KEM Encapsulate | ~106us | ~9,400 ops/s |
+| CH-KEM Decapsulate | ~84us | ~12,000 ops/s |
+| AES-256-GCM Encrypt (1400B) | ~567ns | ~2.5 GB/s |
+| AES-256-GCM Encrypt (1KB) | ~398ns | ~2.6 GB/s |
+| AES-256-GCM Encrypt (64KB) | ~17.7us | ~3.7 GB/s |
+| Session Encrypt (1400B) | ~652ns | ~2.1 GB/s |
+| Full Handshake (over net.Pipe) | ~487us | ~2,050 handshakes/s |
 
 ### 7.2 Memory Usage
 
@@ -413,5 +456,5 @@ transport, err := tunnel.NewTransport(session, conn, config)
 
 ---
 
-*Document Version: 1.1*
-*Last Updated: 2026-01-21*
+*Document Version: 1.2*
+*Last Updated: 2026-03-13*

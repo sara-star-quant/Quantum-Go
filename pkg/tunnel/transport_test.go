@@ -192,88 +192,9 @@ func TestTransportGracefulClose(t *testing.T) {
 	}
 }
 
-func TestTransportRekey(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer func() { _ = clientConn.Close() }()
-	defer func() { _ = serverConn.Close() }()
-
-	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	_ = crypto.SecureRandom(masterSecret)
-
-	clientSession, _ := NewSession(RoleInitiator)
-	_ = clientSession.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
-
-	serverSession, _ := NewSession(RoleResponder)
-	_ = serverSession.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
-
-	client := &Transport{
-		session: clientSession,
-		conn:    clientConn,
-		codec:   protocol.NewCodec(),
-	}
-
-	server := &Transport{
-		session: serverSession,
-		conn:    serverConn,
-		codec:   protocol.NewCodec(),
-	}
-
-	// Test Rekey (now encrypted)
-	serverRekeyDone := make(chan struct{})
-	go func() {
-		t.Log("Server: Waiting for Rekey...")
-		msg, err := server.codec.ReadMessage(server.conn)
-		if err != nil {
-			t.Errorf("Server: ReadMessage failed: %v", err)
-			return
-		}
-		if err := server.handleRekey(msg); err != nil {
-			t.Errorf("Server: handleRekey failed: %v", err)
-			return
-		}
-		close(serverRekeyDone)
-	}()
-
-	clientRekeyDone := make(chan struct{})
-	go func() {
-		t.Log("Client: Waiting for Rekey Response...")
-		msg2, err := client.codec.ReadMessage(client.conn)
-		if err != nil {
-			t.Logf("Client: ReadMessage error (expected on close): %v", err)
-			return
-		}
-		if err := client.handleRekey(msg2); err != nil {
-			t.Errorf("Client: handleRekey failed: %v", err)
-			return
-		}
-		close(clientRekeyDone)
-	}()
-
-	// Small delay
-	time.Sleep(10 * time.Millisecond)
-
-	t.Log("Client: Sending Rekey...")
-	if err := client.SendRekey(); err != nil {
-		t.Errorf("SendRekey failed: %v", err)
-	}
-
-	select {
-	case <-serverRekeyDone:
-		t.Log("Server: Rekey handled!")
-	case <-time.After(5 * time.Second):
-		t.Fatal("Server: Timed out waiting for Rekey")
-	}
-
-	select {
-	case <-clientRekeyDone:
-		t.Log("Client: Rekey response handled!")
-	case <-time.After(5 * time.Second):
-		t.Fatal("Client: Timed out waiting for Rekey response")
-	}
-}
-
 func TestRekeyEncrypted(t *testing.T) {
-	// Verify rekey messages are encrypted on the wire
+	// Verify rekey messages are encrypted on the wire and the public key
+	// is NOT visible in plaintext
 	clientConn, serverConn := net.Pipe()
 	defer func() { _ = clientConn.Close() }()
 	defer func() { _ = serverConn.Close() }()
@@ -289,6 +210,20 @@ func TestRekeyEncrypted(t *testing.T) {
 		conn:    clientConn,
 		codec:   protocol.NewCodec(),
 	}
+
+	// Get the public key that will be used for rekey BEFORE sending,
+	// so we can verify it doesn't appear in plaintext on the wire
+	rekeyPubKey, _, err := clientSession.InitiateRekey()
+	if err != nil {
+		t.Fatalf("InitiateRekey failed: %v", err)
+	}
+
+	// Reset state so SendRekey can initiate again
+	clientSession.mu.Lock()
+	clientSession.rekeyInProgress = false
+	clientSession.pendingRekeyKeyPair = nil
+	clientSession.SetState(SessionStateEstablished)
+	clientSession.mu.Unlock()
 
 	// Capture the raw wire data
 	var rawMsg []byte
@@ -309,24 +244,21 @@ func TestRekeyEncrypted(t *testing.T) {
 		t.Fatal("timed out waiting for rekey message")
 	}
 
-	// Verify it's a Rekey message
+	// Verify it's a Rekey message with encrypted format
 	if len(rawMsg) < 1 || protocol.MessageType(rawMsg[0]) != protocol.MessageTypeRekey {
 		t.Fatal("expected Rekey message type on the wire")
 	}
-
-	// The raw message should NOT contain the public key in plaintext
-	// Get the client's rekey public key
-	clientSession.mu.RLock()
-	hasRekey := clientSession.rekeyInProgress
-	clientSession.mu.RUnlock()
-	if !hasRekey {
-		t.Fatal("expected rekey to be in progress")
-	}
-
-	// The wire message should contain encrypted data, not raw public key bytes
-	// Verify the message has the encrypted format: [Type(1B)] [Len(4B)] [Seq(8B)] [Ciphertext]
 	if len(rawMsg) < protocol.HeaderSize+8 {
 		t.Fatal("rekey message too short for encrypted format")
+	}
+
+	// The raw wire message must NOT contain the public key in plaintext.
+	// Take a significant chunk of the public key (first 64 bytes) and
+	// verify it doesn't appear anywhere in the wire message payload.
+	pubKeyPrefix := rekeyPubKey[:64]
+	wirePayload := rawMsg[protocol.HeaderSize:]
+	if bytes.Contains(wirePayload, pubKeyPrefix) {
+		t.Fatal("public key is visible in plaintext on the wire - rekey message is NOT encrypted")
 	}
 }
 
@@ -554,7 +486,7 @@ func TestRekeyThenDataExchange(t *testing.T) {
 	clientSession.ActivatePendingKeys()
 	serverSession.ActivatePendingKeys()
 
-	// Step 3: Send data after rekey - should work with new keys
+	// Step 3: Send data after rekey (client -> server) - should work with new keys
 	postRekeyData := []byte("after rekey")
 	wg.Add(1)
 	go func() {
@@ -571,6 +503,26 @@ func TestRekeyThenDataExchange(t *testing.T) {
 
 	if err := client.Send(postRekeyData); err != nil {
 		t.Fatalf("post-rekey Send failed: %v", err)
+	}
+	wg.Wait()
+
+	// Step 4: Send data after rekey (server -> client) - bidirectional verification
+	reverseData := []byte("server to client after rekey")
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		data, err := client.Receive()
+		if err != nil {
+			t.Errorf("reverse post-rekey Receive failed: %v", err)
+			return
+		}
+		if !bytes.Equal(data, reverseData) {
+			t.Errorf("reverse post-rekey data mismatch: got %q", data)
+		}
+	}()
+
+	if err := server.Send(reverseData); err != nil {
+		t.Fatalf("reverse post-rekey Send failed: %v", err)
 	}
 	wg.Wait()
 }

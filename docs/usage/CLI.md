@@ -86,9 +86,9 @@ quantum-vpn bench --throughput --size 1GB --cipher chacha20
 quantum-vpn bench --handshakes 100 --throughput --size 500MB
 ```
 
-### Verified Performance (Apple M1 Pro)
-- **Handshakes**: ~1,800/sec (0.5ms latency)
-- **Throughput**: >2.0 GB/s (AES-NI / ARMv8 Crypto)
+### Verified Performance (Apple Silicon M1 Pro, Go 1.26)
+- **Handshakes**: ~2,050/sec (~487us latency)
+- **Throughput**: ~2.5 GB/s (ARMv8 Crypto Extensions)
 
 ## Example Mode
 

@@ -38,7 +38,7 @@ This project follows the standard principles of respectful collaboration:
 
 ### Prerequisites
 
-- **Go 1.24 or later** (required)
+- **Go 1.26 or later** (required)
 - Git
 - Make (optional, for build automation)
 
