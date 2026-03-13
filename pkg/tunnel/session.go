@@ -635,13 +635,20 @@ func (s *Session) PrepareRekeyResponse(newPublicKeyBytes []byte, activationSeq u
 	}
 
 	// Encapsulate to the new public key
-	ciphertext, sharedSecret, err := chkem.Encapsulate(newPublicKey)
+	ciphertext, freshSecret, err := chkem.Encapsulate(newPublicKey)
 	if err != nil {
 		return nil, err
 	}
 
+	// Ratchet: mix current master secret with fresh KEM secret for forward secrecy
+	newSecret, err := crypto.DeriveRekeySecret(s.masterSecret, freshSecret)
+	if err != nil {
+		return nil, err
+	}
+	crypto.Zeroize(freshSecret)
+
 	// Derive new traffic keys
-	initiatorKey, responderKey, err := crypto.DeriveTrafficKeys(sharedSecret)
+	initiatorKey, responderKey, err := crypto.DeriveTrafficKeys(newSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -663,7 +670,7 @@ func (s *Session) PrepareRekeyResponse(newPublicKeyBytes []byte, activationSeq u
 	s.rekeyActivationSeq = activationSeq
 	s.pendingRecvCipher = newRecvCipher
 	s.pendingSendCipher = newSendCipher
-	s.pendingRekeySecret = sharedSecret
+	s.pendingRekeySecret = newSecret
 
 	// Zeroize temporary keys
 	crypto.ZeroizeMultiple(initiatorKey, responderKey)
@@ -689,13 +696,20 @@ func (s *Session) ProcessRekeyResponse(ciphertextBytes []byte) error {
 	}
 
 	// Decapsulate using pending keypair
-	sharedSecret, err := chkem.Decapsulate(ciphertext, s.pendingRekeyKeyPair)
+	freshSecret, err := chkem.Decapsulate(ciphertext, s.pendingRekeyKeyPair)
 	if err != nil {
 		return err
 	}
 
+	// Ratchet: mix current master secret with fresh KEM secret for forward secrecy
+	newSecret, err := crypto.DeriveRekeySecret(s.masterSecret, freshSecret)
+	if err != nil {
+		return err
+	}
+	crypto.Zeroize(freshSecret)
+
 	// Derive new traffic keys
-	initiatorKey, responderKey, err := crypto.DeriveTrafficKeys(sharedSecret)
+	initiatorKey, responderKey, err := crypto.DeriveTrafficKeys(newSecret)
 	if err != nil {
 		return err
 	}
@@ -714,7 +728,7 @@ func (s *Session) ProcessRekeyResponse(ciphertextBytes []byte) error {
 	// Store pending ciphers (will activate at activation sequence)
 	s.pendingRecvCipher = newRecvCipher
 	s.pendingSendCipher = newSendCipher
-	s.pendingRekeySecret = sharedSecret
+	s.pendingRekeySecret = newSecret
 
 	// Clean up pending keypair
 	s.pendingRekeyKeyPair.Zeroize()

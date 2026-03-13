@@ -6,7 +6,7 @@
 go get github.com/pzverkov/quantum-go
 ```
 
-**Requirements:** Go 1.24 or later
+**Requirements:** Go 1.26 or later
 
 ## Basic Usage
 

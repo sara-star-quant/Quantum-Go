@@ -116,29 +116,58 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 
 ### Known limitations
 
-1. **No authentication**: This library provides encryption only. **You must implement**:
-   - Peer authentication (certificates, pre-shared keys, etc.)
-   - Identity binding to CH-KEM public keys
-   - Authorization policies
+#### Protocol-level (planned for future releases)
 
-2. **Nonce management**:
+1. **No endpoint authentication** (planned: v0.1.0):
+   - The protocol provides **encryption only** -- no built-in peer authentication
+   - Any party can initiate or accept a handshake without proving identity
+   - **You must implement** authentication externally (certificates, PSK, static key pinning)
+   - Identity binding to CH-KEM public keys is the deployer's responsibility
+
+2. **No role binding in CH-KEM transcript** (planned: v0.0.10):
+   - The transcript hash does not include the initiator/responder role or protocol version
+   - Theoretically enables reflection attacks (initiator completes handshake with itself)
+   - Mitigated in practice by the handshake state machine (separate initiator/responder flows)
+   - Full fix requires adding role indicator to `TranscriptHash` components
+
+3. **AEAD nonce prefix is zero** (planned: v0.0.10):
+   - Nonce format is `[0000 || counter(8B)]` -- the upper 4 bytes are not session-bound
+   - Two sessions with the same encryption key would produce identical nonce sequences
+   - Risk is low in practice because traffic keys are derived from unique shared secrets
+   - Full fix: use session ID bytes as nonce prefix
+
+4. **Replay window is 64 packets** (planned: v0.0.10):
+   - At high throughput (~83,000 pps at 1 Gbps), this gives <1ms tolerance for reordering
+   - Packets arriving more than 64 positions out of order are silently dropped
+   - Full fix: expand to 1024+ using multi-word bitmap
+
+5. **Resumption tickets not bound to server identity** (planned: v0.0.10):
+   - Session tickets contain only master secret and cipher suite
+   - A captured ticket could theoretically be replayed against a different server
+   - Risk is low: requires the attacker to know the ticket encryption key
+   - Full fix: include `SHA-256(server_public_key)` in ticket plaintext
+
+#### Implementation-level
+
+6. **Nonce management**:
    - Sequence-based nonces are safe for single-threaded or properly synchronized use
    - **DO NOT** use same session keys from multiple goroutines without external locking
    - Nonce exhaustion triggers automatic rekey
 
-3. **Timing side-channels**:
+7. **Timing side-channels**:
    - ML-KEM implementation (cloudflare/circl) uses constant-time operations
    - X25519 from Go stdlib is constant-time
    - **AES-GCM requires hardware AES-NI** for constant-time (CPU flags checked)
    - ChaCha20-Poly1305 is software-constant-time
 
-4. **Memory safety**:
+8. **Memory safety**:
    - Go runtime does not guarantee memory zeroization
    - Garbage collector may copy secrets to new locations
    - Swapping to disk may leak key material
    - Mitigation: Use HSM/TPM for long-term keys
+   - v0.0.9 added `runtime.KeepAlive` to prevent dead store elimination of `Zeroize`
 
-5. **Random number generation**:
+9. **Random number generation**:
    - Uses `crypto/rand` (Linux: getrandom syscall)
    - Ensure `/dev/urandom` is properly seeded on older systems
    - In virtualized environments, verify entropy availability
@@ -231,9 +260,9 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 
 | Dependency            | Version | Purpose                  | Audit Status                           |
 |-----------------------|---------|--------------------------|----------------------------------------|
-| cloudflare/circl      | v1.6.2+ | ML-KEM-1024             | Audited by Trail of Bits (2023)        |
-| golang.org/x/crypto   | v0.30.0+| ChaCha20, SHAKE-256     | Go Security Team maintained            |
-| Go stdlib crypto      | 1.24+   | AES-GCM, X25519, crypto/rand | Regular security audits          |
+| cloudflare/circl      | v1.6.3+ | ML-KEM-1024             | Audited by Trail of Bits (2023)        |
+| golang.org/x/crypto   | v0.49.0+| ChaCha20, SHAKE-256     | Go Security Team maintained            |
+| Go stdlib crypto      | 1.26+   | AES-GCM, X25519, crypto/rand, runtime/secret | Regular security audits |
 
 **Dependency update policy**:
 - Monitor security advisories
@@ -314,5 +343,5 @@ We acknowledge security researchers who responsibly disclose vulnerabilities:
 
 ---
 
-**Last updated**: 2026-01-19
-**Next review**: 2026-04-19 (quarterly updates)
+**Last updated**: 2026-03-13
+**Next review**: 2026-06-13 (quarterly updates)

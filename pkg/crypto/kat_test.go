@@ -207,7 +207,10 @@ func TestKATTranscriptHash(t *testing.T) {
 				}
 			}
 
-			hash := crypto.TranscriptHash(components...)
+			hash, err := crypto.TranscriptHash(components...)
+			if err != nil {
+				t.Fatalf("TranscriptHash failed: %v", err)
+			}
 
 			// SHA3-256 always produces 32 bytes
 			if len(hash) != 32 {
@@ -215,12 +218,13 @@ func TestKATTranscriptHash(t *testing.T) {
 			}
 
 			// Verify determinism
-			hash2 := crypto.TranscriptHash(components...)
+			hash2, err := crypto.TranscriptHash(components...)
+			if err != nil {
+				t.Fatalf("TranscriptHash failed: %v", err)
+			}
 			if !bytes.Equal(hash, hash2) {
 				t.Error("TranscriptHash is not deterministic")
 			}
-
-			t.Logf("KAT %s: %s", tc.name, hex.EncodeToString(hash))
 		})
 	}
 }
@@ -444,13 +448,12 @@ func TestKATX25519(t *testing.T) {
 				t.Errorf("shared secret length: got %d, want 32", len(secret1))
 			}
 
-			// Log expected values for reference
+			// Suppress unused variable warnings for test vector inputs
 			_ = alicePriv
 			_ = alicePub
 			_ = bobPriv
 			_ = bobPubKey
 			_ = expectedSecret
-			t.Logf("Generated shared secret: %s", hex.EncodeToString(secret1))
 		})
 	}
 }
@@ -481,7 +484,7 @@ func TestCHKEMDeterministicKeyDerivation(t *testing.T) {
 		}
 	}
 
-	t.Logf("CH-KEM derived secret: %s", hex.EncodeToString(results[0]))
+	_ = results[0] // verified above
 }
 
 // --- Traffic Key Derivation Test ---
@@ -512,8 +515,6 @@ func TestKATDeriveTrafficKeys(t *testing.T) {
 		t.Error("DeriveTrafficKeys is not deterministic")
 	}
 
-	t.Logf("Initiator key: %s", hex.EncodeToString(initiatorKey))
-	t.Logf("Responder key: %s", hex.EncodeToString(responderKey))
 }
 
 // --- Handshake Key Derivation Test ---
@@ -554,10 +555,6 @@ func TestKATDeriveHandshakeKeys(t *testing.T) {
 		t.Error("DeriveHandshakeKeys is not deterministic")
 	}
 
-	t.Logf("Initiator key: %s", hex.EncodeToString(initiatorKey))
-	t.Logf("Responder key: %s", hex.EncodeToString(responderKey))
-	t.Logf("Initiator IV: %s", hex.EncodeToString(initiatorIV))
-	t.Logf("Responder IV: %s", hex.EncodeToString(responderIV))
 }
 
 // --- Rekey Derivation Test ---
@@ -592,7 +589,6 @@ func TestKATDeriveRekeySecret(t *testing.T) {
 		t.Error("different additional data should produce different secret")
 	}
 
-	t.Logf("Rekey secret: %s", hex.EncodeToString(newSecret))
 }
 
 // --- Zeroization Test ---

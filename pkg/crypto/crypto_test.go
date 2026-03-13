@@ -42,35 +42,7 @@ func TestSecureRandomBytes(t *testing.T) {
 	}
 }
 
-func TestConstantTimeCompare(t *testing.T) {
-	a := []byte("hello world")
-	b := []byte("hello world")
-	c := []byte("hello worle")
-	d := []byte("hello")
-
-	if !crypto.ConstantTimeCompare(a, b) {
-		t.Error("Equal slices should compare equal")
-	}
-	if crypto.ConstantTimeCompare(a, c) {
-		t.Error("Different slices should not compare equal")
-	}
-	if crypto.ConstantTimeCompare(a, d) {
-		t.Error("Different length slices should not compare equal")
-	}
-}
-
 func TestZeroize(t *testing.T) {
-	buf := []byte{1, 2, 3, 4, 5}
-	crypto.Zeroize(buf)
-
-	for i, b := range buf {
-		if b != 0 {
-			t.Errorf("Zeroize failed at index %d: got %d, want 0", i, b)
-		}
-	}
-}
-
-func TestZeroizeActuallyZeros(t *testing.T) {
 	// Write non-zero pattern to a buffer
 	buf := make([]byte, 64)
 	for i := range buf {
@@ -99,7 +71,7 @@ func TestZeroizeActuallyZeros(t *testing.T) {
 	}
 }
 
-func TestConstantTimeCompareUsesSubtle(t *testing.T) {
+func TestConstantTimeCompare(t *testing.T) {
 	// Verify correctness - equal slices
 	a := []byte{1, 2, 3, 4, 5}
 	b := []byte{1, 2, 3, 4, 5}
@@ -393,14 +365,20 @@ func TestTranscriptHash(t *testing.T) {
 		[]byte("component3"),
 	}
 
-	hash := crypto.TranscriptHash(components...)
+	hash, err := crypto.TranscriptHash(components...)
+	if err != nil {
+		t.Fatalf("TranscriptHash failed: %v", err)
+	}
 
 	if len(hash) != 32 {
 		t.Errorf("Transcript hash size: got %d, want 32", len(hash))
 	}
 
 	// Same components should produce same hash
-	hash2 := crypto.TranscriptHash(components...)
+	hash2, err := crypto.TranscriptHash(components...)
+	if err != nil {
+		t.Fatalf("TranscriptHash failed: %v", err)
+	}
 	if !bytes.Equal(hash, hash2) {
 		t.Error("TranscriptHash not deterministic")
 	}

@@ -180,7 +180,7 @@ func DeriveKeyMultiple(domain string, inputs [][]byte, outputLen int) ([]byte, e
 //
 // Returns:
 //   - hash: 32-byte transcript hash
-func TranscriptHash(components ...[]byte) []byte {
+func TranscriptHash(components ...[]byte) ([]byte, error) {
 	h := sha3.New256()
 	lenBuf := make([]byte, 4)
 
@@ -189,7 +189,7 @@ func TranscriptHash(components ...[]byte) []byte {
 	// Components count is bounded by protocol (typically 3-5 items)
 	componentsCount, ok := safeUint32(len(components))
 	if !ok {
-		panic("TranscriptHash: components count overflow")
+		return nil, qerrors.NewCryptoError("TranscriptHash", qerrors.ErrInvalidKeySize)
 	}
 	binary.BigEndian.PutUint32(lenBuf, componentsCount)
 	_, _ = h.Write(lenBuf)
@@ -199,14 +199,14 @@ func TranscriptHash(components ...[]byte) []byte {
 	for _, component := range components {
 		componentLen, ok := safeUint32(len(component))
 		if !ok {
-			panic("TranscriptHash: component size overflow")
+			return nil, qerrors.NewCryptoError("TranscriptHash", qerrors.ErrInvalidKeySize)
 		}
 		binary.BigEndian.PutUint32(lenBuf, componentLen)
 		_, _ = h.Write(lenBuf)
 		_, _ = h.Write(component)
 	}
 
-	return h.Sum(nil)
+	return h.Sum(nil), nil
 }
 
 // DeriveCHKEMSecret derives the final shared secret for CH-KEM.

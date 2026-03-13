@@ -5,8 +5,6 @@ import (
 	"net"
 	"testing"
 	"time"
-
-	"github.com/pzverkov/quantum-go/internal/constants"
 )
 
 func TestSessionResumption(t *testing.T) {
@@ -62,20 +60,37 @@ func TestSessionResumption(t *testing.T) {
 		t.Fatalf("Resumption responder handshake failed: %v", err)
 	}
 
-	// 4. Verify data exchange
+	// 4. Verify bidirectional data exchange
+	// Client -> Server
 	plaintext := []byte("hello resumption")
 	ciphertext, seq, err := clientSession2.Encrypt(plaintext)
 	if err != nil {
-		t.Fatalf("Resumed encryption failed: %v", err)
+		t.Fatalf("Resumed encryption (client->server) failed: %v", err)
 	}
 
 	decrypted, err := serverSession2.Decrypt(ciphertext, seq)
 	if err != nil {
-		t.Fatalf("Resumed decryption failed: %v", err)
+		t.Fatalf("Resumed decryption (client->server) failed: %v", err)
 	}
 
 	if !bytes.Equal(decrypted, plaintext) {
-		t.Errorf("Decrypted data mismatch")
+		t.Errorf("Decrypted data mismatch (client->server)")
+	}
+
+	// Server -> Client
+	plaintext2 := []byte("hello back from server")
+	ciphertext2, seq2, err := serverSession2.Encrypt(plaintext2)
+	if err != nil {
+		t.Fatalf("Resumed encryption (server->client) failed: %v", err)
+	}
+
+	decrypted2, err := clientSession2.Decrypt(ciphertext2, seq2)
+	if err != nil {
+		t.Fatalf("Resumed decryption (server->client) failed: %v", err)
+	}
+
+	if !bytes.Equal(decrypted2, plaintext2) {
+		t.Errorf("Decrypted data mismatch (server->client)")
 	}
 
 	// 5. Verify resumed session uses different keys than original
@@ -282,75 +297,5 @@ func TestResumptionForwardSecrecy(t *testing.T) {
 	// (because each uses a fresh KEM exchange)
 	if bytes.Equal(secrets[0], secrets[1]) {
 		t.Error("two resumptions with the same ticket should produce different secrets (fresh KEM)")
-	}
-}
-
-func TestResumptionNonceUniqueness(t *testing.T) {
-	// Verify that nonce/key pairs are unique across original and resumed sessions
-
-	// 1. Full handshake
-	clientSession, _ := NewSession(RoleInitiator)
-	serverSession, _ := NewSession(RoleResponder)
-	c1, s1 := net.Pipe()
-	errChan := make(chan error, 2)
-
-	go func() { errChan <- ResponderHandshake(serverSession, s1) }()
-	if err := InitiatorHandshake(clientSession, c1); err != nil {
-		t.Fatalf("Initial handshake failed: %v", err)
-	}
-	<-errChan
-
-	tmKey := bytes.Repeat([]byte{0x99}, 32)
-	tm, _ := NewTicketManager(tmKey, time.Hour)
-	ticket, _ := serverSession.ExportTicket(tm)
-
-	clientSession.mu.RLock()
-	ticketSecret := make([]byte, len(clientSession.masterSecret))
-	copy(ticketSecret, clientSession.masterSecret)
-	clientSession.mu.RUnlock()
-
-	// Encrypt with original session
-	origCiphertext, _, err := clientSession.Encrypt([]byte("test"))
-	if err != nil {
-		t.Fatalf("Original encrypt failed: %v", err)
-	}
-
-	// 2. Resumption
-	clientSession2, _ := NewSession(RoleInitiator)
-	serverSession2, _ := NewSession(RoleResponder)
-	c2, s2 := net.Pipe()
-
-	go func() { errChan <- ResponderResumptionHandshake(serverSession2, s2, tm) }()
-	if err := InitiatorResumptionHandshake(clientSession2, c2, ticket, ticketSecret); err != nil {
-		t.Fatalf("Resumption failed: %v", err)
-	}
-	if err := <-errChan; err != nil {
-		t.Fatalf("Resumption (responder) failed: %v", err)
-	}
-
-	// Encrypt with resumed session
-	resumedCiphertext, _, err := clientSession2.Encrypt([]byte("test"))
-	if err != nil {
-		t.Fatalf("Resumed encrypt failed: %v", err)
-	}
-
-	// Ciphertexts must differ (different keys and/or nonces)
-	if bytes.Equal(origCiphertext, resumedCiphertext) {
-		t.Error("ciphertexts from original and resumed sessions must differ")
-	}
-
-	// Master secrets must differ
-	clientSession.mu.RLock()
-	origMS := make([]byte, constants.CHKEMSharedSecretSize)
-	copy(origMS, clientSession.masterSecret)
-	clientSession.mu.RUnlock()
-
-	clientSession2.mu.RLock()
-	resumedMS := make([]byte, constants.CHKEMSharedSecretSize)
-	copy(resumedMS, clientSession2.masterSecret)
-	clientSession2.mu.RUnlock()
-
-	if bytes.Equal(origMS, resumedMS) {
-		t.Error("master secrets from original and resumed sessions must differ")
 	}
 }

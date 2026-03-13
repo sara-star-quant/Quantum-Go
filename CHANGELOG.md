@@ -7,29 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
-### Fixed
-- **Lint**: Use `fmt.Fprintf` instead of `WriteString(Sprintf)` in `pkg/metrics/logger.go` (staticcheck QF1012)
-
-### Security
-- **Dependency**: Bump `cloudflare/circl` v1.6.2 to v1.6.3 (fixes secp384r1 CombinedMult)
-
-### Documentation
-- **Legal**: Add "No Legal Advice" and "User Responsibility" sections to README
-- **Roadmap**: Add v0.0.9 and v0.0.10 security hardening milestones based on internal protocol audit
-
-### Planned: v0.0.9 - Security Hardening Phase 1
-- Session resumption forward secrecy (fresh DH + PSK mixing)
-- Verify data binding to shared secret
-- Rekey message authentication (encrypt with session keys)
-- Key material zeroization improvements
-- Iterative message handling (replace recursive Receive)
-
 ### Planned: v0.0.10 - Security Hardening Phase 2
 - Rekey secret chaining (use existing DeriveRekeySecret)
 - Handshake timeout on server Accept
 - Module integrity verification (fix always-true check)
 - Error message sanitization (generic alerts to remote peers)
 - CI security improvements (FIPS testing, Gosec enforcement)
+
+## [0.0.9][] - 2026-03-13
+
+### Security
+- **Session Resumption Forward Secrecy**: Resumed sessions now perform a fresh CH-KEM exchange and mix the PSK (ticket secret) with the fresh KEM shared secret via `DeriveResumptionSecret`, following the TLS 1.3 PSK+ECDHE model. Prevents nonce reuse and ensures forward secrecy for resumed sessions.
+- **Verify Data Shared Secret Binding**: `ClientFinished`/`ServerFinished` verify_data now incorporates the shared secret via `DeriveKeyMultiple`, providing independent proof that both sides hold the same key material. Previously derived from transcript (public data) only.
+- **Rekey Message Authentication**: Rekey payloads are now sealed with the session's AEAD cipher before transmission, providing confidentiality and MITM resistance alongside replay protection inherited from the session nonce management.
+- **Key Material Zeroization**: `Zeroize()` now uses `runtime.KeepAlive` to prevent dead store elimination by the compiler. `ConstantTimeCompare` replaced with `crypto/subtle.ConstantTimeCompare`. Fixed aliased slice zeroization in `deriveHandshakeKeys`, `InitializeKeys`, and `Rekey`.
+- **Iterative Message Handling**: `Receive()` replaced recursive dispatch with an iterative loop, preventing stack overflow DoS from unbounded control messages (e.g., 10,000+ consecutive Pings).
+- **Rekey Forward Secrecy**: Rekey now ratchets secrets via `DeriveRekeySecret(oldMaster, freshKEM)` instead of using the raw KEM output. Compromise of a single rekey exchange no longer exposes all subsequent traffic.
+- **KDF Error Handling**: `TranscriptHash` no longer panics on overflow -- returns errors instead. Prevents DoS via malformed peer data crashing the tunnel process.
+- **Alert Sanitization**: Handshake alerts no longer send `err.Error()` to remote peers. All 8 alert locations now send generic "handshake failed" description. IP addresses in rate limit logs are masked (`192***100`). Crypto material removed from test log output.
+- **Dependency Upgrades**: `golang.org/x/crypto` v0.47.0 -> v0.49.0 (SSH CVE fixes), `go.opentelemetry.io/otel` v1.39.0 -> v1.42.0, `golang.org/x/sys` v0.40.0 -> v0.42.0, `cloudflare/circl` v1.6.2 -> v1.6.3
+
+### Changed
+- **Go version**: Bumped minimum to Go 1.26 for `runtime/secret` secure erasure, ~18% faster ML-KEM, Green Tea GC (10-40% less GC overhead), and improved FIPS 140-3 module support
+- **Wire format**: Rekey messages now use `[Type(1B)] [Len(4B)] [Seq(8B)] [AEAD-Ciphertext]` format instead of plaintext payload
+- **Session resumption**: Server always performs KEM encapsulation (no more all-zeros ciphertext path)
+- **`Resume()` no longer calls `InitializeKeys()`** - returns PSK only, keys are derived after fresh KEM exchange
+
+### Fixed
+- **Lint**: Use `fmt.Fprintf` instead of `WriteString(Sprintf)` in `pkg/metrics/logger.go` (staticcheck QF1012)
+
+### Documentation
+- **Legal**: Add "No Legal Advice" and "User Responsibility" sections to README
+- **Roadmap**: Add v0.0.9 and v0.0.10 security hardening milestones based on internal protocol audit
+- Updated ARCHITECTURE.md, SECURITY.md, and README.md to reflect v0.0.9 protocol changes and Go 1.26 performance numbers
 
 ## [0.0.8][] - 2026-01-22
 
@@ -135,14 +145,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Integer overflow**: Fixed potential int64→uint64 overflow in pool statistics
 
 ### Performance
-Benchmark results (Apple M-series):
+Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 
 | Operation | Non-Pooled | Pooled | Improvement |
 |-----------|------------|--------|-------------|
-| Seal 1KB | 378 ns, 1168 B/op | 325 ns, 48 B/op | 14% faster, 96% less alloc |
-| Seal 16KB | 4567 ns, 18448 B/op | 3356 ns, 48 B/op | 26% faster, 99% less alloc |
-| Encode 1KB | 172 ns, 1152 B/op | 44 ns, 24 B/op | 74% faster, 98% less alloc |
-| Buffer 1MB | 49383 ns | 26 ns | 1900x faster |
+| Seal 1KB | 384 ns, 1168 B/op | 322 ns, 48 B/op | 16% faster, 96% less alloc |
+| Seal 16KB | 4505 ns, 18448 B/op | 3310 ns, 48 B/op | 26% faster, 99% less alloc |
+| Encode 1KB | 192 ns, 1152 B/op | 43 ns, 24 B/op | 78% faster, 98% less alloc |
+| Buffer 1MB | 43200 ns | 27 ns | 1600x faster |
 
 ## [0.0.5][] - 2026-01-21
 
@@ -254,7 +264,8 @@ Benchmark results (Apple M-series):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.8...HEAD
+[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.9...HEAD
+[0.0.9]: https://github.com/pzverkov/quantum-go/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/pzverkov/quantum-go/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/pzverkov/quantum-go/compare/v0.0.6...v0.0.7
 [0.0.6]: https://github.com/pzverkov/quantum-go/compare/v0.0.5...v0.0.6

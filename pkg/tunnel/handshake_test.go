@@ -267,45 +267,96 @@ func TestReadEncryptedRecordError(t *testing.T) {
 	}
 }
 func TestHandshakeAlerts(t *testing.T) {
-	session, _ := NewSession(RoleResponder)
-	rw := &mockReadWriter{}
 	codec := protocol.NewCodec()
 
-	// Manually construct ClientHello with unsupported version to bypass EncodeClientHello validation
-	payloadSize := 2 + 32 + 1 + 32 + constants.CHKEMPublicKeySize + 2
-	encoded := make([]byte, protocol.HeaderSize+payloadSize)
-	encoded[0] = byte(protocol.MessageTypeClientHello)
-	binary.BigEndian.PutUint32(encoded[1:5], uint32(payloadSize))
-	encoded[5] = 99 // Major version
-	encoded[6] = 99 // Minor version
-	rw.readData = encoded
-
-	err := ResponderHandshake(session, rw)
-	t.Logf("ResponderHandshake error: %v", err)
-	if err == nil {
-		t.Fatal("expected error for version mismatch")
+	// verifyAlert checks that the written data is a sanitized fatal handshake alert.
+	// The description must be generic ("handshake failed") and must NOT contain
+	// internal error details like "unsupported version" or "no common cipher suite".
+	verifyAlert := func(t *testing.T, alertData []byte, triggerErr error) {
+		t.Helper()
+		if len(alertData) < protocol.HeaderSize {
+			t.Fatal("no alert written to connection")
+		}
+		msgType, _ := codec.GetMessageType(alertData)
+		if msgType != protocol.MessageTypeAlert {
+			t.Fatalf("expected Alert message, got %v", msgType)
+		}
+		level, code, desc, err := codec.DecodeAlert(alertData)
+		if err != nil {
+			t.Fatalf("failed to decode alert: %v", err)
+		}
+		if level != protocol.AlertLevelFatal {
+			t.Errorf("expected Fatal alert level, got %v", level)
+		}
+		if code != protocol.AlertCodeHandshakeFailure {
+			t.Errorf("expected HandshakeFailure code, got %v", code)
+		}
+		if desc != "handshake failed" {
+			t.Errorf("alert description should be generic, got %q", desc)
+		}
+		// The internal error text must not appear in the wire message
+		if triggerErr != nil && bytes.Contains(alertData, []byte(triggerErr.Error())) {
+			t.Errorf("alert wire data contains internal error text: %q", triggerErr.Error())
+		}
 	}
 
-	t.Logf("WriteData len: %d", rw.writeData.Len())
+	t.Run("version mismatch", func(t *testing.T) {
+		session, _ := NewSession(RoleResponder)
+		rw := &mockReadWriter{}
 
-	// Verify alert was written
-	alertData := rw.writeData.Bytes()
-	if len(alertData) < protocol.HeaderSize {
-		t.Fatal("no alert written to connection")
-	}
+		payloadSize := 2 + 32 + 1 + 32 + constants.CHKEMPublicKeySize + 2
+		encoded := make([]byte, protocol.HeaderSize+payloadSize)
+		encoded[0] = byte(protocol.MessageTypeClientHello)
+		binary.BigEndian.PutUint32(encoded[1:5], uint32(payloadSize))
+		encoded[5] = 99 // Major version
+		encoded[6] = 99 // Minor version
+		rw.readData = encoded
 
-	msgType, _ := codec.GetMessageType(alertData)
-	if msgType != protocol.MessageTypeAlert {
-		t.Errorf("expected Alert message, got %v", msgType)
-	}
+		err := ResponderHandshake(session, rw)
+		if err == nil {
+			t.Fatal("expected error for version mismatch")
+		}
+		verifyAlert(t, rw.writeData.Bytes(), err)
+	})
 
-	level, code, _, _ := codec.DecodeAlert(alertData)
-	if level != protocol.AlertLevelFatal {
-		t.Errorf("expected Fatal alert level, got %v", level)
-	}
-	if code != protocol.AlertCodeHandshakeFailure {
-		t.Errorf("expected HandshakeFailure code, got %v", code)
-	}
+	t.Run("cipher suite mismatch", func(t *testing.T) {
+		session, _ := NewSession(RoleResponder)
+		rw := &mockReadWriter{}
+
+		// Build raw ClientHello with valid structure but unsupported cipher suite (0xFF).
+		// We can't use EncodeClientHello because it validates cipher suites.
+		// Layout: Header(5) + Version(2) + Random(32) + SessionIDLen(1) + PubKey(CHKEMPublicKeySize) + CipherCount(2) + CipherSuite(2)
+		sessionIDLen := 0
+		cipherCount := 1
+		payloadSize := 2 + 32 + 1 + sessionIDLen + constants.CHKEMPublicKeySize + 2 + 2*cipherCount
+		encoded := make([]byte, protocol.HeaderSize+payloadSize)
+		offset := 0
+		encoded[offset] = byte(protocol.MessageTypeClientHello)
+		offset++
+		binary.BigEndian.PutUint32(encoded[offset:], uint32(payloadSize))
+		offset += 4
+		encoded[offset] = protocol.Current.Major
+		encoded[offset+1] = protocol.Current.Minor
+		offset += 2
+		// Random (32 bytes of zeros is fine for test)
+		offset += 32
+		// SessionID length = 0
+		encoded[offset] = 0
+		offset++
+		// Public key (zeros)
+		offset += constants.CHKEMPublicKeySize
+		// Cipher suites: count=1, value=0x00FF (unsupported)
+		binary.BigEndian.PutUint16(encoded[offset:], uint16(cipherCount))
+		offset += 2
+		binary.BigEndian.PutUint16(encoded[offset:], 0x00FF)
+		rw.readData = encoded
+
+		err := ResponderHandshake(session, rw)
+		if err == nil {
+			t.Fatal("expected error for cipher suite mismatch")
+		}
+		verifyAlert(t, rw.writeData.Bytes(), err)
+	})
 }
 
 func TestVerifyDataDifferentSecrets(t *testing.T) {
@@ -339,38 +390,5 @@ func TestVerifyDataDifferentSecrets(t *testing.T) {
 
 	if bytes.Equal(vd1, vd2) {
 		t.Error("verify_data with different shared secrets should differ")
-	}
-}
-
-func TestVerifyDataIncludesSecret(t *testing.T) {
-	// Verify that transcript-only derivation differs from secret+transcript derivation
-	transcript := []byte("handshake transcript data")
-	secret := make([]byte, 32)
-	for i := range secret {
-		secret[i] = byte(i + 1)
-	}
-
-	// Old style: transcript only
-	vdOld, err := crypto.DeriveKey(
-		"CH-KEM-VPN-ClientFinished",
-		transcript,
-		32,
-	)
-	if err != nil {
-		t.Fatalf("DeriveKey failed: %v", err)
-	}
-
-	// New style: shared secret + transcript
-	vdNew, err := crypto.DeriveKeyMultiple(
-		"CH-KEM-VPN-ClientFinished",
-		[][]byte{secret, transcript},
-		32,
-	)
-	if err != nil {
-		t.Fatalf("DeriveKeyMultiple failed: %v", err)
-	}
-
-	if bytes.Equal(vdOld, vdNew) {
-		t.Error("verify_data with secret binding should differ from transcript-only derivation")
 	}
 }

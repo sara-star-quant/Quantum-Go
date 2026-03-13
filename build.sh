@@ -176,7 +176,7 @@ create_release() {
 main() {
     # Check if Go is installed
     if ! command -v go &> /dev/null; then
-        print_error "Go is not installed. Please install Go 1.24 or later."
+        print_error "Go is not installed. Please install Go 1.26 or later."
         exit 1
     fi
 
