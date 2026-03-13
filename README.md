@@ -136,4 +136,4 @@ Nothing in this repository - including documentation, compliance references, FIP
 ### User Responsibility
 By using, cloning, forking, or incorporating this software, you acknowledge that you are solely responsible for determining its legality in your jurisdiction and for compliance with all applicable laws, regulations, and standards. The authors and copyright holders bear no responsibility for how this software is used or deployed.
 
-See [ROADMAP.md](docs/ROADMAP.md#global-compliance--regulatory-considerations) for detailed regulatory guidance covering 15+ jurisdictions.
+See [ROADMAP.md](docs/ROADMAP.md#global-compliance--regulatory-considerations) for regulatory references covering 15+ jurisdictions.

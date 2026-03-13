@@ -409,18 +409,18 @@ any server. This is the most fundamental missing security property.
 > **CAUTION**
 > **Advisory Only**: The following compliance information is based on public regulatory documentation and is provided for **informational purposes only**. It does **NOT** constitute legal advice. Organizations must consult with their own legal counsel and trade compliance officers before deploying this software.
 
-> **Note for Users**: This section describes regulatory considerations for **users deploying** Quantum-Go in various jurisdictions. As an open-source project publicly available on GitHub, the software itself is generally exempt from export controls under "public domain" exemptions in most jurisdictions.
+> **Note for Users**: This section describes regulatory considerations for **users deploying** Quantum-Go in various jurisdictions. As an open-source project publicly available on GitHub, the software may be eligible for export control exemptions under "public domain" provisions in some jurisdictions, but this determination depends on specific circumstances and applicable law.
 
 ### Cryptographic Export Controls
 
 #### European Union (Project Origin)
 - **Dual-Use Regulation (EU 2021/821)**: Governs encryption exports from EU member states.
-- **Open Source Exemption**: Software "in the public domain" (publicly available without restrictions) is **exempt** from controls under Article 2(2).
-- **Status**: Quantum-Go qualifies for the public domain exemption as MIT-licensed open source on GitHub.
+- **Open Source Exemption**: Article 2(2) provides a potential exemption for software "in the public domain" (publicly available without restrictions).
+- **Status**: Quantum-Go is MIT-licensed open source on GitHub and may be eligible for this exemption. Deployers should verify applicability with legal counsel.
 
 #### United States
 - **EAR (Export Administration Regulations)**: ECCN 5D002 applies to encryption software.
-- **License Exception TSU**: Publicly available open-source software qualifies for exemption.
+- **License Exception TSU**: Publicly available open-source software may qualify for exemption.
 - **For US-based deployers**: Commercial use may require BIS notification; consult compliance counsel.
 
 #### For Users Deploying in Regulated Jurisdictions
@@ -457,7 +457,7 @@ The following jurisdictions have specific requirements for **users deploying** e
 #### United Kingdom
 - **Post-Brexit**: Retained EU Dual-Use Regulation (2021/821).
 - **NCSC Guidance**: CPA recommended for government use.
-- **User Action**: Open source generally covered by OGEL; commercial use may differ.
+- **User Action**: Open source may be covered by OGEL; commercial use may differ. Verify with legal counsel.
 
 #### Israel
 - **Defense Export Control**: Strictly regulated; commercial/defense distinction is critical.
