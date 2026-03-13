@@ -29,6 +29,8 @@ Quantum-Go is a quantum-resistant VPN encryption library implementing the Cascad
 3. **Constant-Time Operations:** Cryptographic operations avoid timing side-channels
 4. **Clear Abstractions:** Separate concerns between crypto, protocol, and transport layers
 
+The protocol draws on published post-quantum cryptography research - including work on PQ-WireGuard variants, KEM binding properties, and formal verification methodologies - while maintaining an original architecture based on TLS 1.3-structured handshakes rather than the Noise Framework. See [Design Influences](../DESIGN_INFLUENCES.md) for detailed attribution.
+
 ### 1.2 Technology Stack
 
 | Component | Technology |

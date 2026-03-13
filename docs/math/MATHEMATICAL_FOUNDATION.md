@@ -427,7 +427,17 @@ SHAKE-256 provides:
 
 7. **NIST SP 800-56C** - Recommendation for Key-Derivation Methods in Key-Establishment Schemes (2018)
 
+8. **Cremers, C., Dax, A., Medinger, N.** - "Keeping Up with the KEMs: Stronger Security Notions for KEMs and Automated Analysis of KEM-based Protocols." ACM CCS (2024)
+
+9. **Hulsing, A., Ning, K.-C., Schwabe, P., Weber, F.J., Zimmermann, P.R.** - "Post-quantum WireGuard." IEEE Symposium on Security and Privacy (2021)
+
+10. **Stebila, D., Mosca, M.** - "Post-Quantum Key Exchange for the Internet and the Open Quantum Safe Project." SAC (2016)
+
+11. **Lafourcade, P., Mahmoud, D., Music, S.** - "A Tale of Two Worlds: A Formal Story of WireGuard Hybridization." USENIX Security (2025)
+
+12. **IETF RFC 8446** - "The Transport Layer Security (TLS) Protocol Version 1.3" (2018)
+
 ---
 
-*Document Version: 1.0*
-*Last Updated: 2026-01-18*
+*Document Version: 1.1*
+*Last Updated: 2026-03-13*

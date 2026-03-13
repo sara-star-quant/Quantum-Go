@@ -508,8 +508,20 @@ The following jurisdictions have specific requirements for **users deploying** e
 ### Research Items
 - **ML-DSA integration** - Post-quantum signatures for authentication
 - **Hybrid certificates** - Dual classical/PQ certificate chains
-- **Formal verification** - Protocol model in ProVerif/Tamarin
 - **SLH-DSA (SPHINCS+)** - Stateless hash-based signatures as alternative
+
+### Adapted Research Directions
+
+Techniques adapted from published PQ cryptography research. See [Design Influences](DESIGN_INFLUENCES.md) for full attribution and differentiation.
+
+| Technique | Target | Source |
+|-----------|--------|--------|
+| Labeled component hashing (KEM binding) | v0.0.10 | Cremers et al. CCS '24 |
+| Two-tier rekey cadence (KDF ratchet + full KEM) | v0.0.11 | Rosenpass (Varner et al.) |
+| CPA-only ephemeral KEM for lightweight rekey | v0.0.11 | Kudelski/Stebila-Mosca |
+| Formal verification in ProVerif/Tamarin | v0.1.0 | Lafourcade et al. USENIX Sec '25 |
+| 3-message handshake optimization | v1.0.0+ | Schwabe et al. IEEE S&P '21 |
+| Stateless responder / DoS resilience cookie | v1.0.0+ | Rosenpass biscuit pattern |
 
 ---
 
