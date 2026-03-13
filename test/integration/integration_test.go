@@ -35,6 +35,8 @@ func setupTestPair(t *testing.T) *testPair {
 	performHandshake(clientSession, serverSession, clientConn, serverConn)
 
 	config := tunnel.DefaultTransportConfig()
+	config.ReadTimeout = 60 * time.Second
+	config.WriteTimeout = 60 * time.Second
 	clientTransport, _ := tunnel.NewTransport(clientSession, clientConn, config)
 	serverTransport, _ := tunnel.NewTransport(serverSession, serverConn, config)
 
