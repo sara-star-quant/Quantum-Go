@@ -119,7 +119,7 @@ The following normative standards directly govern our implementation:
 
 1. IETF RFC 8446: "The Transport Layer Security (TLS) Protocol Version 1.3." 2018.
 
-2. Karolin Varner, Wai Yi Feng, David Koisser, Lisa Schmidt, Benjamin Lipp, Prabhanjan Ananth, and Cas Cremers. "Rosenpass: A Formally Verified, Post-Quantum Secure VPN." 2023. https://rosenpass.eu/
+2. Karolin Varner, Wai Yi Feng, David Koisser, Lisa Schmidt, Benjamin Lipp, Prabhanjan Ananth, and Cas Cremers. "Rosenpass: A Formally Verified, Post-Quantum Secure VPN." 2023. <https://rosenpass.eu/>
 
 3. Kudelski Security. "Post-Quantum WireGuard." NIST 3rd Post-Quantum Cryptography Standardization Conference, 2021.
 
