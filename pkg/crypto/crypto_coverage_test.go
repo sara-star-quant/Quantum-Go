@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	qerrors "github.com/pzverkov/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 )
 
 func TestNewAEADInvalidSuite(t *testing.T) {

@@ -8,7 +8,7 @@ package crypto
 import (
 	"sync"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
 )
 
 // BufferPool provides pooled byte slices for cryptographic operations.

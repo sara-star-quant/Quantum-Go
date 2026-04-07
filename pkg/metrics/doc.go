@@ -13,7 +13,7 @@
 //
 // Basic usage with global collector:
 //
-//	import "github.com/pzverkov/quantum-go/pkg/metrics"
+//	import "github.com/sara-star-quant/quantum-go/pkg/metrics"
 //
 //	// Record metrics
 //	metrics.Global().SessionStarted()

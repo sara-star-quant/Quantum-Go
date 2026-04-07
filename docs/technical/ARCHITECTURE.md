@@ -389,7 +389,7 @@ Measured on Apple M1 Pro, Go 1.26, single-threaded:
 package main
 
 import (
-    "github.com/pzverkov/quantum-go/pkg/tunnel"
+    "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func main() {

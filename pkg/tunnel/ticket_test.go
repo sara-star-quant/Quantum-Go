@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
 )
 
 func TestTicketManager(t *testing.T) {

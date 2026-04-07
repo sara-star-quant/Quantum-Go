@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pzverkov/quantum-go/pkg/tunnel"
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func runBench(handshakes int, throughputTest bool, sizeStr, durationStr, cipherSuite string) {

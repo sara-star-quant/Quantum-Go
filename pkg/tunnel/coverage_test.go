@@ -5,9 +5,9 @@ import (
 	"net"
 	"testing"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	qerrors "github.com/pzverkov/quantum-go/internal/errors"
-	"github.com/pzverkov/quantum-go/pkg/protocol"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
 func TestHandshakeProcessClientFinishedErrors(t *testing.T) {

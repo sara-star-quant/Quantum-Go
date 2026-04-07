@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	qerrors "github.com/pzverkov/quantum-go/internal/errors"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 )
 
 // Pool manages a pool of reusable Tunnel connections.

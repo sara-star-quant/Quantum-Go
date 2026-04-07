@@ -67,9 +67,9 @@ package chkem
 import (
 	"crypto/ecdh"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	qerrors "github.com/pzverkov/quantum-go/internal/errors"
-	"github.com/pzverkov/quantum-go/pkg/crypto"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 )
 
 // KeyPair represents a CH-KEM key pair combining X25519 and ML-KEM-1024.

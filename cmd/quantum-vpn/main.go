@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	pkgversion "github.com/pzverkov/quantum-go/pkg/version"
+	pkgversion "github.com/sara-star-quant/quantum-go/pkg/version"
 )
 
 // Build-time variables (set via -ldflags)
@@ -87,7 +87,7 @@ EXAMPLES:
 
 PROJECT:
     Quantum-Go - Cascaded Hybrid KEM (CH-KEM) VPN Encryption
-    https://github.com/pzverkov/quantum-go
+    https://github.com/sara-star-quant/quantum-go
 
     Security: ML-KEM-1024 (NIST FIPS 203) + X25519 (RFC 7748)
     Defense-in-depth: Secure if EITHER algorithm is secure`)

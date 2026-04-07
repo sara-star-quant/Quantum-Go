@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	qerrors "github.com/pzverkov/quantum-go/internal/errors"
-	"github.com/pzverkov/quantum-go/pkg/tunnel"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 // TestPoolConfig tests pool configuration validation.

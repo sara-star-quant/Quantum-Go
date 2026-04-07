@@ -3,7 +3,7 @@
 ## Installation
 
 ```bash
-go get github.com/pzverkov/quantum-go
+go get github.com/sara-star-quant/quantum-go
 ```
 
 **Requirements:** Go 1.26 or later
@@ -17,7 +17,7 @@ package main
 
 import (
     "fmt"
-    "github.com/pzverkov/quantum-go/pkg/tunnel"
+    "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func main() {
@@ -44,7 +44,7 @@ func main() {
 package main
 
 import (
-    "github.com/pzverkov/quantum-go/pkg/tunnel"
+    "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func main() {
@@ -65,7 +65,7 @@ package main
 import (
     "bytes"
     "fmt"
-    "github.com/pzverkov/quantum-go/pkg/chkem"
+    "github.com/sara-star-quant/quantum-go/pkg/chkem"
 )
 
 func main() {

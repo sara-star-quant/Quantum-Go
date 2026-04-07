@@ -7,7 +7,7 @@
 // In standard mode, all supported cipher suites are available.
 package protocol
 
-import "github.com/pzverkov/quantum-go/internal/constants"
+import "github.com/sara-star-quant/quantum-go/internal/constants"
 
 // SupportedCipherSuites returns the list of cipher suites supported in standard mode.
 // Both AES-256-GCM and ChaCha20-Poly1305 are available.

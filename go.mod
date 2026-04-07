@@ -1,4 +1,4 @@
-module github.com/pzverkov/quantum-go
+module github.com/sara-star-quant/quantum-go
 
 go 1.26.0
 

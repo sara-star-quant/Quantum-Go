@@ -26,12 +26,12 @@ This project follows the standard principles of respectful collaboration:
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/pzverkov/quantum-go.git
+   git clone https://github.com/sara-star-quant/quantum-go.git
    cd quantum-go
    ```
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/pzverkov/quantum-go.git
+   git remote add upstream https://github.com/sara-star-quant/quantum-go.git
    ```
 
 ## Development Setup

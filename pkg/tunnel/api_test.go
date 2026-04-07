@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pzverkov/quantum-go/pkg/tunnel"
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 // TestDialAndListen tests the basic Dial/Listen/Accept flow.

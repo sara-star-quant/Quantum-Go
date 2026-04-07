@@ -60,6 +60,6 @@ CMD ["help"]
 # Labels
 LABEL org.opencontainers.image.title="Quantum-Go"
 LABEL org.opencontainers.image.description="Quantum-Resistant VPN Encryption using CH-KEM (ML-KEM-1024 + X25519)"
-LABEL org.opencontainers.image.url="https://github.com/pzverkov/quantum-go"
-LABEL org.opencontainers.image.source="https://github.com/pzverkov/quantum-go"
+LABEL org.opencontainers.image.url="https://github.com/sara-star-quant/quantum-go"
+LABEL org.opencontainers.image.source="https://github.com/sara-star-quant/quantum-go"
 LABEL org.opencontainers.image.licenses="MIT"

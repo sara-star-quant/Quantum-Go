@@ -23,7 +23,7 @@ func showExamples() {
 
 import (
     "fmt"
-    "github.com/pzverkov/quantum-go/pkg/tunnel"
+    "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func main() {
@@ -60,7 +60,7 @@ func main() {
 import (
     "bytes"
     "fmt"
-    "github.com/pzverkov/quantum-go/pkg/chkem"
+    "github.com/sara-star-quant/quantum-go/pkg/chkem"
 )
 
 func main() {
@@ -91,7 +91,7 @@ func main() {
 
 import (
     "time"
-    "github.com/pzverkov/quantum-go/pkg/tunnel"
+    "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func main() {
@@ -120,7 +120,7 @@ func main() {
 
 import (
     "fmt"
-    "github.com/pzverkov/quantum-go/pkg/tunnel"
+    "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func main() {
@@ -153,8 +153,8 @@ func main() {
 import (
     "fmt"
     "log"
-    "github.com/pzverkov/quantum-go/pkg/tunnel"
-    qerrors "github.com/pzverkov/quantum-go/internal/errors"
+    "github.com/sara-star-quant/quantum-go/pkg/tunnel"
+    qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 )
 
 func main() {
@@ -194,7 +194,7 @@ func main() {
 
 import (
     "crypto/tls"
-    "github.com/pzverkov/quantum-go/pkg/tunnel"
+    "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func main() {
@@ -260,8 +260,8 @@ func main() {
 	fmt.Println("  quantum-vpn bench --handshakes 100 --throughput")
 	fmt.Println()
 	fmt.Println("Documentation:")
-	fmt.Println("  https://github.com/pzverkov/quantum-go")
-	fmt.Println("  https://pkg.go.dev/github.com/pzverkov/quantum-go")
+	fmt.Println("  https://github.com/sara-star-quant/quantum-go")
+	fmt.Println("  https://pkg.go.dev/github.com/sara-star-quant/quantum-go")
 	fmt.Println()
 	fmt.Println("Security:")
 	fmt.Println("  See SECURITY.md for security policy and best practices")

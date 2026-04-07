@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	"github.com/pzverkov/quantum-go/pkg/crypto"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 )
 
 func TestSessionNeedsRekeyEdgeCases(t *testing.T) {

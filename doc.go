@@ -8,7 +8,7 @@
 //
 // For a complete VPN tunnel with handshake:
 //
-//	import "github.com/pzverkov/quantum-go/pkg/tunnel"
+//	import "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 //
 //	// Server
 //	listener, _ := tunnel.Listen("tcp", ":8443")
@@ -21,7 +21,7 @@
 //
 // For low-level CH-KEM key encapsulation:
 //
-//	import "github.com/pzverkov/quantum-go/pkg/chkem"
+//	import "github.com/sara-star-quant/quantum-go/pkg/chkem"
 //
 //	keyPair, _ := chkem.GenerateKeyPair()
 //	ciphertext, sharedSecret, _ := chkem.Encapsulate(keyPair.PublicKey())
@@ -74,5 +74,5 @@
 //   - RFC 7748: Elliptic Curves for Security
 //   - NIST FIPS 202: SHA-3 Standard (SHAKE-256)
 //
-// For more information, see: https://github.com/pzverkov/quantum-go
+// For more information, see: https://github.com/sara-star-quant/quantum-go
 package quantumgo

@@ -3,7 +3,7 @@ package crypto
 import (
 	"testing"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
 )
 
 func TestBufferPool(t *testing.T) {

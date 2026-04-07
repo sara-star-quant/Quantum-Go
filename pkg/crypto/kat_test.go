@@ -16,8 +16,8 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	"github.com/pzverkov/quantum-go/pkg/crypto"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 )
 
 // --- SHAKE-256 KDF Test Vectors ---

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	"github.com/pzverkov/quantum-go/pkg/crypto"
-	"github.com/pzverkov/quantum-go/pkg/protocol"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
+	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
 func TestTransportAlerts(t *testing.T) {

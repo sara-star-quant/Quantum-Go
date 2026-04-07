@@ -8,9 +8,9 @@ import (
 	"net"
 	"testing"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	"github.com/pzverkov/quantum-go/pkg/crypto"
-	"github.com/pzverkov/quantum-go/pkg/protocol"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
+	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
 // mockReadWriter for injecting errors

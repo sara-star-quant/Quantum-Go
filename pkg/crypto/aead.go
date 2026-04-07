@@ -31,8 +31,8 @@ import (
 
 	"golang.org/x/crypto/chacha20poly1305"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	qerrors "github.com/pzverkov/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 )
 
 // AEAD represents an authenticated encryption cipher.

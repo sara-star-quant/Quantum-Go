@@ -47,7 +47,7 @@ go test -tags fips ./...
 You can verify FIPS mode at runtime:
 
 ```go
-import "github.com/pzverkov/quantum-go/pkg/crypto"
+import "github.com/sara-star-quant/quantum-go/pkg/crypto"
 
 if crypto.FIPSMode() {
     fmt.Println("Running in FIPS mode")
@@ -96,7 +96,7 @@ Session tickets created with non-FIPS cipher suites (ChaCha20-Poly1305) will be 
 FIPS mode introduces a new error type:
 
 ```go
-import qerrors "github.com/pzverkov/quantum-go/internal/errors"
+import qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 
 // Check for FIPS-related errors
 if errors.Is(err, qerrors.ErrCipherSuiteNotFIPSApproved) {
@@ -204,7 +204,7 @@ Quantum-Go includes FIPS 140-3 compliant Power-On Self-Tests that run automatica
 ### POST Behavior
 
 ```go
-import "github.com/pzverkov/quantum-go/pkg/crypto"
+import "github.com/sara-star-quant/quantum-go/pkg/crypto"
 
 // POST runs automatically on package import
 // Check if POST passed:

@@ -7,7 +7,7 @@
 // In FIPS mode, only FIPS 140-3 approved cipher suites are available.
 package protocol
 
-import "github.com/pzverkov/quantum-go/internal/constants"
+import "github.com/sara-star-quant/quantum-go/internal/constants"
 
 // SupportedCipherSuites returns the list of cipher suites supported in FIPS mode.
 // In FIPS mode, only AES-256-GCM is available as it is FIPS 140-3 approved.

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pzverkov/quantum-go/pkg/tunnel"
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 type rateLimitObserver struct {

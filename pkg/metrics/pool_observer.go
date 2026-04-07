@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pzverkov/quantum-go/pkg/tunnel"
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 // PoolMetricsObserver implements tunnel.PoolObserver and records metrics.

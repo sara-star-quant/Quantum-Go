@@ -9,7 +9,7 @@
 //   - Session rekeying for long-lived connections
 package protocol
 
-import "github.com/pzverkov/quantum-go/internal/constants"
+import "github.com/sara-star-quant/quantum-go/internal/constants"
 
 // Version represents the protocol version.
 type Version struct {

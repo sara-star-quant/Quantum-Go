@@ -14,10 +14,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	"github.com/pzverkov/quantum-go/pkg/chkem"
-	"github.com/pzverkov/quantum-go/pkg/crypto"
-	"github.com/pzverkov/quantum-go/pkg/tunnel"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/pkg/chkem"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 // --- Cryptographic Primitive Benchmarks ---

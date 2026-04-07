@@ -5,13 +5,13 @@ The `quantum-vpn` tool provides interactive demos, examples, and benchmarking ut
 ## Installation
 
 ```bash
-go install github.com/pzverkov/quantum-go/cmd/quantum-vpn@latest
+go install github.com/sara-star-quant/quantum-go/cmd/quantum-vpn@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/pzverkov/quantum-go
+git clone https://github.com/sara-star-quant/quantum-go
 cd quantum-go
 go build -o quantum-vpn ./cmd/quantum-vpn/
 ```

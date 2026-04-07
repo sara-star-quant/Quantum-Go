@@ -15,11 +15,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	qerrors "github.com/pzverkov/quantum-go/internal/errors"
-	"github.com/pzverkov/quantum-go/pkg/chkem"
-	"github.com/pzverkov/quantum-go/pkg/crypto"
-	"github.com/pzverkov/quantum-go/pkg/protocol"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/pkg/chkem"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
+	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
 // SessionState represents the current state of the tunnel session.

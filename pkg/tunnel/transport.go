@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	qerrors "github.com/pzverkov/quantum-go/internal/errors"
-	"github.com/pzverkov/quantum-go/pkg/protocol"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
 // Transport provides encrypted communication over an established session.

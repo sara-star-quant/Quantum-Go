@@ -1,6 +1,6 @@
 package tunnel
 
-import qerrors "github.com/pzverkov/quantum-go/internal/errors"
+import qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 
 func isProtocolError(err error) bool {
 	if err == nil {

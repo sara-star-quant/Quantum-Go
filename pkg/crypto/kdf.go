@@ -31,8 +31,8 @@ import (
 
 	"golang.org/x/crypto/sha3"
 
-	"github.com/pzverkov/quantum-go/internal/constants"
-	qerrors "github.com/pzverkov/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 )
 
 // safeUint32 safely converts an int to uint32, returning false if overflow would occur.

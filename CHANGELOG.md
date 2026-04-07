@@ -223,7 +223,7 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
   - FIPS 140-3 module support
   - Faster crypto/rand.Read with getrandom VDSO
   - Fixed multiple crypto/x509 CVEs
-- **Module path**: Corrected to `github.com/pzverkov/quantum-go`
+- **Module path**: Corrected to `github.com/sara-star-quant/quantum-go`
 - **All imports**: Updated across 21 files for correct module path
 
 ### Fixed
@@ -264,13 +264,13 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/pzverkov/quantum-go/compare/v0.0.9...HEAD
-[0.0.9]: https://github.com/pzverkov/quantum-go/compare/v0.0.8...v0.0.9
-[0.0.8]: https://github.com/pzverkov/quantum-go/compare/v0.0.7...v0.0.8
-[0.0.7]: https://github.com/pzverkov/quantum-go/compare/v0.0.6...v0.0.7
-[0.0.6]: https://github.com/pzverkov/quantum-go/compare/v0.0.5...v0.0.6
-[0.0.5]: https://github.com/pzverkov/quantum-go/compare/v0.0.4...v0.0.5
-[0.0.4]: https://github.com/pzverkov/quantum-go/compare/v0.0.3...v0.0.4
-[0.0.3]: https://github.com/pzverkov/quantum-go/compare/v0.0.2...v0.0.3
-[0.0.2]: https://github.com/pzverkov/quantum-go/compare/v0.0.1...v0.0.2
-[0.0.1]: https://github.com/pzverkov/quantum-go/releases/tag/v0.0.1
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.9...HEAD
+[0.0.9]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.8...v0.0.9
+[0.0.8]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.7...v0.0.8
+[0.0.7]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.6...v0.0.7
+[0.0.6]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.5...v0.0.6
+[0.0.5]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.4...v0.0.5
+[0.0.4]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.3...v0.0.4
+[0.0.3]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.2...v0.0.3
+[0.0.2]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.1...v0.0.2
+[0.0.1]: https://github.com/sara-star-quant/quantum-go/releases/tag/v0.0.1

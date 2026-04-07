@@ -3,7 +3,7 @@ package crypto_test
 import (
 	"testing"
 
-	"github.com/pzverkov/quantum-go/pkg/crypto"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 )
 
 // TestFIPSMode tests the FIPSMode function.

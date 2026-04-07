@@ -3,9 +3,9 @@
 **Quantum-Resistant VPN Encryption using Cascaded Hybrid KEM (CH-KEM)**
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev)
-[![Go Reference](https://pkg.go.dev/badge/github.com/pzverkov/quantum-go.svg)](https://pkg.go.dev/github.com/pzverkov/quantum-go)
-[![Go Report Card](https://goreportcard.com/badge/pzverkov/quantum-go)](https://goreportcard.com/report/github.com/pzverkov/quantum-go)
-[![Go Build](https://github.com/pzverkov/quantum-go/actions/workflows/ci.yml/badge.svg)](https://github.com/pzverkov/quantum-go/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/sara-star-quant/quantum-go.svg)](https://pkg.go.dev/github.com/sara-star-quant/quantum-go)
+[![Go Report Card](https://goreportcard.com/badge/pzverkov/quantum-go)](https://goreportcard.com/report/github.com/sara-star-quant/quantum-go)
+[![Go Build](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml/badge.svg)](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml)
 [![Security Level](https://img.shields.io/badge/Security-NIST%20Category%205-green)](https://csrc.nist.gov/projects/post-quantum-cryptography)
 [![FIPS Mode](https://img.shields.io/badge/FIPS%20140--3-Ready-orange)](docs/FIPS.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
@@ -53,11 +53,11 @@ Quantum-Go is a production-ready, quantum-resistant VPN encryption library imple
 ## Quick Start
 
 ```bash
-go get github.com/pzverkov/quantum-go
+go get github.com/sara-star-quant/quantum-go
 ```
 
 ```go
-import "github.com/pzverkov/quantum-go/pkg/tunnel"
+import "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 
 // Server
 listener, _ := tunnel.Listen("tcp", ":8443", nil)

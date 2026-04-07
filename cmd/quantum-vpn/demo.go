@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pzverkov/quantum-go/pkg/metrics"
-	"github.com/pzverkov/quantum-go/pkg/tunnel"
+	"github.com/sara-star-quant/quantum-go/pkg/metrics"
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func runDemo(mode, addr, message string, verbose bool, obsAddr, logLevel, logFormat, tracing string) {

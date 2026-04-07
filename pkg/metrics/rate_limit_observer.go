@@ -3,7 +3,7 @@ package metrics
 import (
 	"strings"
 
-	"github.com/pzverkov/quantum-go/pkg/tunnel"
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 // maskIP partially redacts an IP address, keeping the first and last few
