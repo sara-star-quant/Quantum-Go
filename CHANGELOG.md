@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+- **UDP/datagram transport (handshake)**: a connectionless transport alongside the TCP/stream one, demultiplexed by a random per-session connection index rather than source address (survives NAT rebind and roaming). It carries the full CH-KEM handshake over a lossy link: the large post-quantum Hellos are fragmented across datagrams and reassembled (`pkg/tunnel/reassembly.go`), and a transport-agnostic state machine plus reliability driver (`pkg/tunnel/dgram_handshake_{fsm,driver,wire}.go`) add retransmission with exponential backoff, a retry ceiling, duplicate/replay handling, and a responder linger that recovers a lost final flight. A bad or forged datagram drops rather than failing the handshake. The responder runs no decapsulation and sends no ServerHello until a full ClientHello arrives and a per-source half-open slot is granted, so it never sends more than it received from an unvalidated source. `DialDatagram` performs the initiator handshake and returns an established session.
+- **Datagram handshake benchmark**: `quantum-vpn bench --datagram-handshakes N` measures the datagram handshake rate over loopback UDP (~1,300/sec, ~760 µs each on an M1 Pro, vs ~1,450/sec for the stream path).
+
+### Not yet implemented (datagram)
+- The encrypted data path (epoch-keyed AEAD over DATA frames) and authenticated CLOSE, so there is no datagram throughput number yet.
+- The stateless cookie/RETRY anti-amplification exchange and connection roaming.
+
 ### Planned: v0.0.11 - Security Hardening (carryover)
 - Handshake timeout on server Accept
 - Module integrity verification (fix always-true check)

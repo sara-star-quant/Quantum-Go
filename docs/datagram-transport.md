@@ -5,22 +5,22 @@ the existing TCP/stream transport. The two share the crypto core (`pkg/chkem`,
 `pkg/crypto`, and the `Session` key/rekey secret derivation) but have **separate
 wire formats**. There is no TCP↔UDP interop, by design.
 
-The transport is being built as a phased epic. This document tracks the design
-and is updated as phases land.
+The transport is being built incrementally. This document tracks the design and
+is updated as pieces land.
 
 ## Status
 
 | Component | File | Status |
 |-----------|------|--------|
-| Datagram wire codec | `pkg/protocol/datagram_codec.go` | Phase 1a — implemented |
-| Multi-word replay window | `pkg/tunnel/replay.go` | Phase 1a — implemented |
-| Bounded handshake reassembler | `pkg/tunnel/reassembly.go` | Phase 1a — implemented |
-| Datagram constants | `internal/constants/constants.go` | Phase 1a — implemented |
-| Endpoint + demux | `pkg/tunnel/datagram.go` | Phase 1a — pending |
-| Reliable handshake FSM | `pkg/tunnel/dgram_handshake.go` | Phase 1a — pending |
-| Epoch cipher selection (recv) | `pkg/tunnel/session.go` (datagram path) | Phase 1a — pending |
-| Zero-alloc / batched I/O | — | Phase 1b |
-| Stateless cookie / anti-amplification / roaming | — | Phase 2 |
+| Datagram wire codec | `pkg/protocol/datagram_codec.go` | implemented |
+| Multi-word replay window | `pkg/tunnel/replay.go` | implemented |
+| Bounded handshake reassembler | `pkg/tunnel/reassembly.go` | implemented |
+| Datagram constants | `internal/constants/constants.go` | implemented |
+| Endpoint + demux + dial/accept | `pkg/tunnel/datagram.go` | implemented |
+| Reliable handshake FSM + driver + wiring | `pkg/tunnel/dgram_handshake_{fsm,driver,wire}.go` | implemented |
+| Epoch cipher selection (recv) | `pkg/tunnel/session.go` (datagram path) | pending |
+| Zero-alloc / batched I/O | - | future |
+| Stateless cookie / anti-amplification / roaming | - | future |
 
 ## Wire format
 
@@ -33,7 +33,7 @@ Common 14-byte header (all frame types):
 [FrameType:1][Epoch:1][RecvIndex:4 BE][Seq:8 BE]
 ```
 
-- **FrameType** — DATA, HANDSHAKE, CLOSE, or RETRY (RETRY reserved for Phase 2).
+- **FrameType** — DATA, HANDSHAKE, CLOSE, or RETRY (RETRY reserved for a future stateless-retry exchange).
 - **Epoch** — selects the receive cipher for DATA frames (see *Rekey*). Carried
   in the clear but authenticated: the AEAD AAD is the entire 14-byte header, so a
   flipped epoch is rejected, not merely mis-routed.
@@ -51,8 +51,8 @@ HANDSHAKE frame appends an extension before the (possibly fragmented) message:
 [SenderIndex:4][MsgType:1][FragOffset:2][FragLen:2][TotalLen:2][CookieLen:1][Cookie:CookieLen]
 ```
 
-`CookieLen` is `0` in Phase 1; the field exists so the Phase 2 stateless-retry
-hardening needs no wire change.
+`CookieLen` is `0` today; the field exists so a future stateless-retry hardening
+needs no wire change.
 
 ## Key design decisions (improve, do not inherit)
 
@@ -65,8 +65,8 @@ hardening needs no wire change.
 - **Demux by random connection index, not source address.** A session survives
   NAT rebind/roaming, one address can host many sessions, and indices resist
   off-path guessing (CSPRNG, regenerated on the rare active-table collision). The
-  source address is only a hint, updated after an AEAD-valid packet (the
-  authenticated-rebinding enforcement lands in Phase 2).
+  source address is only a hint, updated after an AEAD-valid packet
+  (authenticated-rebinding enforcement is future work).
 
 - **Epoch-based rekey (reorder-safe).** The stream transport promotes the new
   receive cipher on the first new-key packet and discards the old one — correct
@@ -93,16 +93,16 @@ hardening needs no wire change.
   best-effort datagram, never relied upon. `Send` emits one datagram per call and
   rejects payloads larger than `DatagramMaxDataPayload` (no PMTU discovery).
 
-## Phase 1 DoS posture
+## DoS posture
 
 Amplification is inherently low: the ~1.7 KB ClientHello must be fully received
 and reassembled before the comparable ServerHello is sent (response:request ≈
-1:1, not an amplifier). Phase 1 additionally reuses the existing rate limiters
-and caps concurrent half-open handshakes per source and overall. The Phase 2
-stateless cookie closes the residual spoofed-source state-exhaustion gap and
-enforces a strict anti-amplification bound.
+1:1, not an amplifier). The current implementation additionally reuses the
+existing rate limiters and caps concurrent half-open handshakes per source and
+overall. A future stateless cookie will close the residual spoofed-source
+state-exhaustion gap and enforce a strict anti-amplification bound.
 
 ## Out of scope (future)
 
 GSO/GRO offload, PMTU discovery, multipath, and a parallel per-datagram crypto
-pipeline (revisited after the Phase 1 baseline is measured).
+pipeline (revisited after the current baseline is measured).

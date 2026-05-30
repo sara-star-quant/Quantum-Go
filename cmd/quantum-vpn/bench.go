@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"sync"
@@ -11,21 +12,27 @@ import (
 	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
-func runBench(handshakes int, throughputTest bool, sizeStr, durationStr, cipherSuite string) {
-	fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-	fmt.Println("║      Quantum-Resistant VPN Benchmark                     ║")
-	fmt.Println("║      CH-KEM: ML-KEM-1024 + X25519                        ║")
-	fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+func runBench(handshakes, datagramHandshakes int, throughputTest bool, sizeStr, durationStr, cipherSuite string) {
+	const bannerWidth = 59
+	fmt.Println("╔" + strings.Repeat("═", bannerWidth) + "╗")
+	fmt.Printf("║%-*s║\n", bannerWidth, "      Quantum-Resistant VPN Benchmark")
+	fmt.Printf("║%-*s║\n", bannerWidth, "      CH-KEM: ML-KEM-1024 + X25519")
+	fmt.Println("╚" + strings.Repeat("═", bannerWidth) + "╝")
 	fmt.Println()
 
-	if handshakes == 0 && !throughputTest {
-		fmt.Println("No benchmarks specified. Use --handshakes or --throughput")
+	if handshakes == 0 && datagramHandshakes == 0 && !throughputTest {
+		fmt.Println("No benchmarks specified. Use --handshakes, --datagram-handshakes, or --throughput")
 		fmt.Println("Run 'quantum-vpn bench --help' for usage")
 		os.Exit(1)
 	}
 
 	if handshakes > 0 {
 		benchHandshakes(handshakes)
+		fmt.Println()
+	}
+
+	if datagramHandshakes > 0 {
+		benchDatagramHandshakes(datagramHandshakes)
 		fmt.Println()
 	}
 
@@ -98,6 +105,67 @@ func benchHandshakes(count int) {
 	wg.Wait()
 	totalTime := time.Since(startTime)
 
+	successCount := count - errors
+	printHandshakeResults(count, successCount, errors, totalTime, durations)
+}
+
+// benchDatagramHandshakes measures full CH-KEM handshakes over the connectionless
+// UDP transport on loopback: it dials sequentially through DialDatagram, which
+// fragments the post-quantum Hellos and drives retransmission, so the result is
+// directly comparable to the stream handshake number. The encrypted datagram data
+// path is not implemented yet, so there is no datagram throughput benchmark.
+func benchDatagramHandshakes(count int) {
+	fmt.Printf("Benchmarking Datagram Handshakes (%d iterations)\n", count)
+	fmt.Println(strings.Repeat("─", 60))
+
+	responderConn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to open responder socket: %v\n", err)
+		os.Exit(1)
+	}
+	responder := tunnel.NewDatagramEndpoint(responderConn)
+	go responder.Serve()
+	defer func() { _ = responder.Close() }()
+
+	initiatorConn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to open initiator socket: %v\n", err)
+		os.Exit(1)
+	}
+	initiator := tunnel.NewDatagramEndpoint(initiatorConn)
+	go initiator.Serve()
+	defer func() { _ = initiator.Close() }()
+
+	dst := responderConn.LocalAddr()
+	fmt.Printf("Test setup: %s -> %s\n\n", initiatorConn.LocalAddr(), dst)
+
+	durations := make([]time.Duration, count)
+	errors := 0
+
+	startTime := time.Now()
+	for i := 0; i < count; i++ {
+		handshakeStart := time.Now()
+
+		session, err := tunnel.DialDatagram(initiator, dst)
+		if err != nil {
+			errors++
+			durations[i] = 0
+			continue
+		}
+		durations[i] = time.Since(handshakeStart)
+		_ = session
+
+		step := count / 10
+		if step == 0 {
+			step = 1
+		}
+		if (i+1)%step == 0 || i == count-1 {
+			fmt.Printf("Progress: %d/%d (%.0f%%)\r", i+1, count, float64(i+1)/float64(count)*100)
+		}
+	}
+	fmt.Println()
+
+	totalTime := time.Since(startTime)
 	successCount := count - errors
 	printHandshakeResults(count, successCount, errors, totalTime, durations)
 }
