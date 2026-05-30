@@ -1,11 +1,11 @@
 # Quantum-Go Development Roadmap
 
-**Version:** 4.0
-**Last Updated:** 2026-03-13
+**Version:** 4.1
+**Last Updated:** 2026-05-30
 
 ---
 
-## Current Status: v0.0.8
+## Current Status: v0.0.10
 
 ### Completed Features
 - [x] CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)
@@ -214,6 +214,14 @@ cryptographic primitives are composed. The primitives themselves are sound; the
 composition needs strengthening.
 **Target:** Q2 2026
 
+> **Status:** v0.0.10 shipped as *Data-Plane Rekey Reliability & Throughput* (see
+> CHANGELOG): the rekey send-deadlock fix, dual-cipher trial-decryption activation
+> (item #6 below, delivered without a new wire message), the boundary-packet replay fix,
+> the 64 GiB rekey-byte threshold, and the stdlib `crypto/sha3` migration. The remaining
+> hardening items below (role binding, nonce session binding, ticket server binding,
+> handshake timeout, replay-window expansion, module integrity) carry forward to a
+> subsequent hardening release.
+
 #### 1. Role Binding in CH-KEM Transcript
 **Priority:** Critical | **Effort:** Small
 
@@ -271,15 +279,18 @@ Current replay window is only 64 packets. At 1 Gbps with 1500-byte packets
 - [ ] Add test: verify out-of-order packets within window are accepted
 - [ ] Add benchmark: measure replay check overhead at larger window sizes
 
-#### 6. Rekey Activation Confirmation
-**Priority:** Medium | **Effort:** Medium
+#### 6. Rekey Activation Confirmation (DONE in v0.0.10, via trial decryption)
+**Priority:** Critical (was Medium) | **Effort:** Medium
 
-Rekey activation uses a fixed sequence offset (+16 packets). If the responder
-hasn't processed the rekey message by then, decryption fails.
+The fixed +16 sequence offset failed at speed: the sender outran the rekey round-trip,
+so the responder switched its receive key while the initiator was still sending under the
+old key, dropping the connection. Solved without a new wire message; each side switches
+its send cipher explicitly and promotes its receive cipher lazily via dual-cipher trial
+decryption (try current, fall back to pending). Reliable under load and high latency.
 
-- [ ] Add explicit rekey-ack message type
-- [ ] Both sides activate only after confirmation exchange
-- [ ] Add test: verify rekey completes under high-latency conditions
+- [x] Reliable activation under load/latency (dual-cipher trial decryption)
+- [x] Add test: rekey completes when the sender outruns the round-trip
+- [ ] (Superseded) explicit rekey-ack message type, unnecessary with trial decryption
 
 #### 7. Module Integrity Verification
 **Priority:** Medium | **Effort:** Medium

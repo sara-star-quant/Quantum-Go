@@ -87,16 +87,33 @@ See [Quick Start Guide](docs/usage/QUICKSTART.md) for detailed examples.
 
 ## Performance
 
-Optimized with SIMD/Assembly (AES-NI, AVX2/AVX-512, hardware SHA3). Benchmarked with Go 1.26 (Green Tea GC, ~18% faster ML-KEM).
+Hardware-accelerated where available (ARMv8 Crypto Extensions on Apple Silicon;
+AES-NI / AVX2 / hardware SHA-3 on x86-64). Go 1.26.3 (Green Tea GC).
 
-| Platform | Handshakes/sec | Throughput (AES-GCM) |
-|----------|----------------|----------------------|
-| Apple Silicon (M1 Pro, early generation) | ~2,050 | ~2.5 GB/s |
-| Cloud instance (c6i.xlarge) | 2,000-2,800 | 3-5 GB/s |
-| Mid-range server (Xeon Silver) | 2,800-3,800 | 4-7 GB/s |
-| Enterprise (Xeon Platinum / EPYC) | 3,800-5,500 | 8-12 GB/s |
+The transport is **TCP/stream only** (length-prefixed framing); UDP is not currently
+supported. Two distinct numbers matter: the raw AEAD cipher rate, and the rate actually
+achieved end-to-end through a single tunnel (lower, currently allocation-bound; zero-copy
+data-plane work is tracked on the [roadmap](docs/ROADMAP.md)).
 
-Run `quantum-vpn benchmark` on your target hardware. See [CLI Reference](docs/usage/CLI.md#benchmark-mode).
+**Measured (Apple M1 Pro, Go 1.26.3, loopback TCP):**
+
+| Metric | Result |
+|--------|--------|
+| AES-256-GCM cipher (raw AEAD, single core) | ~2.5 GB/s |
+| ChaCha20-Poly1305 cipher (raw AEAD) | ~0.7 GB/s |
+| Handshakes/sec (full CH-KEM, sequential) | ~1,450 (~670 µs each) |
+| Single-tunnel throughput (AES-GCM, end-to-end) | ~690 MB/s (5.5 Gb/s), sustained across rekeys |
+
+**Estimated on other hardware** (extrapolated from cipher throughput; not yet
+independently measured; run the benchmark to verify):
+
+| Platform | AES-256-GCM cipher (raw) |
+|----------|--------------------------|
+| Cloud instance (c6i.xlarge) | 3-5 GB/s |
+| Mid-range server (Xeon Silver) | 4-7 GB/s |
+| Enterprise (Xeon Platinum / EPYC) | 8-12 GB/s |
+
+Run `quantum-vpn bench --handshakes N --throughput` on your target hardware. See [CLI Reference](docs/usage/CLI.md#benchmark-mode).
 
 ## Contributing
 
