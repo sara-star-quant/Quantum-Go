@@ -141,6 +141,82 @@ const (
 	CHKEMSharedSecretSize = 32
 )
 
+// Datagram (UDP) Transport Parameters
+//
+// These govern the connectionless datagram transport, which has its own wire
+// format separate from the length-prefixed stream codec. The overhead constants
+// below MUST stay in sync with the datagram wire format in
+// pkg/protocol/datagram_codec.go (this package cannot import protocol without an
+// import cycle).
+const (
+	// DatagramMTU is the conservative per-datagram payload budget (QUIC-style).
+	// It is intentionally well below a 1500-byte Ethernet MTU to avoid IP
+	// fragmentation. PMTU discovery is out of scope.
+	DatagramMTU = 1200
+
+	// DatagramHeaderOverhead is the size of the common datagram frame header.
+	// MUST equal pkg/protocol.DatagramHeaderSize.
+	DatagramHeaderOverhead = 14
+
+	// DatagramDataOverhead is the total per-datagram overhead for a DATA frame:
+	// the common header plus the AEAD authentication tag.
+	DatagramDataOverhead = DatagramHeaderOverhead + AESTagSize
+
+	// DatagramMaxDataPayload is the maximum application payload that fits in a
+	// single DATA datagram. A Send larger than this is rejected (one datagram
+	// per Send; no PMTU discovery).
+	DatagramMaxDataPayload = DatagramMTU - DatagramDataOverhead
+
+	// DatagramNoncePrefixSize is the size of the per-session random nonce prefix.
+	// The 12-byte AEAD nonce is the prefix followed by the 8-byte sequence
+	// number, so the prefix is the AEAD nonce size minus 8.
+	DatagramNoncePrefixSize = AESNonceSize - 8
+
+	// DatagramMaxHandshakeMessageSize bounds the declared total length of a
+	// reassembled handshake message (the PQ Hellos are ~1.7 KB; this leaves
+	// generous headroom while capping pre-auth memory).
+	DatagramMaxHandshakeMessageSize = 4096
+
+	// DatagramMaxConcurrentReassembly is the per-source cap on simultaneously
+	// in-progress reassembly buffers.
+	DatagramMaxConcurrentReassembly = 4
+
+	// DatagramReassemblyTimeoutSeconds bounds how long partial reassembly state
+	// is retained before eviction.
+	DatagramReassemblyTimeoutSeconds = 10
+
+	// DatagramHandshakeInitialTimeoutMillis is the initiator's first
+	// retransmission timeout; it backs off exponentially up to the max.
+	DatagramHandshakeInitialTimeoutMillis = 500
+
+	// DatagramHandshakeMaxTimeoutMillis caps the retransmission backoff.
+	DatagramHandshakeMaxTimeoutMillis = 8000
+
+	// DatagramHandshakeMaxRetries bounds the initiator's retransmissions before
+	// it aborts the handshake.
+	DatagramHandshakeMaxRetries = 8
+
+	// DatagramIdleTimeoutSeconds is how long a session may be idle before it is
+	// reaped (there is no FIN over UDP; close is best-effort).
+	DatagramIdleTimeoutSeconds = 120
+
+	// DatagramMaxHalfOpenPerSource caps concurrent half-open (un-established)
+	// handshakes from a single source address.
+	DatagramMaxHalfOpenPerSource = 8
+
+	// DatagramMaxHalfOpenTotal caps concurrent half-open handshakes across all
+	// sources.
+	DatagramMaxHalfOpenTotal = 1024
+
+	// DatagramReplayWindowBits is the width of the datagram anti-replay window.
+	DatagramReplayWindowBits = 1024
+
+	// DatagramPrevEpochRetainSeconds bounds how long a previous epoch's receive
+	// cipher is retained after a rekey (in addition to a sequence-distance
+	// bound) before it is retired.
+	DatagramPrevEpochRetainSeconds = 30
+)
+
 // CipherSuite identifiers
 type CipherSuite uint16
 

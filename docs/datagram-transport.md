@@ -1,0 +1,108 @@
+# UDP / Datagram Transport (design)
+
+This document describes the connectionless datagram transport that complements
+the existing TCP/stream transport. The two share the crypto core (`pkg/chkem`,
+`pkg/crypto`, and the `Session` key/rekey secret derivation) but have **separate
+wire formats**. There is no TCP↔UDP interop, by design.
+
+The transport is being built as a phased epic. This document tracks the design
+and is updated as phases land.
+
+## Status
+
+| Component | File | Status |
+|-----------|------|--------|
+| Datagram wire codec | `pkg/protocol/datagram_codec.go` | Phase 1a — implemented |
+| Multi-word replay window | `pkg/tunnel/replay.go` | Phase 1a — implemented |
+| Bounded handshake reassembler | `pkg/tunnel/reassembly.go` | Phase 1a — implemented |
+| Datagram constants | `internal/constants/constants.go` | Phase 1a — implemented |
+| Endpoint + demux | `pkg/tunnel/datagram.go` | Phase 1a — pending |
+| Reliable handshake FSM | `pkg/tunnel/dgram_handshake.go` | Phase 1a — pending |
+| Epoch cipher selection (recv) | `pkg/tunnel/session.go` (datagram path) | Phase 1a — pending |
+| Zero-alloc / batched I/O | — | Phase 1b |
+| Stateless cookie / anti-amplification / roaming | — | Phase 2 |
+
+## Wire format
+
+Every datagram is exactly one frame. There is no cross-datagram length prefix
+and **no transmitted nonce**.
+
+Common 14-byte header (all frame types):
+
+```
+[FrameType:1][Epoch:1][RecvIndex:4 BE][Seq:8 BE]
+```
+
+- **FrameType** — DATA, HANDSHAKE, CLOSE, or RETRY (RETRY reserved for Phase 2).
+- **Epoch** — selects the receive cipher for DATA frames (see *Rekey*). Carried
+  in the clear but authenticated: the AEAD AAD is the entire 14-byte header, so a
+  flipped epoch is rejected, not merely mis-routed.
+- **RecvIndex** — the random connection index the *receiver* assigned to this
+  session. The sender echoes it; the receiver demultiplexes by index, **not by
+  source address**. `0` means "unknown" (the first ClientHello).
+- **Seq** — a globally monotonic, **never-reset** 64-bit counter. It is both the
+  replay counter and the low 8 bytes of the AEAD nonce.
+
+DATA frame: `[header] || AEAD ciphertext(incl. tag)`.
+
+HANDSHAKE frame appends an extension before the (possibly fragmented) message:
+
+```
+[SenderIndex:4][MsgType:1][FragOffset:2][FragLen:2][TotalLen:2][CookieLen:1][Cookie:CookieLen]
+```
+
+`CookieLen` is `0` in Phase 1; the field exists so the Phase 2 stateless-retry
+hardening needs no wire change.
+
+## Key design decisions (improve, do not inherit)
+
+- **Nonce is derived, not transmitted.** `nonce = noncePrefix(4B) || seq(8B)`.
+  `seq` is globally monotonic and never reset across a rekey, so per-`(key,nonce)`
+  uniqueness holds trivially (the epoch rotates the key well before any 2⁶⁴ wrap),
+  one replay window covers the whole session, and we save 12 bytes/packet versus
+  the stream path. This also realizes session-bound nonces (ROADMAP #2).
+
+- **Demux by random connection index, not source address.** A session survives
+  NAT rebind/roaming, one address can host many sessions, and indices resist
+  off-path guessing (CSPRNG, regenerated on the rare active-table collision). The
+  source address is only a hint, updated after an AEAD-valid packet (the
+  authenticated-rebinding enforcement lands in Phase 2).
+
+- **Epoch-based rekey (reorder-safe).** The stream transport promotes the new
+  receive cipher on the first new-key packet and discards the old one — correct
+  only for in-order delivery. The datagram path instead carries a 1-byte epoch
+  per frame (in the AAD); the receiver selects the cipher by epoch and retains
+  the previous epoch's receive cipher for a bounded window (by sequence distance
+  and time) before retiring it. Epoch is mod 256; only adjacent epochs are ever
+  live, so wrap is unambiguous.
+
+- **Single, wide, never-reset replay window.** A multi-word sliding bitmap
+  (`DatagramReplayWindowBits`, default 1024) over the monotonic sequence,
+  tolerant of datagram reordering. It is never reset on rekey — resetting it
+  would re-arm a fresh window that re-opens a one-packet replay at the rekey
+  boundary (the same hazard the stream path guards against).
+
+- **App-layer fragmentation for handshakes only.** The PQ Hellos (~1.7 KB)
+  exceed the conservative 1200-byte datagram budget, so handshake messages are
+  fragmented and reassembled. Data frames are capped to a single datagram (a
+  VPN's inner payload ≤ MTU), so the reassembler only ever sees the bounded,
+  few-message handshake. Reassembly runs pre-auth and is bounded three ways:
+  per-source concurrent-buffer cap, per-message size cap, and a timeout.
+
+- **No FIN over UDP.** Sessions are reaped by idle timeout; CLOSE is a
+  best-effort datagram, never relied upon. `Send` emits one datagram per call and
+  rejects payloads larger than `DatagramMaxDataPayload` (no PMTU discovery).
+
+## Phase 1 DoS posture
+
+Amplification is inherently low: the ~1.7 KB ClientHello must be fully received
+and reassembled before the comparable ServerHello is sent (response:request ≈
+1:1, not an amplifier). Phase 1 additionally reuses the existing rate limiters
+and caps concurrent half-open handshakes per source and overall. The Phase 2
+stateless cookie closes the residual spoofed-source state-exhaustion gap and
+enforces a strict anti-amplification bound.
+
+## Out of scope (future)
+
+GSO/GRO offload, PMTU discovery, multipath, and a parallel per-datagram crypto
+pipeline (revisited after the Phase 1 baseline is measured).
