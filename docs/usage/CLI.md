@@ -86,9 +86,13 @@ quantum-vpn bench --throughput --size 1GB --cipher chacha20
 quantum-vpn bench --handshakes 100 --throughput --size 500MB
 ```
 
-### Verified Performance (Apple Silicon M1 Pro, Go 1.26)
-- **Handshakes**: ~2,050/sec (~487us latency)
-- **Throughput**: ~2.5 GB/s (ARMv8 Crypto Extensions)
+### Verified Performance (Apple M1 Pro, Go 1.26.3, loopback TCP)
+- **Handshakes**: ~1,450/sec (~670us each, full CH-KEM, sequential)
+- **Cipher throughput**: ~2.5 GB/s AES-256-GCM raw AEAD (ARMv8 Crypto Extensions); ~0.7 GB/s ChaCha20-Poly1305
+- **Single-tunnel throughput**: ~690 MB/s (5.5 Gb/s) end-to-end over TCP, sustained across automatic rekeys
+
+> Transport is TCP/stream only; UDP is not supported. End-to-end tunnel throughput is
+> currently allocation-bound and below the raw cipher rate.
 
 ## Example Mode
 
