@@ -91,7 +91,7 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, first inboundMsg) {
 		ep:          e,
 		ds:          ds,
 		src:         src,
-		driver:      newDgramDriverWithRTO(session, nil, e.rtoInitial, e.rtoMax),
+		driver:      e.newDriver(session),
 		localIndex:  idx,
 		peerIndex:   first.sender, // the initiator's index, echoed as RecvIndex in our replies
 		established: func() { e.surface(ds) },
@@ -116,7 +116,7 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*Session, error) {
 		ep:         ep,
 		ds:         ds,
 		src:        dst,
-		driver:     newDgramDriverWithRTO(session, nil, ep.rtoInitial, ep.rtoMax),
+		driver:     ep.newDriver(session),
 		localIndex: idx,
 	}
 	s, err := l.run()
@@ -125,6 +125,13 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*Session, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// newDriver builds a handshake driver carrying this endpoint's configured
+// retransmission backoff. Both the dial and responder paths go through here so the
+// configured RTO cannot be dropped on the way to the driver.
+func (e *DatagramEndpoint) newDriver(session *Session) *dgramDriver {
+	return newDgramDriverWithRTO(session, nil, e.rtoInitial, e.rtoMax)
 }
 
 // surface offers an established inbound session on the accept channel without
