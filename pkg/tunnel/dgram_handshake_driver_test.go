@@ -189,3 +189,112 @@ func TestDgramHandshakeDriverDuplicateNoBackoffReset(t *testing.T) {
 		t.Fatal("duplicate ClientHello reset the responder retransmit timer")
 	}
 }
+
+// newDriverPairRTO pairs an initiator and responder driver with non-default
+// backoff. The non-default values are the point: they differ from the package
+// constants, so a path that reads a constant where the configured value belongs
+// shows up. Both clocks start at epoch and are advanced explicitly.
+func newDriverPairRTO(t *testing.T, rtoInitial, rtoMax time.Duration) (ini, res *dgramDriver, iclk, rclk *fakeClock) {
+	t.Helper()
+	ci, err := NewSession(RoleInitiator)
+	if err != nil {
+		t.Fatalf("initiator session: %v", err)
+	}
+	ri, err := NewSession(RoleResponder)
+	if err != nil {
+		t.Fatalf("responder session: %v", err)
+	}
+	iclk = &fakeClock{t: epoch}
+	rclk = &fakeClock{t: epoch}
+	return newDgramDriverWithRTO(ci, iclk.now, rtoInitial, rtoMax),
+		newDgramDriverWithRTO(ri, rclk.now, rtoInitial, rtoMax), iclk, rclk
+}
+
+// TestDgramHandshakeDriverAdvanceKeepsConfiguredRTO is a regression test for the
+// RTO reset bug: advancing to the next flight must re-arm the retransmit timer at
+// the configured rtoInitial, not the default package constant. The existing
+// backoff test missed this because it uses the default driver, where the two are
+// equal.
+func TestDgramHandshakeDriverAdvanceKeepsConfiguredRTO(t *testing.T) {
+	const rtoInitial = 5 * time.Millisecond
+	const rtoMax = 50 * time.Millisecond
+	ini, res, iclk, _ := newDriverPairRTO(t, rtoInitial, rtoMax)
+
+	ch, err := ini.start()
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	sh := feed(res, ch)
+	if cf := feed(ini, sh); len(cf) != 1 || cf[0].typ != protocol.MessageTypeClientFinished {
+		t.Fatalf("initiator did not advance to ClientFinished: %v", cf)
+	}
+
+	got := ini.nextWake().Sub(iclk.now())
+	dflt := time.Duration(constants.DatagramHandshakeInitialTimeoutMillis) * time.Millisecond
+	if got != rtoInitial {
+		t.Fatalf("post-advance RTO = %v, want configured %v (a value of %v means it reverted to the default constant)",
+			got, rtoInitial, dflt)
+	}
+}
+
+// TestDgramHandshakeDriverLingerCoversRetransmitWindow is a regression test for
+// the short-linger bug: a completed responder must keep answering ClientFinished
+// retransmits for the initiator's whole retransmit window, not one RTO, so a lost
+// final ServerFinished is recovered by replay.
+func TestDgramHandshakeDriverLingerCoversRetransmitWindow(t *testing.T) {
+	const rtoInitial = 5 * time.Millisecond
+	const rtoMax = 50 * time.Millisecond
+	ini, res, _, rclk := newDriverPairRTO(t, rtoInitial, rtoMax)
+
+	ch, _ := ini.start()
+	sh := feed(res, ch)
+	cf := feed(ini, sh)
+	if sf := feed(res, cf); len(sf) != 1 || sf[0].typ != protocol.MessageTypeServerFinished {
+		t.Fatalf("responder did not complete: %v", sf)
+	}
+	if !res.established() {
+		t.Fatal("responder not established")
+	}
+
+	// Linger must span the initiator's full ClientFinished retransmit window
+	// (MaxRetries backoffs capped at rtoMax), well beyond the one-RTO old value.
+	got := res.nextWake().Sub(rclk.now())
+	want := constants.DatagramHandshakeMaxRetries * rtoMax
+	if got != want {
+		t.Fatalf("linger window = %v, want MaxRetries*rtoMax = %v (one rtoMax %v was the buggy value)", got, want, rtoMax)
+	}
+
+	// A ClientFinished arriving late but within the window still replays SF.
+	rclk.set(res.nextWake().Add(-time.Millisecond))
+	if out := res.onInbound(cf[0].typ, cf[0].body); len(out) != 1 || out[0].typ != protocol.MessageTypeServerFinished {
+		t.Fatalf("late-but-in-window ClientFinished did not replay ServerFinished: %v", out)
+	}
+
+	// At the window edge the linger ends.
+	rclk.set(res.nextWake())
+	_ = res.onTimeout()
+	if !res.done() {
+		t.Fatal("responder still lingering after the window expired")
+	}
+}
+
+// TestDatagramEndpointPropagatesRTO guards the wiring class of the RTO bug: the
+// endpoint must build drivers carrying its configured backoff. Without this, a
+// change that built drivers with the defaults would silently run at 500ms RTOs,
+// and neither the driver tests nor the e2e (which would just pass, slowly) would
+// catch it.
+func TestDatagramEndpointPropagatesRTO(t *testing.T) {
+	ep := NewDatagramEndpoint(nil)
+	ep.rtoInitial = 7 * time.Millisecond
+	ep.rtoMax = 70 * time.Millisecond
+
+	s, err := NewSession(RoleInitiator)
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	d := ep.newDriver(s)
+	if d.rtoInitial != ep.rtoInitial || d.rtoMax != ep.rtoMax {
+		t.Fatalf("driver RTO = (%v, %v), want endpoint config (%v, %v)",
+			d.rtoInitial, d.rtoMax, ep.rtoInitial, ep.rtoMax)
+	}
+}
