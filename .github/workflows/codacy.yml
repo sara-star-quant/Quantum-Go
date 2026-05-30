@@ -33,6 +33,9 @@ jobs:
       actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
     name: Codacy Security Scan
     runs-on: ubuntu-latest
+    # The CLI occasionally hangs pulling its tool containers; bound it so a
+    # stuck run fails in minutes instead of sitting until the 6h default.
+    timeout-minutes: 15
     steps:
       # Checkout the repository to the GitHub Actions runner
       - name: Checkout code
