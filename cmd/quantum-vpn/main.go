@@ -130,7 +130,8 @@ EXAMPLES:
 
 func benchCommand() {
 	fs := flag.NewFlagSet("bench", flag.ExitOnError)
-	handshakes := fs.Int("handshakes", 0, "Number of handshakes to benchmark (0 = skip)")
+	handshakes := fs.Int("handshakes", 0, "Number of stream (TCP) handshakes to benchmark (0 = skip)")
+	datagramHandshakes := fs.Int("datagram-handshakes", 0, "Number of datagram (UDP) handshakes to benchmark (0 = skip)")
 	throughput := fs.Bool("throughput", false, "Run throughput benchmark")
 	size := fs.String("size", "100MB", "Data size for throughput test (e.g., 100MB, 1GB)")
 	duration := fs.String("duration", "10s", "Duration for throughput test (e.g., 10s, 1m)")
@@ -145,8 +146,11 @@ OPTIONS:`)
 		fs.PrintDefaults()
 		fmt.Println(`
 EXAMPLES:
-    # Benchmark 100 handshakes
+    # Benchmark 100 stream (TCP) handshakes
     quantum-vpn bench --handshakes 100
+
+    # Benchmark 100 datagram (UDP) handshakes
+    quantum-vpn bench --datagram-handshakes 100
 
     # Benchmark throughput for 30 seconds
     quantum-vpn bench --throughput --duration 30s
@@ -160,7 +164,7 @@ EXAMPLES:
 
 	_ = fs.Parse(os.Args[2:])
 
-	runBench(*handshakes, *throughput, *size, *duration, *cipherSuite)
+	runBench(*handshakes, *datagramHandshakes, *throughput, *size, *duration, *cipherSuite)
 }
 
 func exampleCommand() {

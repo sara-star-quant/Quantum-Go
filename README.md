@@ -90,19 +90,23 @@ See [Quick Start Guide](docs/usage/QUICKSTART.md) for detailed examples.
 Hardware-accelerated where available (ARMv8 Crypto Extensions on Apple Silicon;
 AES-NI / AVX2 / hardware SHA-3 on x86-64). Go 1.26.3 (Green Tea GC).
 
-The transport is **TCP/stream only** (length-prefixed framing); UDP is not currently
-supported. Two distinct numbers matter: the raw AEAD cipher rate, and the rate actually
-achieved end-to-end through a single tunnel (lower, currently allocation-bound; zero-copy
-data-plane work is tracked on the [roadmap](docs/ROADMAP.md)).
+The stream transport is **TCP** (length-prefixed framing). A connectionless
+**UDP/datagram** transport is in progress: its handshake is implemented (fragmented PQ
+Hellos, retransmission with backoff, replay of cached flights), with the encrypted data
+path not yet landed, so only the datagram handshake rate appears below. For the stream
+path, two distinct numbers matter: the raw AEAD cipher rate, and the rate actually achieved
+end-to-end through a single tunnel (lower, currently allocation-bound; zero-copy data-plane
+work is tracked on the [roadmap](docs/ROADMAP.md)).
 
-**Measured (Apple M1 Pro, Go 1.26.3, loopback TCP):**
+**Measured (Apple M1 Pro, Go 1.26.3, loopback):**
 
 | Metric | Result |
 |--------|--------|
 | AES-256-GCM cipher (raw AEAD, single core) | ~2.5 GB/s |
 | ChaCha20-Poly1305 cipher (raw AEAD) | ~0.7 GB/s |
-| Handshakes/sec (full CH-KEM, sequential) | ~1,450 (~670 µs each) |
-| Single-tunnel throughput (AES-GCM, end-to-end) | ~690 MB/s (5.5 Gb/s), sustained across rekeys |
+| Handshakes/sec (stream/TCP, full CH-KEM, sequential) | ~1,450 (~670 µs each) |
+| Handshakes/sec (datagram/UDP, full CH-KEM, sequential) | ~1,300 (~760 µs each) |
+| Single-tunnel throughput (stream/TCP, AES-GCM, end-to-end) | ~690 MB/s (5.5 Gb/s), sustained across rekeys |
 
 **Estimated on other hardware** (extrapolated from cipher throughput; not yet
 independently measured; run the benchmark to verify):
@@ -113,7 +117,7 @@ independently measured; run the benchmark to verify):
 | Mid-range server (Xeon Silver) | 4-7 GB/s |
 | Enterprise (Xeon Platinum / EPYC) | 8-12 GB/s |
 
-Run `quantum-vpn bench --handshakes N --throughput` on your target hardware. See [CLI Reference](docs/usage/CLI.md#benchmark-mode).
+Run `quantum-vpn bench --handshakes N --datagram-handshakes N --throughput` on your target hardware. See [CLI Reference](docs/usage/CLI.md#benchmark-mode).
 
 ## Contributing
 
