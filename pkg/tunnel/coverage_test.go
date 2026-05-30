@@ -88,13 +88,17 @@ func TestTransportSendLargeData(t *testing.T) {
 
 func TestSessionEdgeCases(t *testing.T) {
 	s, _ := NewSession(RoleInitiator)
+	_ = s.InitializeKeys(make([]byte, constants.CHKEMSharedSecretSize), constants.CipherSuiteAES256GCM)
 
-	// Check activation of pending keys
-	s.pendingSendCipher = s.sendCipher
-	s.rekeyActivationSeq = 100
-	s.PacketsSent.Store(100)
-	s.checkAndActivateSendCipher(100)
+	// ActivateRekeySend promotes a staged pending send cipher to the live send cipher.
+	prev := s.sendCipher
+	s.pendingSendCipher = prev
+	s.sendCipher = nil
+	s.ActivateRekeySend()
 	if s.pendingSendCipher != nil {
 		t.Error("pending send cipher should have been activated")
+	}
+	if s.sendCipher != prev {
+		t.Error("send cipher should have been switched to the pending cipher")
 	}
 }
