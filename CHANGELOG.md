@@ -7,12 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
-### Planned: v0.0.10 - Security Hardening Phase 2
-- Rekey secret chaining (use existing DeriveRekeySecret)
+### Planned: v0.0.11 - Security Hardening (carryover)
 - Handshake timeout on server Accept
 - Module integrity verification (fix always-true check)
-- Error message sanitization (generic alerts to remote peers)
 - CI security improvements (FIPS testing, Gosec enforcement)
+
+## [0.0.10][] - 2026-05-30
+
+**Theme:** Data-plane rekey reliability and sustained high-throughput.
+
+### Fixed
+- **Rekey self-deadlock**: `Send` no longer holds the write lock while triggering an automatic rekey. `CheckAndRekey` -> `SendRekey` re-acquired the non-reentrant `writeMu`, deadlocking the connection the first time the rekey threshold was crossed (deterministically at ~1 GiB sent). The locked write is isolated in `writeFrame`, released before the rekey check.
+- **Rekey activation race**: replaced the fixed `+16` sequence-offset activation with dual-cipher trial decryption. At speed the sender outran the rekey round-trip, so the responder switched its receive key while the initiator was still sending under the old key, dropping the connection on authentication failure. Each side now switches its send cipher explicitly (initiator in `ProcessRekeyResponse`; responder in `ActivateRekeySend`, after its response is sent under the old key) and promotes its receive cipher lazily on the first packet that decrypts under the new key. No wire-format change.
+- **Replay protection across rekey**: the replay window is no longer reset when the receive cipher is promoted. The reset re-armed a fresh window (whose first check accepts any sequence), letting an on-path attacker replay the rekey-boundary packet once. Sequence numbers are global and monotonic across a rekey, so the existing window stays valid.
+
+### Changed
+- **Rekey cadence**: `MaxBytesBeforeRekey` raised from 1 GiB to 64 GiB. At multi-gigabit speeds a 1 GiB limit forced a full CH-KEM rekey roughly once per second; sequential-nonce AES-GCM/ChaCha20-Poly1305 are safe well beyond this. Packet and time rekey limits are unchanged.
+- **Transcript/key derivation hashing**: `pkg/crypto/kdf.go` switched from `golang.org/x/crypto/sha3` to the standard-library `crypto/sha3` (Go 1.24+). Output is identical (FIPS 202 SHA-3/SHAKE-256), verified by the existing KATs, and stdlib SHA-3 is part of the Go FIPS 140-3 module.
+
+### Performance
+- Single-tunnel throughput now sustains across automatic rekeys (previously capped/deadlocked at the 1 GiB rekey boundary). Measured ~690 MB/s end-to-end (AES-256-GCM, single TCP tunnel, Apple M1 Pro, Go 1.26.3); raw AEAD cipher rate ~2.5 GB/s AES / ~0.7 GB/s ChaCha20. Transport is TCP-only.
+- `Session.Encrypt` runs ~3% faster (644 -> 626 ns/op, p=0.000, n=12, Apple M1 Pro) after removing a per-packet lock from the send path; allocations unchanged (3/op).
+
+### Internal
+- Full-duplex throughput benchmark so mid-stream rekey completes; regression tests for the deadlock, activation-race timing, and boundary-packet replay; `writeFrame` reused across control-message send paths; `binary.BigEndian.PutUint64` for the sequence AAD; `ActivatePendingKeys` delegates to `finalizeRekeyStateLocked`.
 
 ## [0.0.9][] - 2026-03-13
 
@@ -264,7 +282,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.9...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.10...HEAD
+[0.0.10]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.6...v0.0.7
