@@ -196,6 +196,11 @@ const (
 	// it aborts the handshake.
 	DatagramHandshakeMaxRetries = 8
 
+	// DatagramHandshakeLingerReplays bounds how many times a completed responder
+	// will replay its cached ServerFinished for a retransmitted ClientFinished.
+	// It caps post-handshake reflection from a spoofed final flight.
+	DatagramHandshakeLingerReplays = 8
+
 	// DatagramIdleTimeoutSeconds is how long a session may be idle before it is
 	// reaped (there is no FIN over UDP; close is best-effort).
 	DatagramIdleTimeoutSeconds = 120
