@@ -73,8 +73,11 @@ go build -tags otel -o quantum-vpn ./cmd/quantum-vpn
 Test performance on your hardware:
 
 ```bash
-# Benchmark 100 handshakes
+# Benchmark 100 stream (TCP) handshakes
 quantum-vpn bench --handshakes 100
+
+# Benchmark 100 datagram (UDP) handshakes
+quantum-vpn bench --datagram-handshakes 100
 
 # Benchmark throughput for 30 seconds
 quantum-vpn bench --throughput --duration 30s
@@ -86,13 +89,15 @@ quantum-vpn bench --throughput --size 1GB --cipher chacha20
 quantum-vpn bench --handshakes 100 --throughput --size 500MB
 ```
 
-### Verified Performance (Apple M1 Pro, Go 1.26.3, loopback TCP)
-- **Handshakes**: ~1,450/sec (~670us each, full CH-KEM, sequential)
+### Verified Performance (Apple M1 Pro, Go 1.26.3, loopback)
+- **Handshakes (stream/TCP)**: ~1,450/sec (~670us each, full CH-KEM, sequential)
+- **Handshakes (datagram/UDP)**: ~1,300/sec (~760us each, full CH-KEM, sequential)
 - **Cipher throughput**: ~2.5 GB/s AES-256-GCM raw AEAD (ARMv8 Crypto Extensions); ~0.7 GB/s ChaCha20-Poly1305
-- **Single-tunnel throughput**: ~690 MB/s (5.5 Gb/s) end-to-end over TCP, sustained across automatic rekeys
+- **Single-tunnel throughput (stream/TCP)**: ~690 MB/s (5.5 Gb/s) end-to-end over TCP, sustained across automatic rekeys
 
-> Transport is TCP/stream only; UDP is not supported. End-to-end tunnel throughput is
-> currently allocation-bound and below the raw cipher rate.
+> The datagram (UDP) transport currently implements the handshake only; its encrypted data
+> path is not yet landed, so there is no datagram throughput number. End-to-end stream
+> throughput is currently allocation-bound and below the raw cipher rate.
 
 ## Example Mode
 
