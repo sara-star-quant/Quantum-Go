@@ -98,9 +98,16 @@ const (
 	// Recommended: 1 hour for high-security environments
 	MaxSessionDurationSeconds = 3600
 
-	// MaxBytesBeforeRekey is the maximum bytes transmitted before triggering rekey
-	// Recommended: 1 GB to limit exposure from any single key
-	MaxBytesBeforeRekey = 1 << 30
+	// MaxBytesBeforeRekey is the maximum bytes transmitted before triggering rekey.
+	//
+	// Set to 64 GiB. At multi-gigabit throughput a 1 GiB limit forced a full CH-KEM
+	// rekey roughly once per second, which is needless churn; 64 GiB keeps rekeys
+	// infrequent while staying far inside the AEAD data limits (AES-GCM and
+	// ChaCha20-Poly1305 with sequential nonces are safe well beyond this — NIST
+	// SP 800-38D bounds AES-GCM at ~64 GiB *per nonce-reuse-free invocation set*, and
+	// our nonce space is 2^64). Forward secrecy is still bounded by the packet and
+	// time limits below.
+	MaxBytesBeforeRekey = 1 << 36
 
 	// MaxPacketsBeforeRekey is the maximum packets before triggering rekey
 	// This prevents nonce exhaustion in AES-GCM (2^32 limit with 96-bit nonce)

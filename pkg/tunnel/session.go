@@ -11,6 +11,7 @@ package tunnel
 
 import (
 	"context"
+	"encoding/binary"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -292,10 +293,9 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 	// Get the sequence number first
 	seq := s.sendSeq.Add(1) - 1
 
-	// Check if we need to activate pending send cipher at this sequence
-	s.checkAndActivateSendCipher(seq)
-
-	// Now get the current send cipher (potentially just activated)
+	// The send cipher is switched to the new key explicitly at rekey time (initiator in
+	// ProcessRekeyResponse; responder in ActivateRekeySend after its response is sent),
+	// never lazily by sequence number — see the rekey trial-decryption design in Decrypt.
 	s.mu.RLock()
 	cipher := s.sendCipher
 	s.mu.RUnlock()
@@ -318,11 +318,7 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 
 	// Use sequence number as additional authenticated data
 	aad := make([]byte, 8)
-	seqCopy := seq
-	for i := 7; i >= 0; i-- {
-		aad[i] = byte(seqCopy)
-		seqCopy >>= 8
-	}
+	binary.BigEndian.PutUint64(aad, seq)
 
 	ciphertext, err := cipher.Seal(plaintext, aad)
 	if err != nil {
@@ -348,6 +344,7 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 	s.mu.RLock()
 	cipher := s.recvCipher
+	pendingCipher := s.pendingRecvCipher
 	s.mu.RUnlock()
 
 	if cipher == nil {
@@ -373,13 +370,21 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 
 	// Use sequence number as additional authenticated data
 	aad := make([]byte, 8)
-	seqCopy := seq
-	for i := 7; i >= 0; i-- {
-		aad[i] = byte(seqCopy)
-		seqCopy >>= 8
-	}
+	binary.BigEndian.PutUint64(aad, seq)
 
 	plaintext, err := cipher.Open(ciphertext, aad)
+	if err != nil && pendingCipher != nil {
+		// Rekey trial decryption: the peer may have switched to its new send key
+		// before our matching receive key took over. Try the pending (new) cipher;
+		// a successful Open means the peer has switched, so promote it as the live
+		// receive cipher. On an in-order stream this happens exactly once, at the
+		// old->new boundary. (Rekey state/master-secret finalization is independent
+		// and already done at our own send-cipher switch.)
+		if pt, perr := pendingCipher.Open(ciphertext, aad); perr == nil {
+			s.promotePendingRecvCipher()
+			plaintext, err = pt, nil
+		}
+	}
 	if err != nil {
 		if observer != nil {
 			if qerrors.Is(err, qerrors.ErrAuthenticationFailed) {
@@ -725,9 +730,12 @@ func (s *Session) ProcessRekeyResponse(ciphertextBytes []byte) error {
 		return err
 	}
 
-	// Store pending ciphers (will activate at activation sequence)
+	// The initiator switches its send cipher to the new key immediately: the rekey
+	// request was sent and this response received under the old key, so all subsequent
+	// application data must use the new key. The receive cipher is kept pending and
+	// switched lazily via trial decryption once the responder's new-key traffic arrives.
+	s.sendCipher = newSendCipher
 	s.pendingRecvCipher = newRecvCipher
-	s.pendingSendCipher = newSendCipher
 	s.pendingRekeySecret = newSecret
 
 	// Clean up pending keypair
@@ -737,10 +745,53 @@ func (s *Session) ProcessRekeyResponse(ciphertextBytes []byte) error {
 	// Zeroize temporary keys
 	crypto.ZeroizeMultiple(initiatorKey, responderKey)
 
+	// The send direction has switched, so the rekey handshake is complete for this
+	// side: adopt the new master secret and clear rekey state. The receive cipher is
+	// promoted separately, lazily, via trial decryption.
+	s.finalizeRekeyStateLocked()
+
 	return nil
 }
 
-// ActivatePendingKeys activates pending keys after activation sequence is reached.
+// finalizeRekeyStateLocked adopts the pending rekey master secret and clears rekey
+// handshake state. It does NOT touch the receive cipher (promoted separately via trial
+// decryption in Decrypt). Caller must hold s.mu.
+func (s *Session) finalizeRekeyStateLocked() {
+	if s.pendingRekeySecret != nil {
+		crypto.Zeroize(s.masterSecret)
+		s.masterSecret = s.pendingRekeySecret
+		s.pendingRekeySecret = nil
+	}
+	s.rekeyInProgress = false
+	s.rekeyActivationSeq = 0
+	s.EstablishedAt = time.Now()
+	s.state.Store(int32(SessionStateEstablished))
+}
+
+// promotePendingRecvCipher switches the receive cipher to the pending (new) rekey cipher
+// once the peer's new-key traffic is observed (via trial decryption). No-op if there is
+// no pending receive cipher.
+//
+// The replay window is deliberately NOT reset here. Sequence numbers are global and
+// monotonic across a rekey (sendSeq is never reset), so the existing window stays valid
+// and continues to reject duplicates. Resetting it would re-arm a fresh window whose
+// first Check accepts any sequence, letting an on-path attacker replay the boundary
+// packet (whose sequence this Decrypt already recorded before promotion).
+func (s *Session) promotePendingRecvCipher() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.pendingRecvCipher == nil {
+		return
+	}
+	s.recvCipher = s.pendingRecvCipher
+	s.pendingRecvCipher = nil
+}
+
+// ActivatePendingKeys activates both pending rekey ciphers and finalizes rekey state in
+// one step. The live transport path no longer calls this (it switches the send cipher
+// explicitly and promotes the receive cipher lazily via trial decryption); it is
+// retained for callers that want an immediate, combined activation.
 func (s *Session) ActivatePendingKeys() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -749,65 +800,40 @@ func (s *Session) ActivatePendingKeys() {
 		return
 	}
 
-	// Switch receive cipher if pending
+	// Switch both ciphers if pending.
 	if s.pendingRecvCipher != nil {
 		s.recvCipher = s.pendingRecvCipher
 		s.pendingRecvCipher = nil
 	}
+	if s.pendingSendCipher != nil {
+		s.sendCipher = s.pendingSendCipher
+		s.pendingSendCipher = nil
+	}
+	s.replayWindow = NewReplayWindow()
 
-	// Switch send cipher if pending
+	// Adopt the new master secret and clear rekey handshake state.
+	s.finalizeRekeyStateLocked()
+}
+
+// ActivateRekeySend switches the send cipher to the pending rekey send cipher.
+//
+// Called by the responder after its rekey response has been transmitted under the old
+// key, so that subsequent application data uses the new key. The matching receive-side
+// switch happens lazily via trial decryption in Decrypt (promotePendingRecvCipher). The
+// initiator performs the equivalent send switch inline in ProcessRekeyResponse. No-op if
+// there is no pending send cipher.
+func (s *Session) ActivateRekeySend() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.pendingSendCipher != nil {
 		s.sendCipher = s.pendingSendCipher
 		s.pendingSendCipher = nil
 	}
 
-	// Update master secret
-	if s.pendingRekeySecret != nil {
-		crypto.Zeroize(s.masterSecret)
-		s.masterSecret = s.pendingRekeySecret
-		s.pendingRekeySecret = nil
-	}
-
-	// Reset rekey state
-	s.rekeyInProgress = false
-	s.rekeyActivationSeq = 0
-	s.replayWindow = NewReplayWindow()
-	s.EstablishedAt = time.Now()
-
-	s.SetState(SessionStateEstablished)
-}
-
-// checkAndActivateSendCipher checks if send cipher should be activated based on sequence number.
-// When activation happens, it also activates pending keys on the receive side if available.
-func (s *Session) checkAndActivateSendCipher(seq uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.rekeyInProgress && s.pendingSendCipher != nil && seq >= s.rekeyActivationSeq {
-		// Switch send cipher
-		s.sendCipher = s.pendingSendCipher
-		s.pendingSendCipher = nil
-
-		// Also switch receive cipher if pending
-		if s.pendingRecvCipher != nil {
-			s.recvCipher = s.pendingRecvCipher
-			s.pendingRecvCipher = nil
-		}
-
-		// Update master secret
-		if s.pendingRekeySecret != nil {
-			crypto.Zeroize(s.masterSecret)
-			s.masterSecret = s.pendingRekeySecret
-			s.pendingRekeySecret = nil
-		}
-
-		// Complete the rekey
-		s.rekeyInProgress = false
-		s.rekeyActivationSeq = 0
-		s.replayWindow = NewReplayWindow()
-		s.EstablishedAt = time.Now()
-		s.state.Store(int32(SessionStateEstablished))
-	}
+	// Send direction has switched to the new key, so the rekey handshake is complete
+	// for this side. The receive cipher promotes lazily via trial decryption.
+	s.finalizeRekeyStateLocked()
 }
 
 // IsRekeyInProgress returns true if a rekey operation is in progress.

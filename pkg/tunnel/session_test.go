@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 )
 
@@ -75,7 +76,7 @@ func TestSessionActivatePendingKeysEdgeCases(t *testing.T) {
 	session.ActivatePendingKeys() // Should do nothing gracefully
 }
 
-func TestSessionCheckAndActivateSendCipher(t *testing.T) {
+func TestSessionActivateRekeySend(t *testing.T) {
 	session, _ := NewSession(RoleInitiator)
 
 	// Setup established session
@@ -86,20 +87,159 @@ func TestSessionCheckAndActivateSendCipher(t *testing.T) {
 	// Initiate rekey
 	_, _, _ = session.InitiateRekey()
 
-	// Mock pending keys
-	session.pendingSendCipher = session.sendCipher
-	session.rekeyActivationSeq = 100
+	// Stage a distinct pending send cipher (as PrepareRekeyResponse does on the
+	// responder). ActivateRekeySend must promote it to the live send cipher.
+	newKey := make([]byte, constants.AESKeySize)
+	_ = crypto.SecureRandom(newKey)
+	newCipher, _ := crypto.NewAEAD(constants.CipherSuiteAES256GCM, newKey)
+	session.pendingSendCipher = newCipher
 
-	// Should not activate before activation sequence
-	session.checkAndActivateSendCipher(50)
-	if session.rekeyActivationSeq == 0 {
-		t.Error("cipher activated prematurely")
+	session.ActivateRekeySend()
+	if session.pendingSendCipher != nil {
+		t.Error("pending send cipher should be cleared after ActivateRekeySend")
+	}
+	if session.sendCipher != newCipher {
+		t.Error("send cipher should have been switched to the pending cipher")
 	}
 
-	// Should activate at or after activation sequence
-	session.checkAndActivateSendCipher(100)
-	if session.rekeyActivationSeq != 0 {
-		t.Error("cipher should have been activated")
+	// No pending cipher -> no-op (must not panic or clobber the live cipher).
+	session.ActivateRekeySend()
+	if session.sendCipher != newCipher {
+		t.Error("send cipher changed unexpectedly on no-op ActivateRekeySend")
+	}
+}
+
+// TestRekeyTrialDecryptionToleratesSendTiming reproduces the activation race that the
+// old fixed "+16 sequence offset" could not survive at speed: the initiator keeps
+// sending old-key data after InitiateRekey but before it processes the response, then
+// switches. With trial decryption the receiver must accept old-key packets on its
+// current cipher and new-key packets on the pending cipher, with no coordinated
+// activation sequence. Deterministic (no timing).
+func TestRekeyTrialDecryptionToleratesSendTiming(t *testing.T) {
+	initiator, _ := NewSession(RoleInitiator)
+	responder, _ := NewSession(RoleResponder)
+
+	ms := make([]byte, constants.CHKEMSharedSecretSize)
+	_ = crypto.SecureRandom(ms)
+	if err := initiator.InitializeKeys(ms, constants.CipherSuiteAES256GCM); err != nil {
+		t.Fatal(err)
+	}
+	if err := responder.InitializeKeys(ms, constants.CipherSuiteAES256GCM); err != nil {
+		t.Fatal(err)
+	}
+
+	// send encrypts on s and decrypts on r; AEAD integrity means err==nil implies the
+	// right key/nonce/AAD were used.
+	send := func(s, r *Session, payload []byte) error {
+		ct, seq, err := s.Encrypt(payload)
+		if err != nil {
+			return err
+		}
+		_, err = r.Decrypt(ct, seq)
+		return err
+	}
+
+	if err := send(initiator, responder, []byte("pre-rekey")); err != nil {
+		t.Fatalf("pre-rekey traffic: %v", err)
+	}
+
+	// Drive the rekey handshake in the same order as transport.handleRekey.
+	pub, actSeq, err := initiator.InitiateRekey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	respCT, err := responder.PrepareRekeyResponse(pub, actSeq)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The race: initiator keeps sending OLD-key data after InitiateRekey but before it
+	// processes the response. The responder must decrypt these on its current cipher.
+	for i := 0; i < 100; i++ {
+		if err := send(initiator, responder, []byte("old-key after init")); err != nil {
+			t.Fatalf("old-key packet %d after rekey init: %v", i, err)
+		}
+	}
+
+	// Responder switches its send cipher after its response is on the wire.
+	responder.ActivateRekeySend()
+	// Initiator processes the response and switches its send cipher to the new key.
+	if err := initiator.ProcessRekeyResponse(respCT); err != nil {
+		t.Fatal(err)
+	}
+
+	// New-key data in both directions must decrypt via trial promotion.
+	for i := 0; i < 100; i++ {
+		if err := send(initiator, responder, []byte("new-key after switch")); err != nil {
+			t.Fatalf("new-key initiator->responder packet %d: %v", i, err)
+		}
+	}
+	if err := send(responder, initiator, []byte("new-key responder->initiator")); err != nil {
+		t.Fatalf("new-key responder->initiator: %v", err)
+	}
+
+	if initiator.IsRekeyInProgress() {
+		t.Error("initiator rekey state not finalized")
+	}
+	if responder.IsRekeyInProgress() {
+		t.Error("responder rekey state not finalized")
+	}
+}
+
+// TestRekeyReplayWindowRejectsBoundaryReplay verifies the replay window is preserved
+// across receive-cipher promotion during a rekey: replaying the first new-epoch packet
+// (the one that triggered promotion) is rejected, not accepted a second time. Regression
+// for a replay-protection bypass where promotion reset the window after the replay check.
+func TestRekeyReplayWindowRejectsBoundaryReplay(t *testing.T) {
+	initiator, _ := NewSession(RoleInitiator)
+	responder, _ := NewSession(RoleResponder)
+
+	ms := make([]byte, constants.CHKEMSharedSecretSize)
+	_ = crypto.SecureRandom(ms)
+	if err := initiator.InitializeKeys(ms, constants.CipherSuiteAES256GCM); err != nil {
+		t.Fatal(err)
+	}
+	if err := responder.InitializeKeys(ms, constants.CipherSuiteAES256GCM); err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-rekey traffic so the rekey happens mid-stream (boundary sequence > 0).
+	for i := 0; i < 3; i++ {
+		ct, seq, err := initiator.Encrypt([]byte("pre"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := responder.Decrypt(ct, seq); err != nil {
+			t.Fatalf("pre-rekey decrypt: %v", err)
+		}
+	}
+
+	// Complete a rekey handshake (same ordering as transport.handleRekey).
+	pub, actSeq, err := initiator.InitiateRekey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	respCT, err := responder.PrepareRekeyResponse(pub, actSeq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	responder.ActivateRekeySend()
+	if err := initiator.ProcessRekeyResponse(respCT); err != nil {
+		t.Fatal(err)
+	}
+
+	// First new-epoch packet: triggers the responder's trial-decryption promotion.
+	boundaryCT, boundarySeq, err := initiator.Encrypt([]byte("first new-epoch packet"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := responder.Decrypt(boundaryCT, boundarySeq); err != nil {
+		t.Fatalf("first delivery of boundary packet failed: %v", err)
+	}
+
+	// Replaying the identical boundary packet must be rejected as a replay.
+	if _, err := responder.Decrypt(boundaryCT, boundarySeq); !qerrors.Is(err, qerrors.ErrReplayDetected) {
+		t.Fatalf("boundary packet replay: got err=%v, want ErrReplayDetected", err)
 	}
 }
 
