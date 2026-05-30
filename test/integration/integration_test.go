@@ -693,6 +693,55 @@ func TestRekeyDuringDataTransfer(t *testing.T) {
 	}
 }
 
+// TestRekeyAutoTriggeredDuringSendDoesNotDeadlock verifies that a rekey triggered
+// automatically from inside Send (when the byte threshold is crossed) does not deadlock.
+//
+// Regression test: Send held writeMu (via defer) while calling CheckAndRekey ->
+// SendRekey, which re-acquired the non-reentrant writeMu and blocked on itself. The
+// hang fired deterministically at MaxBytesBeforeRekey (1 GiB) of data sent on the
+// initiator. Existing rekey tests miss it because they call SendRekey() explicitly,
+// outside writeMu, rather than via the automatic Send -> CheckAndRekey path.
+func TestRekeyAutoTriggeredDuringSendDoesNotDeadlock(t *testing.T) {
+	tp := setupTestPair(t)
+	// Raw conn close, NOT transport.Close (which locks writeMu): if the deadlock
+	// recurs, the stuck Send goroutine holds writeMu and a Close would hang too.
+	// Closing the conns unblocks the drainers without touching writeMu.
+	defer func() { _ = tp.clientConn.Close() }()
+	defer func() { _ = tp.serverConn.Close() }()
+
+	// Drain both ends. startReceiver returns on error and never touches t, so it is
+	// safe for goroutines that may outlive the test after a watchdog failure. The
+	// client drainer is needed so the responder's rekey response can be consumed.
+	serverRecv := make(chan []byte, 16)
+	clientRecv := make(chan []byte, 16)
+	startReceiver(tp.serverTransport, serverRecv)
+	startReceiver(tp.clientTransport, clientRecv)
+
+	// Push the initiator to the rekey byte threshold so the next Send auto-triggers
+	// CheckAndRekey -> SendRekey, the exact path that used to self-deadlock.
+	tp.clientSession.BytesSent.Store(constants.MaxBytesBeforeRekey)
+
+	done := make(chan error, 1)
+	go func() { done <- tp.clientTransport.Send([]byte("trigger rekey")) }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Send after crossing rekey threshold returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second): // >> CH-KEM keygen (sub-ms to low-ms)
+		t.Fatal("Send deadlocked on automatic rekey at the 1 GiB byte threshold")
+	}
+
+	// Liveness: the data frame must actually reach the server across the rekey boundary,
+	// proving the tunnel survives the rekey rather than merely that Send returned.
+	select {
+	case <-serverRecv:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server never received the data frame across the rekey boundary")
+	}
+}
+
 // TestRekeyWithBidirectionalTraffic verifies rekey works with traffic in both directions.
 func TestRekeyWithBidirectionalTraffic(t *testing.T) {
 	tp := setupTestPair(t)

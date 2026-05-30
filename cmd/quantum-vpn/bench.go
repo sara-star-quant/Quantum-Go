@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
@@ -169,7 +170,7 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 	addr := listener.Addr().String()
 
 	var wg sync.WaitGroup
-	var totalSent, totalReceived int64
+	var totalSent, totalReceived atomic.Int64
 	var sendDuration, receiveDuration time.Duration
 
 	// Data chunk (8KB)
@@ -179,7 +180,8 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 		chunk[i] = byte(i % 256)
 	}
 
-	// Server goroutine
+	// Server goroutine. Receive() handles rekey messages internally and only returns
+	// data frames, so the counter reflects application payload.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -197,7 +199,7 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 			if err != nil {
 				break
 			}
-			totalReceived += int64(len(data))
+			totalReceived.Add(int64(len(data)))
 
 			// Check if we should stop
 			if time.Since(receiveStart) >= duration {
@@ -221,32 +223,49 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 		}
 		defer func() { _ = client.Close() }()
 
+		// Full-duplex drainer: the initiator must Receive so that an automatic rekey
+		// (triggered mid-stream once the byte threshold is crossed) can complete its
+		// response handshake. Without this, the stream stalls at the first rekey.
+		drainerDone := make(chan struct{})
+		go func() {
+			defer close(drainerDone)
+			for {
+				if _, err := client.Receive(); err != nil {
+					return
+				}
+			}
+		}()
+
 		sendStart := time.Now()
 		bytesToSend := totalBytes
 		lastProgress := time.Now()
 
-		for totalSent < bytesToSend && time.Since(sendStart) < duration {
+		for totalSent.Load() < bytesToSend && time.Since(sendStart) < duration {
 			if err := client.Send(chunk); err != nil {
 				fmt.Fprintf(os.Stderr, "Send error: %v\n", err)
 				break
 			}
-			totalSent += int64(len(chunk))
+			sent := totalSent.Add(int64(len(chunk)))
 
 			// Progress update every second
 			if time.Since(lastProgress) >= time.Second {
 				elapsed := time.Since(sendStart)
-				mbps := float64(totalSent) / elapsed.Seconds() / 1024 / 1024
+				mbps := float64(sent) / elapsed.Seconds() / 1024 / 1024
 				fmt.Printf("Progress: %s / %s (%.1f MB/s)\r",
-					formatSize(totalSent), formatSize(bytesToSend), mbps)
+					formatSize(sent), formatSize(bytesToSend), mbps)
 				lastProgress = time.Now()
 			}
 		}
 		sendDuration = time.Since(sendStart)
+
+		// Close unblocks the drainer; wait for it so the goroutine doesn't outlive us.
+		_ = client.Close()
+		<-drainerDone
 	}()
 
 	wg.Wait()
 
-	printThroughputResults(totalSent, totalReceived, sendDuration, receiveDuration)
+	printThroughputResults(totalSent.Load(), totalReceived.Load(), sendDuration, receiveDuration)
 }
 
 func printThroughputResults(totalSent, totalReceived int64, sendDuration, receiveDuration time.Duration) {
