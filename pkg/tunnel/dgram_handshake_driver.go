@@ -32,8 +32,10 @@ type dgramDriver struct {
 	fsm *dgramHandshake
 	now func() time.Time
 
-	rto     time.Duration // current retransmit timeout
-	retries int
+	rtoInitial time.Duration // first retransmit timeout
+	rtoMax     time.Duration // backoff cap
+	rto        time.Duration // current retransmit timeout
+	retries    int
 
 	// retransmitAt is when to resend the cached flight (zero = disarmed).
 	retransmitAt time.Time
@@ -53,16 +55,25 @@ func maxRTO() time.Duration {
 	return time.Duration(constants.DatagramHandshakeMaxTimeoutMillis) * time.Millisecond
 }
 
-// newDgramDriver builds a driver for session. now may be nil for the real clock.
+// newDgramDriver builds a driver for session with the default backoff. now may be
+// nil for the real clock.
 func newDgramDriver(session *Session, now func() time.Time) *dgramDriver {
+	return newDgramDriverWithRTO(session, now, initialRTO(), maxRTO())
+}
+
+// newDgramDriverWithRTO builds a driver with explicit backoff bounds (tests pass
+// short values for fast, deterministic runs; production uses the defaults).
+func newDgramDriverWithRTO(session *Session, now func() time.Time, rtoInitial, rtoMax time.Duration) *dgramDriver {
 	if now == nil {
 		now = time.Now
 	}
 	return &dgramDriver{
-		fsm:    newDgramHandshake(session),
-		now:    now,
-		rto:    initialRTO(),
-		status: driverRunning,
+		fsm:        newDgramHandshake(session),
+		now:        now,
+		rtoInitial: rtoInitial,
+		rtoMax:     rtoMax,
+		rto:        rtoInitial,
+		status:     driverRunning,
 	}
 }
 
@@ -99,7 +110,7 @@ func (d *dgramDriver) onInbound(typ protocol.MessageType, body []byte) []hsMessa
 		return d.onComplete(out)
 	}
 	if advanced {
-		d.rto = initialRTO()
+		d.rto = d.rtoInitial
 		d.retries = 0
 		d.armRetransmit()
 		return []hsMessage{*out}
@@ -123,7 +134,10 @@ func (d *dgramDriver) onComplete(final *hsMessage) []hsMessage {
 	d.status = driverEstablished
 	d.retransmitAt = time.Time{}
 	if d.fsm.role == RoleResponder {
-		d.lingerAt = d.now().Add(maxRTO())
+		// Linger long enough to cover the initiator's whole ClientFinished
+		// retransmit window (it backs off up to rtoMax for MaxRetries tries), so a
+		// lost ServerFinished is recovered by replay rather than timing out.
+		d.lingerAt = d.now().Add(constants.DatagramHandshakeMaxRetries * d.rtoMax)
 		d.replaysLeft = constants.DatagramHandshakeLingerReplays
 	}
 	if final != nil {
@@ -150,7 +164,7 @@ func (d *dgramDriver) onTimeout() []hsMessage {
 			d.retransmitAt = time.Time{}
 			return nil
 		}
-		d.rto = min(d.rto*2, maxRTO())
+		d.rto = min(d.rto*2, d.rtoMax)
 		d.armRetransmit()
 		if d.fsm.cached != nil {
 			return []hsMessage{*d.fsm.cached}
