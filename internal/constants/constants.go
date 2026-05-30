@@ -198,8 +198,9 @@ const (
 
 	// DatagramHandshakeLingerReplays bounds how many times a completed responder
 	// will replay its cached ServerFinished for a retransmitted ClientFinished.
-	// It caps post-handshake reflection from a spoofed final flight.
-	DatagramHandshakeLingerReplays = 8
+	// It caps post-handshake reflection from a spoofed final flight while staying
+	// above the initiator's retransmit count (with room for duplicates).
+	DatagramHandshakeLingerReplays = 16
 
 	// DatagramIdleTimeoutSeconds is how long a session may be idle before it is
 	// reaped (there is no FIN over UDP; close is best-effort).

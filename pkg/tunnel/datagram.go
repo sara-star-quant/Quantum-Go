@@ -18,6 +18,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
 	"github.com/sara-star-quant/quantum-go/pkg/crypto"
@@ -33,10 +34,14 @@ var errConnIndexExhausted = errors.New("tunnel: could not allocate a free connec
 const maxIndexAllocAttempts = 100
 
 // datagramSession is the per-session routing state held by a DatagramEndpoint,
-// keyed in the registry by the connection index. The handshake and data paths
-// attach the peer address and the underlying *Session as those layers are built.
+// keyed in the registry by the connection index. index and inbox are immutable
+// after creation (the receive loop reads only those), so the owning handshake
+// goroutine and the receive loop need no shared lock; session is written once by
+// the handshake goroutine and published via acceptCh / the dial return.
 type datagramSession struct {
-	index uint32 // the local connection index we assigned (peer echoes it)
+	index   uint32             // the local connection index we assigned (peer echoes it)
+	inbox   chan inboundMsg    // reassembled handshake messages for this session's goroutine
+	session *Session           // set once the handshake establishes
 }
 
 // connRegistry maps the random connection indices we assign to their sessions
@@ -48,12 +53,14 @@ type datagramSession struct {
 type connRegistry struct {
 	mu       sync.Mutex
 	byIndex  map[uint32]*datagramSession
-	halfOpen map[string]int // source identity -> count of un-established sessions
+	bySource map[string]*datagramSession // in-progress responder handshakes, keyed by source
+	halfOpen map[string]int              // source identity -> count of un-established sessions
 }
 
 func newConnRegistry() *connRegistry {
 	return &connRegistry{
 		byIndex:  make(map[uint32]*datagramSession),
+		bySource: make(map[string]*datagramSession),
 		halfOpen: make(map[string]int),
 	}
 }
@@ -138,6 +145,29 @@ func (r *connRegistry) releaseHalfOpen(source string) {
 	}
 }
 
+// addSource registers an in-progress responder handshake under its source so a
+// retransmitted ClientHello (which still carries RecvIndex 0) routes to it.
+func (r *connRegistry) addSource(source string, s *datagramSession) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.bySource[source] = s
+}
+
+// lookupSource returns the in-progress responder handshake for a source, or nil.
+func (r *connRegistry) lookupSource(source string) *datagramSession {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.bySource[source]
+}
+
+// removeSource drops the source mapping (on establishment or teardown). It is
+// idempotent.
+func (r *connRegistry) removeSource(source string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.bySource, source)
+}
+
 // DatagramEndpoint is a connectionless UDP transport over a single PacketConn.
 // It demultiplexes incoming datagrams to per-session state by connection index
 // and surfaces newly-established inbound sessions on an accept channel.
@@ -146,6 +176,11 @@ type DatagramEndpoint struct {
 	registry *connRegistry
 	reasm    *Reassembler
 	acceptCh chan *datagramSession
+
+	// rtoInitial/rtoMax bound handshake retransmission backoff; defaulted from
+	// constants, overridable (in-package) for fast tests.
+	rtoInitial time.Duration
+	rtoMax     time.Duration
 
 	closeOnce sync.Once
 	done      chan struct{}
@@ -156,11 +191,13 @@ type DatagramEndpoint struct {
 // start it explicitly so tests can drive routing deterministically.
 func NewDatagramEndpoint(conn net.PacketConn) *DatagramEndpoint {
 	return &DatagramEndpoint{
-		conn:     conn,
-		registry: newConnRegistry(),
-		reasm:    NewReassembler(0, 0, 0),
-		acceptCh: make(chan *datagramSession, 16),
-		done:     make(chan struct{}),
+		conn:       conn,
+		registry:   newConnRegistry(),
+		reasm:      NewReassembler(0, 0, 0),
+		acceptCh:   make(chan *datagramSession, 16),
+		rtoInitial: time.Duration(constants.DatagramHandshakeInitialTimeoutMillis) * time.Millisecond,
+		rtoMax:     time.Duration(constants.DatagramHandshakeMaxTimeoutMillis) * time.Millisecond,
+		done:       make(chan struct{}),
 	}
 }
 
@@ -173,6 +210,22 @@ func (e *DatagramEndpoint) Close() error {
 		err = e.conn.Close()
 	})
 	return err
+}
+
+// Serve runs the receive loop: it reads datagrams and dispatches each through
+// routeDatagram until the endpoint is closed. Callers run it in their own
+// goroutine (go ep.Serve()). It returns when the underlying conn is closed.
+func (e *DatagramEndpoint) Serve() {
+	buf := make([]byte, constants.DatagramMTU+512)
+	for {
+		n, src, err := e.conn.ReadFrom(buf)
+		if err != nil {
+			return
+		}
+		data := make([]byte, n)
+		copy(data, buf[:n])
+		_ = e.routeDatagram(src, data)
+	}
 }
 
 // routeDatagram parses one received datagram and dispatches it. It is the demux
@@ -194,17 +247,12 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 		if perr != nil {
 			return perr
 		}
-		_, complete, aerr := e.reasm.Add(src.String(), h, fragment)
+		msg, complete, aerr := e.reasm.Add(src.String(), h, fragment)
 		if aerr != nil {
 			return aerr
 		}
 		if complete {
-			// TODO: gate new half-open state through registry.tryAddHalfOpen(
-			// src.String()) (releasing on establishment or teardown) before
-			// advancing, then feed the reassembled message into the bilateral
-			// handshake FSM (dgram_handshake.go); on completion register the session
-			// and surface it on acceptCh.
-			_ = h
+			e.deliverHandshake(src, h, msg)
 		}
 		return nil
 	case protocol.DatagramFrameData:
