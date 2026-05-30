@@ -125,16 +125,10 @@ func (t *Transport) Send(data []byte) error {
 		return err
 	}
 
-	// Send with timeout
-	t.writeMu.Lock()
-	defer t.writeMu.Unlock()
-
-	if t.writeTimeout > 0 {
-		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
-	}
-
-	_, err = t.conn.Write(msg)
-	if err != nil {
+	// Send with timeout. The write lock is released by writeFrame before the rekey
+	// check: CheckAndRekey -> SendRekey re-acquires writeMu, so holding it here would
+	// self-deadlock (sync.Mutex is not reentrant).
+	if err := t.writeFrame(msg); err != nil {
 		return err
 	}
 
@@ -145,6 +139,21 @@ func (t *Transport) Send(data []byte) error {
 	}
 
 	return nil
+}
+
+// writeFrame writes a pre-encoded message to the connection under the write lock,
+// applying the write timeout if configured. It acquires and releases writeMu so that
+// callers do not hold the lock across follow-up operations (e.g. rekey).
+func (t *Transport) writeFrame(msg []byte) error {
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
+	if t.writeTimeout > 0 {
+		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
+	}
+
+	_, err := t.conn.Write(msg)
+	return err
 }
 
 // Receive reads and decrypts data from the tunnel.
@@ -254,12 +263,9 @@ func (t *Transport) handleData(msg []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// Check if we've reached the activation sequence for pending keys
-	if t.session.IsRekeyInProgress() && seq >= t.session.GetRekeyActivationSeq() {
-		t.session.ActivatePendingKeys()
-	}
-
-	// Decrypt
+	// Note: receive-side key activation during rekey is handled lazily inside
+	// Decrypt via trial decryption (try current cipher, fall back to the pending
+	// new cipher), so there is no fragile sequence-number-based flip here.
 	plaintext, err := t.session.Decrypt(ciphertext, seq)
 	if err != nil {
 		return nil, err
@@ -277,32 +283,12 @@ func (t *Transport) SendPing() error {
 	}
 	t.closedMu.RUnlock()
 
-	msg := t.encodePing()
-
-	t.writeMu.Lock()
-	defer t.writeMu.Unlock()
-
-	if t.writeTimeout > 0 {
-		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
-	}
-
-	_, err := t.conn.Write(msg)
-	return err
+	return t.writeFrame(t.encodePing())
 }
 
 // sendPong sends a keepalive pong response.
 func (t *Transport) sendPong() error {
-	msg := t.encodePong()
-
-	t.writeMu.Lock()
-	defer t.writeMu.Unlock()
-
-	if t.writeTimeout > 0 {
-		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
-	}
-
-	_, err := t.conn.Write(msg)
-	return err
+	return t.writeFrame(t.encodePong())
 }
 
 // encodePing creates a ping message.
@@ -400,8 +386,16 @@ func (t *Transport) handleRekey(msg []byte) error {
 			return err
 		}
 
-		// Send encrypted rekey response back
-		return t.sendRekeyResponse(responseCT, activationSeq)
+		// Send encrypted rekey response back (under the current/old send key so the
+		// initiator can still decrypt it).
+		if err := t.sendRekeyResponse(responseCT, activationSeq); err != nil {
+			return err
+		}
+
+		// Now that the response is on the wire, switch our send cipher to the new key.
+		// The initiator's receive side picks it up via trial decryption.
+		t.session.ActivateRekeySend()
+		return nil
 	}
 
 	// If we're the initiator and receive a rekey response (ciphertext)
@@ -455,16 +449,7 @@ func (t *Transport) SendRekey() error {
 			return err
 		}
 
-		// Send
-		t.writeMu.Lock()
-		defer t.writeMu.Unlock()
-
-		if t.writeTimeout > 0 {
-			_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
-		}
-
-		_, err = t.conn.Write(msg)
-		return err
+		return t.writeFrame(msg)
 	}()
 
 	if done != nil {
@@ -494,15 +479,7 @@ func (t *Transport) sendRekeyResponse(responseCT []byte, activationSeq uint64) e
 		return err
 	}
 
-	t.writeMu.Lock()
-	defer t.writeMu.Unlock()
-
-	if t.writeTimeout > 0 {
-		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
-	}
-
-	_, err = t.conn.Write(msg)
-	return err
+	return t.writeFrame(msg)
 }
 
 // CheckAndRekey checks if rekey is needed and initiates it if so.
