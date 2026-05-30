@@ -26,10 +26,9 @@
 package crypto
 
 import (
+	"crypto/sha3"
 	"encoding/binary"
 	"math"
-
-	"golang.org/x/crypto/sha3"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
@@ -79,7 +78,7 @@ func DeriveKey(domain string, input []byte, outputLen int) ([]byte, error) {
 		return nil, qerrors.NewCryptoError("DeriveKey", qerrors.ErrInvalidKeySize)
 	}
 
-	h := sha3.NewShake256()
+	h := sha3.NewSHAKE256()
 	lenBuf := make([]byte, 4)
 
 	// Write domain separator with length prefix
@@ -132,7 +131,7 @@ func DeriveKeyMultiple(domain string, inputs [][]byte, outputLen int) ([]byte, e
 		return nil, qerrors.NewCryptoError("DeriveKeyMultiple", qerrors.ErrInvalidKeySize)
 	}
 
-	h := sha3.NewShake256()
+	h := sha3.NewSHAKE256()
 	lenBuf := make([]byte, 4)
 
 	// Write domain separator with length prefix
