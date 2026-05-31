@@ -134,6 +134,17 @@ type Session struct {
 	pendingRecvCipher   *crypto.AEAD   // New receive cipher waiting for activation
 	pendingSendCipher   *crypto.AEAD   // New send cipher waiting for activation (initiator)
 
+	// Datagram transport state (nil/unused on the TCP/stream path). The datagram
+	// path derives nonces (prefix || seq) instead of transmitting them, selects
+	// the receive cipher by an explicit per-frame epoch (dgramEpochs) instead of
+	// the stream trial-decrypt promote/discard, and tracks replay in a wide,
+	// never-reset window (dgramReplay). See dgram_session.go.
+	sendNoncePrefix   []byte
+	recvNoncePrefix   []byte
+	dgramEpochs       *datagramEpochState
+	dgramReplay       *DatagramReplayWindow
+	lastActivityNanos atomic.Int64
+
 	// Mutex for state changes
 	mu sync.RWMutex
 }

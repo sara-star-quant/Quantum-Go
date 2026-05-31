@@ -42,8 +42,10 @@ type dgramHandshake struct {
 // newDgramHandshake builds an FSM for session. The initiator must call start() to
 // emit the ClientHello; the responder waits for one.
 func newDgramHandshake(session *Session) *dgramHandshake {
+	hs := NewHandshake(session)
+	hs.datagram = true // complete via InitializeDatagramKeys (epoch-keyed, derived nonces)
 	d := &dgramHandshake{
-		hs:   NewHandshake(session),
+		hs:   hs,
 		role: session.Role,
 	}
 	if d.role == RoleResponder {
