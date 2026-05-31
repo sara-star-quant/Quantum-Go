@@ -2,10 +2,12 @@ package tunnel
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
@@ -146,6 +148,22 @@ func TestDatagramDoubleRekeyDropsTwoEpochsBack(t *testing.T) {
 	// epoch 0 is now two epochs back (prev holds epoch 1): it must be rejected.
 	if _, err := responder.DatagramOpen(h0[1], seq0, ct0, protocol.DatagramAAD(h0)); err == nil {
 		t.Fatal("expected rejection of two-epochs-back frame, got nil")
+	}
+}
+
+// TestDatagramSealNonceBudget verifies that a single epoch's key seals at most
+// MaxPacketsBeforeRekey datagrams before refusing (the per-epoch safety cap that
+// stands in for reliable rekey).
+func TestDatagramSealNonceBudget(t *testing.T) {
+	initiator, _ := datagramSessionPair(t)
+	header := protocol.EncodeDatagramHeader(protocol.DatagramHeader{Type: protocol.DatagramFrameData})
+
+	if _, err := initiator.DatagramSeal(header, constants.MaxPacketsBeforeRekey-1, []byte("ok")); err != nil {
+		t.Fatalf("seal just under budget: %v", err)
+	}
+	_, err := initiator.DatagramSeal(header, constants.MaxPacketsBeforeRekey, []byte("over"))
+	if !errors.Is(err, qerrors.ErrNonceExhausted) {
+		t.Fatalf("seal at budget: got %v want ErrNonceExhausted", err)
 	}
 }
 
