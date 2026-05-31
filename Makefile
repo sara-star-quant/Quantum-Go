@@ -1,9 +1,9 @@
 # Makefile for Quantum-Go
-# Quantum-Resistant VPN Encryption Library
+# Quantum-Resistant Tunnel Encryption Library
 
 # Build variables
-BINARY_NAME=quantum-vpn
-CMD_DIR=./cmd/quantum-vpn
+BINARY_NAME=quantum-tunnel
+CMD_DIR=./cmd/quantum-tunnel
 BIN_DIR=./bin
 VERSION?=0.0.4
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
@@ -32,7 +32,7 @@ help:
 	@echo "Quantum-Go Makefile Commands"
 	@echo ""
 	@echo "Build Commands:"
-	@echo "  make build          - Build quantum-vpn binary for current platform"
+	@echo "  make build          - Build quantum-tunnel binary for current platform"
 	@echo "  make build-all      - Build for Linux, macOS, and Windows"
 	@echo "  make build-linux    - Build for Linux (amd64 and arm64)"
 	@echo "  make build-darwin   - Build for macOS (amd64 and arm64)"
@@ -48,8 +48,8 @@ help:
 	@echo "  make fmt            - Format code"
 	@echo ""
 	@echo "Installation Commands:"
-	@echo "  make install        - Install quantum-vpn to $(GOPATH)/bin"
-	@echo "  make uninstall      - Remove quantum-vpn from $(GOPATH)/bin"
+	@echo "  make install        - Install quantum-tunnel to $(GOPATH)/bin"
+	@echo "  make uninstall      - Remove quantum-tunnel from $(GOPATH)/bin"
 	@echo ""
 	@echo "Cleanup Commands:"
 	@echo "  make clean          - Remove build artifacts"
@@ -64,7 +64,7 @@ help:
 	@echo "  make tidy           - Tidy go.mod"
 	@echo "  make verify         - Verify dependencies"
 
-## build: Build the quantum-vpn binary
+## build: Build the quantum-tunnel binary
 build: deps
 	@echo "Building $(BINARY_NAME) v$(VERSION)..."
 	@mkdir -p $(BIN_DIR)
@@ -142,13 +142,13 @@ fmt:
 	$(GOFMT) ./...
 	@echo "✓ Code formatted"
 
-## install: Install quantum-vpn to GOPATH/bin
+## install: Install quantum-tunnel to GOPATH/bin
 install: build
 	@echo "Installing $(BINARY_NAME)..."
 	$(GOCMD) install $(LDFLAGS) $(CMD_DIR)
 	@echo "✓ $(BINARY_NAME) installed to $(shell go env GOPATH)/bin/$(BINARY_NAME)"
 
-## uninstall: Remove quantum-vpn from GOPATH/bin
+## uninstall: Remove quantum-tunnel from GOPATH/bin
 uninstall:
 	@echo "Uninstalling $(BINARY_NAME)..."
 	@rm -f $(shell go env GOPATH)/bin/$(BINARY_NAME)

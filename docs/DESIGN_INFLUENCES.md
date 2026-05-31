@@ -2,7 +2,7 @@
 
 ## 1. Design Philosophy
 
-Quantum-Go's Cascaded Hybrid KEM (CH-KEM) is an original protocol designed from first principles. It is not a fork, derivative, or reimplementation of any existing VPN protocol, including WireGuard, Noise Framework, or any post-quantum WireGuard variant.
+Quantum-Go's Cascaded Hybrid KEM (CH-KEM) is an original protocol designed from first principles. It is not a fork, derivative, or reimplementation of any existing tunnel protocol, including WireGuard, Noise Framework, or any post-quantum WireGuard variant.
 
 The protocol draws on the shared knowledge base of post-quantum cryptography research, adapting general concepts and design principles where they improve security. This document provides attribution for those influences and clarifies how our approach differs.
 
@@ -20,13 +20,13 @@ The protocol draws on the shared knowledge base of post-quantum cryptography res
 
 **Our adaptation:** `DeriveResumptionSecret(psk, freshKEM)` combines the ticket secret with a fresh CH-KEM exchange. Implemented in v0.0.9.
 
-**Difference:** TLS 1.3 uses HKDF-based key scheduling with a PSK binder. CH-KEM uses SHAKE-256 with domain separation (`"CH-KEM-VPN-Resumption"`), feeding both the PSK and fresh KEM output into a single XOF derivation. Our construction is simpler because we have a single KEM type rather than negotiable key exchange groups.
+**Difference:** TLS 1.3 uses HKDF-based key scheduling with a PSK binder. CH-KEM uses SHAKE-256 with domain separation (`"CH-KEM-Tunnel-Resumption"`), feeding both the PSK and fresh KEM output into a single XOF derivation. Our construction is simpler because we have a single KEM type rather than negotiable key exchange groups.
 
 ### 2.2 Frequent Key Refresh Cadence
 
 **Source:** Rosenpass (Karolin Varner et al., 2023)
 
-**Concept:** Post-quantum VPN tunnels benefit from frequent key refresh (Rosenpass uses 2-minute re-handshake intervals) to limit the window of exposure if a session key is compromised.
+**Concept:** Post-quantum tunnels benefit from frequent key refresh (Rosenpass uses 2-minute re-handshake intervals) to limit the window of exposure if a session key is compromised.
 
 **Our adaptation:** Two-tier rekey architecture - lightweight KDF-only ratcheting for frequent refresh, plus periodic full CH-KEM exchange for cryptographic renewal.
 
@@ -119,7 +119,7 @@ The following normative standards directly govern our implementation:
 
 1. IETF RFC 8446: "The Transport Layer Security (TLS) Protocol Version 1.3." 2018.
 
-2. Karolin Varner, Wai Yi Feng, David Koisser, Lisa Schmidt, Benjamin Lipp, Prabhanjan Ananth, and Cas Cremers. "Rosenpass: A Formally Verified, Post-Quantum Secure VPN." 2023. <https://rosenpass.eu/>
+2. Karolin Varner, Wai Yi Feng, David Koisser, Lisa Schmidt, Benjamin Lipp, Prabhanjan Ananth, and Cas Cremers. "Rosenpass: A Formally Verified, Post-Quantum Secure tunnel." 2023. <https://rosenpass.eu/>
 
 3. Kudelski Security. "Post-Quantum WireGuard." NIST 3rd Post-Quantum Cryptography Standardization Conference, 2021.
 

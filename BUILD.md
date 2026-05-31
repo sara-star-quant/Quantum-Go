@@ -1,6 +1,6 @@
 # Building Quantum-Go
 
-This document explains how to build the `quantum-vpn` binary from source.
+This document explains how to build the `quantum-tunnel` binary from source.
 
 ## Prerequisites
 
@@ -46,13 +46,13 @@ make install
 
 ```bash
 # Simple build
-go build -o bin/quantum-vpn ./cmd/quantum-vpn
+go build -o bin/quantum-tunnel ./cmd/quantum-tunnel
 
 # Build with version information
 go build \
   -ldflags "-X main.version=0.0.3 -X main.buildTime=$(date -u '+%Y-%m-%d_%H:%M:%S')" \
-  -o bin/quantum-vpn \
-  ./cmd/quantum-vpn
+  -o bin/quantum-tunnel \
+  ./cmd/quantum-tunnel
 ```
 
 ## Build Commands
@@ -96,19 +96,19 @@ Build for specific platforms:
 
 ```bash
 # Linux amd64
-GOOS=linux GOARCH=amd64 go build -o bin/quantum-vpn-linux-amd64 ./cmd/quantum-vpn
+GOOS=linux GOARCH=amd64 go build -o bin/quantum-tunnel-linux-amd64 ./cmd/quantum-tunnel
 
 # Linux arm64
-GOOS=linux GOARCH=arm64 go build -o bin/quantum-vpn-linux-arm64 ./cmd/quantum-vpn
+GOOS=linux GOARCH=arm64 go build -o bin/quantum-tunnel-linux-arm64 ./cmd/quantum-tunnel
 
 # macOS amd64 (Intel)
-GOOS=darwin GOARCH=amd64 go build -o bin/quantum-vpn-darwin-amd64 ./cmd/quantum-vpn
+GOOS=darwin GOARCH=amd64 go build -o bin/quantum-tunnel-darwin-amd64 ./cmd/quantum-tunnel
 
 # macOS arm64 (Apple Silicon)
-GOOS=darwin GOARCH=arm64 go build -o bin/quantum-vpn-darwin-arm64 ./cmd/quantum-vpn
+GOOS=darwin GOARCH=arm64 go build -o bin/quantum-tunnel-darwin-arm64 ./cmd/quantum-tunnel
 
 # Windows amd64
-GOOS=windows GOARCH=amd64 go build -o bin/quantum-vpn-windows-amd64.exe ./cmd/quantum-vpn
+GOOS=windows GOARCH=amd64 go build -o bin/quantum-tunnel-windows-amd64.exe ./cmd/quantum-tunnel
 ```
 
 Or use the automated scripts:
@@ -132,8 +132,8 @@ go build \
     -X main.version=1.0.0 \
     -X main.buildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') \
     -X main.gitCommit=$(git rev-parse --short HEAD)" \
-  -o bin/quantum-vpn \
-  ./cmd/quantum-vpn
+  -o bin/quantum-tunnel \
+  ./cmd/quantum-tunnel
 ```
 
 ## Creating Release Archives
@@ -143,11 +143,11 @@ Generate release archives with checksums:
 ```bash
 make release
 # Creates bin/release/ with:
-#   - quantum-vpn-VERSION-linux-amd64.tar.gz
-#   - quantum-vpn-VERSION-linux-arm64.tar.gz
-#   - quantum-vpn-VERSION-darwin-amd64.tar.gz
-#   - quantum-vpn-VERSION-darwin-arm64.tar.gz
-#   - quantum-vpn-VERSION-windows-amd64.zip
+#   - quantum-tunnel-VERSION-linux-amd64.tar.gz
+#   - quantum-tunnel-VERSION-linux-arm64.tar.gz
+#   - quantum-tunnel-VERSION-darwin-amd64.tar.gz
+#   - quantum-tunnel-VERSION-darwin-arm64.tar.gz
+#   - quantum-tunnel-VERSION-windows-amd64.zip
 #   - checksums-sha256.txt
 ```
 
@@ -190,7 +190,7 @@ docker run quantum-go:latest bench --handshakes 100
 ### Static Binary (No CGO)
 
 ```bash
-CGO_ENABLED=0 go build -o bin/quantum-vpn ./cmd/quantum-vpn
+CGO_ENABLED=0 go build -o bin/quantum-tunnel ./cmd/quantum-tunnel
 ```
 
 ### Smaller Binary Size
@@ -198,11 +198,11 @@ CGO_ENABLED=0 go build -o bin/quantum-vpn ./cmd/quantum-vpn
 ```bash
 go build \
   -ldflags "-s -w" \
-  -o bin/quantum-vpn \
-  ./cmd/quantum-vpn
+  -o bin/quantum-tunnel \
+  ./cmd/quantum-tunnel
 
 # Further compress with UPX
-upx --best --lzma bin/quantum-vpn
+upx --best --lzma bin/quantum-tunnel
 ```
 
 **Warning:** Stripping symbols (`-s -w`) makes debugging harder. Only use for production releases.
@@ -210,7 +210,7 @@ upx --best --lzma bin/quantum-vpn
 ### Debug Build
 
 ```bash
-go build -gcflags="all=-N -l" -o bin/quantum-vpn ./cmd/quantum-vpn
+go build -gcflags="all=-N -l" -o bin/quantum-tunnel ./cmd/quantum-tunnel
 ```
 
 ## Testing
@@ -315,18 +315,18 @@ After building, artifacts are located in:
 
 ```
 bin/
-├── quantum-vpn                    # Current platform binary
+├── quantum-tunnel                    # Current platform binary
 ├── linux/
-│   ├── quantum-vpn-linux-amd64
-│   └── quantum-vpn-linux-arm64
+│   ├── quantum-tunnel-linux-amd64
+│   └── quantum-tunnel-linux-arm64
 ├── darwin/
-│   ├── quantum-vpn-darwin-amd64
-│   └── quantum-vpn-darwin-arm64
+│   ├── quantum-tunnel-darwin-amd64
+│   └── quantum-tunnel-darwin-arm64
 ├── windows/
-│   └── quantum-vpn-windows-amd64.exe
+│   └── quantum-tunnel-windows-amd64.exe
 └── release/                        # Release archives
-    ├── quantum-vpn-VERSION-*.tar.gz
-    ├── quantum-vpn-VERSION-*.zip
+    ├── quantum-tunnel-VERSION-*.tar.gz
+    ├── quantum-tunnel-VERSION-*.zip
     └── checksums-sha256.txt
 ```
 

@@ -1,4 +1,4 @@
-// Package benchmark provides performance benchmarks for the Quantum-Go VPN system.
+// Package benchmark provides performance benchmarks for the Quantum-Go tunnel system.
 //
 // Run benchmarks with:
 //

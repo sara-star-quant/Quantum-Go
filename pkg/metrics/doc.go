@@ -1,4 +1,4 @@
-// Package metrics provides observability primitives for the quantum-go VPN library.
+// Package metrics provides observability primitives for the quantum-go tunnel library.
 //
 // # Overview
 //
@@ -21,7 +21,7 @@
 //	metrics.Global().RecordBytesSent(1024)
 //
 //	// Start Prometheus server
-//	go metrics.ServePrometheus(":9090", metrics.Global(), "quantum_vpn")
+//	go metrics.ServePrometheus(":9090", metrics.Global(), "quantum_tunnel")
 //
 // # Metrics Collection
 //
@@ -53,7 +53,7 @@
 //
 // Export metrics in Prometheus format:
 //
-//	exporter := metrics.NewPrometheusExporter(collector, "quantum_vpn")
+//	exporter := metrics.NewPrometheusExporter(collector, "quantum_tunnel")
 //	http.Handle("/metrics", exporter.Handler())
 //
 // # Tracing
@@ -65,7 +65,7 @@
 //	metrics.SetTracer(tracer)
 //
 //	// OpenTelemetry adapter (uses global provider)
-//	otelTracer := metrics.NewOTelTracer("quantum-vpn")
+//	otelTracer := metrics.NewOTelTracer("quantum-tunnel")
 //	metrics.SetTracer(otelTracer)
 //	// Build with -tags otel to enable the adapter.
 //
@@ -83,7 +83,7 @@
 //	logger := metrics.NewLogger(
 //		metrics.WithLevel(metrics.LevelInfo),
 //		metrics.WithFormat(metrics.FormatJSON),
-//		metrics.WithFields(metrics.Fields{"service": "quantum-vpn"}),
+//		metrics.WithFields(metrics.Fields{"service": "quantum-tunnel"}),
 //	)
 //
 //	logger.Info("session established", metrics.Fields{
@@ -116,7 +116,7 @@
 //	server := metrics.NewServer(metrics.ServerConfig{
 //		Collector:        collector,
 //		Version:          "1.0.0",
-//		Namespace:        "quantum_vpn",
+//		Namespace:        "quantum_tunnel",
 //		EnablePrometheus: true,
 //		EnableHealth:     true,
 //	})

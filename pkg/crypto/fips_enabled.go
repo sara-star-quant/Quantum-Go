@@ -1,7 +1,7 @@
 //go:build fips
 // +build fips
 
-// Package crypto implements cryptographic primitives for the Quantum-Go VPN.
+// Package crypto implements cryptographic primitives for the Quantum-Go tunnel.
 //
 // This file is compiled when the "fips" build tag is specified.
 // In FIPS mode, only FIPS 140-3 approved algorithms are available.

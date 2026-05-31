@@ -1,5 +1,5 @@
 // Package constants defines security parameters and protocol constants for the
-// Quantum-Go VPN encryption system.
+// Quantum-Go tunnel encryption system.
 //
 // Security Level: NIST Category 5 (equivalent to AES-256 against quantum adversaries)
 // This targets maximum security suitable for high-security enterprise/government use.
@@ -7,11 +7,11 @@ package constants
 
 // Protocol version and identification
 const (
-	// ProtocolVersion is the current version of the CH-KEM VPN protocol
+	// ProtocolVersion is the current version of the CH-KEM protocol
 	ProtocolVersion uint16 = 0x0001
 
 	// ProtocolName is used for domain separation in key derivation
-	ProtocolName = "CH-KEM-VPN-v1"
+	ProtocolName = "CH-KEM-Tunnel-v1"
 )
 
 // ML-KEM-1024 Parameters (NIST FIPS 203)
@@ -80,16 +80,16 @@ const (
 	DomainSeparatorCHKEM = "CH-KEM-v1-SharedSecret"
 
 	// DomainSeparatorHandshake is used in handshake key derivation
-	DomainSeparatorHandshake = "CH-KEM-VPN-Handshake"
+	DomainSeparatorHandshake = "CH-KEM-Tunnel-Handshake"
 
 	// DomainSeparatorTraffic is used in traffic key derivation
-	DomainSeparatorTraffic = "CH-KEM-VPN-Traffic"
+	DomainSeparatorTraffic = "CH-KEM-Tunnel-Traffic"
 
 	// DomainSeparatorRekey is used in rekey derivation
-	DomainSeparatorRekey = "CH-KEM-VPN-Rekey"
+	DomainSeparatorRekey = "CH-KEM-Tunnel-Rekey"
 
 	// DomainSeparatorResumption is used in resumption secret derivation
-	DomainSeparatorResumption = "CH-KEM-VPN-Resumption"
+	DomainSeparatorResumption = "CH-KEM-Tunnel-Resumption"
 )
 
 // Session Parameters

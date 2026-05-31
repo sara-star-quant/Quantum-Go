@@ -11,8 +11,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Build variables
-BINARY_NAME="quantum-vpn"
-CMD_DIR="./cmd/quantum-vpn"
+BINARY_NAME="quantum-tunnel"
+CMD_DIR="./cmd/quantum-tunnel"
 BIN_DIR="./bin"
 VERSION="${VERSION:-0.0.4}"
 BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')

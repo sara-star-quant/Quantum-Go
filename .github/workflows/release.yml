@@ -47,7 +47,7 @@ jobs:
         body: |
           ## Quantum-Go v${{ steps.get_version.outputs.VERSION }}
 
-          ### 🔐 Quantum-Resistant VPN Encryption
+          ### 🔐 Quantum-Resistant Tunnel Encryption
 
           **Security:** ML-KEM-1024 (NIST FIPS 203) + X25519 (RFC 7748)
 
@@ -55,36 +55,36 @@ jobs:
 
           #### Linux (amd64)
           ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.get_version.outputs.VERSION }}/quantum-vpn-${{ steps.get_version.outputs.VERSION }}-linux-amd64.tar.gz
-          tar -xzf quantum-vpn-${{ steps.get_version.outputs.VERSION }}-linux-amd64.tar.gz
-          sudo mv quantum-vpn-linux-amd64 /usr/local/bin/quantum-vpn
+          wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.get_version.outputs.VERSION }}/quantum-tunnel-${{ steps.get_version.outputs.VERSION }}-linux-amd64.tar.gz
+          tar -xzf quantum-tunnel-${{ steps.get_version.outputs.VERSION }}-linux-amd64.tar.gz
+          sudo mv quantum-tunnel-linux-amd64 /usr/local/bin/quantum-tunnel
           ```
 
           #### macOS (arm64 - Apple Silicon)
           ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.get_version.outputs.VERSION }}/quantum-vpn-${{ steps.get_version.outputs.VERSION }}-darwin-arm64.tar.gz
-          tar -xzf quantum-vpn-${{ steps.get_version.outputs.VERSION }}-darwin-arm64.tar.gz
-          sudo mv quantum-vpn-darwin-arm64 /usr/local/bin/quantum-vpn
+          wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.get_version.outputs.VERSION }}/quantum-tunnel-${{ steps.get_version.outputs.VERSION }}-darwin-arm64.tar.gz
+          tar -xzf quantum-tunnel-${{ steps.get_version.outputs.VERSION }}-darwin-arm64.tar.gz
+          sudo mv quantum-tunnel-darwin-arm64 /usr/local/bin/quantum-tunnel
           ```
 
           #### Windows (amd64)
-          Download `quantum-vpn-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip` and extract to your PATH.
+          Download `quantum-tunnel-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip` and extract to your PATH.
 
           ### ✅ Verify Installation
           ```bash
-          quantum-vpn version
+          quantum-tunnel version
           ```
 
           ### 🚀 Quick Start
           ```bash
           # Start demo server
-          quantum-vpn demo --mode server --addr :8443
+          quantum-tunnel demo --mode server --addr :8443
 
           # Connect client
-          quantum-vpn demo --mode client --addr localhost:8443
+          quantum-tunnel demo --mode client --addr localhost:8443
 
           # Run benchmarks
-          quantum-vpn bench --handshakes 100
+          quantum-tunnel bench --handshakes 100
           ```
 
           ### 📚 Documentation

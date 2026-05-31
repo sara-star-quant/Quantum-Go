@@ -23,7 +23,7 @@
 
 ## 1. Executive Summary
 
-This risk assessment evaluates the security posture of the Quantum-Go VPN encryption system implementing the Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM). The assessment covers cryptographic, implementation, operational, and regulatory risks.
+This risk assessment evaluates the security posture of the Quantum-Go tunnel encryption system implementing the Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM). The assessment covers cryptographic, implementation, operational, and regulatory risks.
 
 ### 1.1 Overall Risk Rating
 

@@ -85,7 +85,7 @@ needs no wire change.
 - **App-layer fragmentation for handshakes only.** The PQ Hellos (~1.7 KB)
   exceed the conservative 1200-byte datagram budget, so handshake messages are
   fragmented and reassembled. Data frames are capped to a single datagram (a
-  VPN's inner payload ≤ MTU), so the reassembler only ever sees the bounded,
+  tunnel's inner payload ≤ MTU), so the reassembler only ever sees the bounded,
   few-message handshake. Reassembly runs pre-auth and is bounded three ways:
   per-source concurrent-buffer cap, per-message size cap, and a timeout.
 

@@ -9,7 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **UDP/datagram transport (handshake)**: a connectionless transport alongside the TCP/stream one, demultiplexed by a random per-session connection index rather than source address (survives NAT rebind and roaming). It carries the full CH-KEM handshake over a lossy link: the large post-quantum Hellos are fragmented across datagrams and reassembled (`pkg/tunnel/reassembly.go`), and a transport-agnostic state machine plus reliability driver (`pkg/tunnel/dgram_handshake_{fsm,driver,wire}.go`) add retransmission with exponential backoff, a retry ceiling, duplicate/replay handling, and a responder linger that recovers a lost final flight. A bad or forged datagram drops rather than failing the handshake. The responder runs no decapsulation and sends no ServerHello until a full ClientHello arrives and a per-source half-open slot is granted, so it never sends more than it received from an unvalidated source. `DialDatagram` performs the initiator handshake and returns an established session.
-- **Datagram handshake benchmark**: `quantum-vpn bench --datagram-handshakes N` measures the datagram handshake rate over loopback UDP (~1,300/sec, ~760 µs each on an M1 Pro, vs ~1,450/sec for the stream path).
+- **Datagram handshake benchmark**: `quantum-tunnel bench --datagram-handshakes N` measures the datagram handshake rate over loopback UDP (~1,300/sec, ~760 µs each on an M1 Pro, vs ~1,450/sec for the stream path).
+
+### Changed
+- **Rebranded to "tunnel"**, the precise term for this project. The CLI binary `quantum-vpn` is now `quantum-tunnel`, the Prometheus metric namespace `quantum_vpn` is now `quantum_tunnel`, and the CH-KEM protocol and key-derivation labels move to `CH-KEM-Tunnel-*`.
 
 ### Not yet implemented (datagram)
 - The encrypted data path (epoch-keyed AEAD over DATA frames) and authenticated CLOSE, so there is no datagram throughput number yet.
@@ -214,7 +217,7 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 ## [0.0.3][] - 2026-01-19
 
 ### Added
-- **Command-line tool** (`quantum-vpn`) with demo, benchmark, and example modes
+- **Command-line tool** (`quantum-tunnel`) with demo, benchmark, and example modes
   - Demo mode: Interactive client/server demonstration
   - Benchmark mode: Handshake and throughput performance testing
   - Example mode: 6 interactive code examples with explanations

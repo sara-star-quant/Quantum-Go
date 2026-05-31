@@ -480,7 +480,7 @@ The following jurisdictions have specific requirements for **users deploying** e
 - **User Action**: Commercial deployers should assess licensing requirements.
 
 #### Middle East
-- **UAE & Saudi Arabia**: VPN usage to bypass telecom restrictions is illegal.
+- **UAE & Saudi Arabia**: tunnel usage to bypass telecom restrictions is illegal.
 - **Data Residency**: In-country data storage often mandated.
 - **User Action**: Must not be used to bypass telecommunications regulations.
 

@@ -9,7 +9,7 @@ bin/
 *.dll
 *.so
 *.dylib
-quantum-vpn
+quantum-tunnel
 
 # Test artifacts
 *.test
