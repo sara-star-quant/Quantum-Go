@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Datagram handshake benchmark**: `quantum-tunnel bench --datagram-handshakes N` measures the datagram handshake rate over loopback UDP (~1,300/sec, ~760 µs each on an M1 Pro, vs ~1,450/sec for the stream path).
 
 ### Changed
-- **Rebranded to "tunnel"**, the precise term for this project. The CLI binary `quantum-vpn` is now `quantum-tunnel`, the Prometheus metric namespace `quantum_vpn` is now `quantum_tunnel`, and the CH-KEM protocol and key-derivation labels move to `CH-KEM-Tunnel-*`.
+- **Rebranded to "tunnel"**, the precise term for this project. The CLI binary is now `quantum-tunnel`, the Prometheus metric namespace `quantum_vpn` is now `quantum_tunnel`, and the CH-KEM protocol and key-derivation labels move to `CH-KEM-Tunnel-*`.
 
 ### Not yet implemented (datagram)
 - The encrypted data path (epoch-keyed AEAD over DATA frames) and authenticated CLOSE, so there is no datagram throughput number yet.
