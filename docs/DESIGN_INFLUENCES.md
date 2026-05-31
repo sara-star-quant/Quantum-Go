@@ -92,7 +92,7 @@ CH-KEM is not based on the Noise Framework or WireGuard protocol. While we study
 
 ### 3.2 RKEM / Rebar Construction
 
-We do not implement the Ratcheted KEM (RKEM) or Rebar construction described by Wiggers et al. PQShield, the employer of several Rebar authors, holds 40+ patents in post-quantum cryptography. While the academic paper is CC BY licensed, the underlying construction may be covered by patents. Our key ratcheting uses a simpler `DeriveRekeySecret(oldMaster, freshKEM)` construction based on standard KDF composition.
+We do not implement the Ratcheted KEM (RKEM) or Rebar construction described by Wiggers et al. Our key ratcheting uses a simpler `DeriveRekeySecret(oldMaster, freshKEM)` construction based on standard KDF composition.
 
 ### 3.3 Dagger KEM
 
