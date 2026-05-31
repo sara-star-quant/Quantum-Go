@@ -321,6 +321,39 @@ func DeriveTrafficKeys(masterSecret []byte) (initiatorKey, responderKey []byte, 
 	return initiatorKey, responderKey, nil
 }
 
+// DeriveDatagramNoncePrefixes derives the two per-direction nonce prefixes for
+// the datagram transport. The datagram path never transmits the AEAD nonce; it
+// builds nonce = prefix || seq(8B), so both peers must agree on the prefix. They
+// are derived from the master secret under a distinct domain separator, split by
+// role exactly like DeriveTrafficKeys: the initiator seals with initiatorPrefix
+// and opens with responderPrefix, and vice versa.
+//
+// Parameters:
+//   - masterSecret: The CH-KEM shared secret
+//
+// Returns:
+//   - initiatorPrefix, responderPrefix: DatagramNoncePrefixSize-byte prefixes
+//   - error: Non-nil if derivation fails
+func DeriveDatagramNoncePrefixes(masterSecret []byte) (initiatorPrefix, responderPrefix []byte, err error) {
+	if len(masterSecret) != constants.CHKEMSharedSecretSize {
+		return nil, nil, qerrors.NewCryptoError("DeriveDatagramNoncePrefixes", qerrors.ErrInvalidKeySize)
+	}
+
+	material, err := DeriveKey(
+		constants.DomainSeparatorDatagramNonce,
+		masterSecret,
+		2*constants.DatagramNoncePrefixSize,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	initiatorPrefix = material[:constants.DatagramNoncePrefixSize]
+	responderPrefix = material[constants.DatagramNoncePrefixSize:]
+
+	return initiatorPrefix, responderPrefix, nil
+}
+
 // DeriveResumptionSecret derives a new master secret for resumed sessions.
 //
 // This combines the PSK (ticket secret) with a fresh KEM shared secret,

@@ -168,13 +168,13 @@ func runE2E(t *testing.T, seed uint64, drop, dup, reorder float64) {
 	defer func() { _ = epB.Close() }()
 
 	type dialResult struct {
-		s   *Session
-		err error
+		conn *DatagramConn
+		err  error
 	}
 	dialCh := make(chan dialResult, 1)
 	go func() {
-		s, err := DialDatagram(epA, connB.addr)
-		dialCh <- dialResult{s, err}
+		c, err := DialDatagram(epA, connB.addr)
+		dialCh <- dialResult{c, err}
 	}()
 
 	var server *Session
@@ -191,7 +191,7 @@ func runE2E(t *testing.T, seed uint64, drop, dup, reorder float64) {
 		if r.err != nil {
 			t.Fatalf("dial: %v", r.err)
 		}
-		client = r.s
+		client = r.conn.Session()
 	case <-time.After(5 * time.Second):
 		t.Fatal("dial did not complete")
 	}
