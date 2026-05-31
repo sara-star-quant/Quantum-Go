@@ -79,7 +79,12 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, first inboundMsg) {
 		e.registry.releaseHalfOpen(src.String())
 		return
 	}
-	ds := &datagramSession{inbox: make(chan inboundMsg, inboxCap)}
+	ds := &datagramSession{
+		inbox:    make(chan inboundMsg, inboxCap),
+		peerAddr: src,
+		recvCh:   make(chan []byte, dataInboxCap),
+		closed:   make(chan struct{}),
+	}
 	idx, err := e.registry.add(ds)
 	if err != nil {
 		e.registry.releaseHalfOpen(src.String())
@@ -101,13 +106,18 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, first inboundMsg) {
 }
 
 // DialDatagram performs the initiator handshake to dst over ep (whose Serve loop
-// must be running) and returns the established session.
-func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*Session, error) {
+// must be running) and returns the established session as a DatagramConn.
+func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
 	session, err := NewSession(RoleInitiator)
 	if err != nil {
 		return nil, err
 	}
-	ds := &datagramSession{inbox: make(chan inboundMsg, inboxCap)}
+	ds := &datagramSession{
+		inbox:    make(chan inboundMsg, inboxCap),
+		peerAddr: dst,
+		recvCh:   make(chan []byte, dataInboxCap),
+		closed:   make(chan struct{}),
+	}
 	idx, err := ep.registry.add(ds)
 	if err != nil {
 		return nil, err
@@ -119,12 +129,11 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*Session, error) {
 		driver:     ep.newDriver(session),
 		localIndex: idx,
 	}
-	s, err := l.run()
-	if err != nil {
+	if _, err := l.run(); err != nil {
 		ep.registry.remove(idx)
 		return nil, err
 	}
-	return s, nil
+	return newDatagramConn(ep, ds), nil
 }
 
 // newDriver builds a handshake driver carrying this endpoint's configured
@@ -212,6 +221,7 @@ func (l *handshakeLoop) maybeSurface() {
 	}
 	l.surfaced = true
 	l.ds.session = l.driver.session()
+	l.ds.peerIndex = l.peerIndex
 	l.ep.registry.removeSource(l.src.String())
 	l.ep.registry.releaseHalfOpen(l.src.String())
 	if l.established != nil {

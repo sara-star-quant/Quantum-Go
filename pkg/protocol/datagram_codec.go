@@ -135,6 +135,15 @@ func ParseDatagramHeader(data []byte) (DatagramHeader, []byte, error) {
 	return h, data[DatagramHeaderSize:], nil
 }
 
+// EncodeDatagramHeader returns the 14-byte common header for h, preserving h.Type.
+// The data path builds the header once with this, authenticates it as the AEAD
+// AAD, and appends the ciphertext/tag itself (avoiding a redundant re-encode).
+func EncodeDatagramHeader(h DatagramHeader) []byte {
+	buf := make([]byte, DatagramHeaderSize)
+	putDatagramHeader(buf, h)
+	return buf
+}
+
 // EncodeDatagramData builds a DATA frame: the common header followed by the
 // already-encrypted ciphertext. The AEAD AAD for the ciphertext must be the
 // returned frame's first DatagramHeaderSize bytes (see DatagramAAD).
