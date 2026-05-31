@@ -17,7 +17,7 @@ func TestPrometheusExporterWriteMetrics(t *testing.T) {
 	c.RecordBytesSent(1000)
 	c.RecordHandshakeLatency(100 * time.Millisecond)
 
-	exp := NewPrometheusExporter(c, "quantum_vpn")
+	exp := NewPrometheusExporter(c, "quantum_tunnel")
 
 	var buf bytes.Buffer
 	exp.WriteMetrics(&buf)
@@ -26,10 +26,10 @@ func TestPrometheusExporterWriteMetrics(t *testing.T) {
 
 	// Check for expected metrics
 	expectedMetrics := []string{
-		"quantum_vpn_sessions_active",
-		"quantum_vpn_sessions_total",
-		"quantum_vpn_bytes_sent_total",
-		"quantum_vpn_handshake_duration_milliseconds",
+		"quantum_tunnel_sessions_active",
+		"quantum_tunnel_sessions_total",
+		"quantum_tunnel_bytes_sent_total",
+		"quantum_tunnel_handshake_duration_milliseconds",
 	}
 
 	for _, metric := range expectedMetrics {
@@ -44,10 +44,10 @@ func TestPrometheusExporterWriteMetrics(t *testing.T) {
 	}
 
 	// Check for HELP and TYPE lines
-	if !strings.Contains(output, "# HELP quantum_vpn_sessions_active") {
+	if !strings.Contains(output, "# HELP quantum_tunnel_sessions_active") {
 		t.Error("expected HELP line for sessions_active")
 	}
-	if !strings.Contains(output, "# TYPE quantum_vpn_sessions_active gauge") {
+	if !strings.Contains(output, "# TYPE quantum_tunnel_sessions_active gauge") {
 		t.Error("expected TYPE line for sessions_active")
 	}
 }

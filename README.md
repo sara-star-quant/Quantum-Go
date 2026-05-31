@@ -1,6 +1,6 @@
 # Quantum-Go
 
-**Quantum-Resistant VPN Encryption using Cascaded Hybrid KEM (CH-KEM)**
+**Quantum-Resistant Tunnel Encryption using Cascaded Hybrid KEM (CH-KEM)**
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![Go Reference](https://pkg.go.dev/badge/github.com/sara-star-quant/quantum-go.svg)](https://pkg.go.dev/github.com/sara-star-quant/quantum-go)
@@ -14,7 +14,7 @@
 
 ## Overview
 
-Quantum-Go is a production-ready, quantum-resistant VPN encryption library implementing a novel **Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM)**. It provides defense-in-depth security by combining:
+Quantum-Go is a production-ready, quantum-resistant tunnel encryption library implementing a novel **Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM)**. It provides defense-in-depth security by combining:
 
 - **ML-KEM-1024** (NIST FIPS 203) - Post-quantum lattice-based cryptography
 - **X25519** (RFC 7748) - Classical elliptic curve Diffie-Hellman
@@ -81,7 +81,7 @@ See [Quick Start Guide](docs/usage/QUICKSTART.md) for detailed examples.
 | [Quick Start](docs/usage/QUICKSTART.md) | Installation and basic usage |
 | [FIPS Compliance](docs/FIPS.md) | FIPS 140-3 build mode and self-tests |
 | [Configuration](docs/usage/CONFIGURATION.md) | Tuning timeouts, rate limiting, and sessions |
-| [CLI Reference](docs/usage/CLI.md) | Using `quantum-vpn` for demos and benchmarks |
+| [CLI Reference](docs/usage/CLI.md) | Using `quantum-tunnel` for demos and benchmarks |
 | [Architecture](docs/technical/ARCHITECTURE.md) | CH-KEM protocol and security design |
 | [Roadmap](docs/ROADMAP.md) | Development roadmap and compliance plans |
 
@@ -117,7 +117,7 @@ independently measured; run the benchmark to verify):
 | Mid-range server (Xeon Silver) | 4-7 GB/s |
 | Enterprise (Xeon Platinum / EPYC) | 8-12 GB/s |
 
-Run `quantum-vpn bench --handshakes N --datagram-handshakes N --throughput` on your target hardware. See [CLI Reference](docs/usage/CLI.md#benchmark-mode).
+Run `quantum-tunnel bench --handshakes N --datagram-handshakes N --throughput` on your target hardware. See [CLI Reference](docs/usage/CLI.md#benchmark-mode).
 
 ## Contributing
 

@@ -1,4 +1,4 @@
-// Package quantumgo provides quantum-resistant VPN encryption using Cascaded Hybrid KEM (CH-KEM).
+// Package quantumgo provides quantum-resistant tunnel encryption using Cascaded Hybrid KEM (CH-KEM).
 //
 // Quantum-Go combines ML-KEM-1024 (NIST FIPS 203) post-quantum cryptography with
 // X25519 classical cryptography for defense-in-depth security against both
@@ -6,7 +6,7 @@
 //
 // # Quick Start
 //
-// For a complete VPN tunnel with handshake:
+// For a complete tunnel with handshake:
 //
 //	import "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 //
@@ -33,7 +33,7 @@
 //
 //   - pkg/chkem: High-level CH-KEM key encapsulation API
 //   - pkg/crypto: Low-level cryptographic primitives (ML-KEM, X25519, KDF, AEAD)
-//   - pkg/tunnel: VPN tunnel with handshake protocol and encrypted transport
+//   - pkg/tunnel: tunnel with handshake protocol and encrypted transport
 //   - pkg/protocol: Wire protocol message definitions and encoding
 //   - internal/constants: Security parameters and protocol constants
 //   - internal/errors: Custom error types for detailed error handling

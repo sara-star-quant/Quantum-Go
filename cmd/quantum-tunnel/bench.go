@@ -15,14 +15,14 @@ import (
 func runBench(handshakes, datagramHandshakes int, throughputTest bool, sizeStr, durationStr, cipherSuite string) {
 	const bannerWidth = 59
 	fmt.Println("╔" + strings.Repeat("═", bannerWidth) + "╗")
-	fmt.Printf("║%-*s║\n", bannerWidth, "      Quantum-Resistant VPN Benchmark")
+	fmt.Printf("║%-*s║\n", bannerWidth, "      Quantum-Resistant Tunnel Benchmark")
 	fmt.Printf("║%-*s║\n", bannerWidth, "      CH-KEM: ML-KEM-1024 + X25519")
 	fmt.Println("╚" + strings.Repeat("═", bannerWidth) + "╝")
 	fmt.Println()
 
 	if handshakes == 0 && datagramHandshakes == 0 && !throughputTest {
 		fmt.Println("No benchmarks specified. Use --handshakes, --datagram-handshakes, or --throughput")
-		fmt.Println("Run 'quantum-vpn bench --help' for usage")
+		fmt.Println("Run 'quantum-tunnel bench --help' for usage")
 		os.Exit(1)
 	}
 

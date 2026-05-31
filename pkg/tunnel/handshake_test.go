@@ -371,7 +371,7 @@ func TestVerifyDataDifferentSecrets(t *testing.T) {
 	}
 
 	vd1, err := crypto.DeriveKeyMultiple(
-		"CH-KEM-VPN-ClientFinished",
+		"CH-KEM-Tunnel-ClientFinished",
 		[][]byte{secret1, transcript},
 		32,
 	)
@@ -380,7 +380,7 @@ func TestVerifyDataDifferentSecrets(t *testing.T) {
 	}
 
 	vd2, err := crypto.DeriveKeyMultiple(
-		"CH-KEM-VPN-ClientFinished",
+		"CH-KEM-Tunnel-ClientFinished",
 		[][]byte{secret2, transcript},
 		32,
 	)

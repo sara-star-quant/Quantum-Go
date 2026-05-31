@@ -1,4 +1,4 @@
-// Package tunnel implements session resumption tickets for the CH-KEM VPN.
+// Package tunnel implements session resumption tickets for the CH-KEM.
 //
 // This file (ticket.go) provides encrypted session tickets that allow
 // clients to resume previous sessions without a full handshake.

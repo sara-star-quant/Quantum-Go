@@ -1,4 +1,4 @@
-// Package tunnel implements the CH-KEM VPN tunnel with secure key exchange
+// Package tunnel implements the CH-KEM tunnel with secure key exchange
 // and encrypted data transport.
 //
 // The tunnel provides:
@@ -72,7 +72,7 @@ const (
 	RoleResponder
 )
 
-// Session represents a CH-KEM VPN tunnel session.
+// Session represents a CH-KEM tunnel session.
 type Session struct {
 	// Unique session identifier
 	ID []byte

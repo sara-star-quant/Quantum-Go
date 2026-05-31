@@ -555,7 +555,7 @@ func (e *alertError) Error() string {
 
 // --- Tunnel (Convenience Wrapper) ---
 
-// Tunnel represents a complete CH-KEM VPN tunnel.
+// Tunnel represents a complete CH-KEM tunnel.
 type Tunnel struct {
 	*Transport
 }

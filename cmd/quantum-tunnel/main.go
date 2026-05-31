@@ -38,7 +38,7 @@ func main() {
 	case "example":
 		exampleCommand()
 	case "version":
-		fmt.Printf("quantum-vpn version %s\n", getVersion())
+		fmt.Printf("quantum-tunnel version %s\n", getVersion())
 		if buildTime != "unknown" {
 			fmt.Printf("Built: %s\n", buildTime)
 		}
@@ -55,10 +55,10 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`quantum-vpn - Quantum-Resistant VPN Demo & Benchmark Tool
+	fmt.Println(`quantum-tunnel - Quantum-Resistant Tunnel Demo & Benchmark Tool
 
 USAGE:
-    quantum-vpn <command> [options]
+    quantum-tunnel <command> [options]
 
 COMMANDS:
     demo      Run interactive demo (client/server)
@@ -67,26 +67,26 @@ COMMANDS:
     version   Print version information
     help      Show this help message
 
-Run 'quantum-vpn <command> --help' for more information on a command.
+Run 'quantum-tunnel <command> --help' for more information on a command.
 
 EXAMPLES:
     # Start demo server
-    quantum-vpn demo --mode server --addr :8443
+    quantum-tunnel demo --mode server --addr :8443
 
     # Connect demo client
-    quantum-vpn demo --mode client --addr localhost:8443
+    quantum-tunnel demo --mode client --addr localhost:8443
 
     # Run handshake benchmark
-    quantum-vpn bench --handshakes 100
+    quantum-tunnel bench --handshakes 100
 
     # Run throughput benchmark
-    quantum-vpn bench --throughput --size 1GB --duration 30s
+    quantum-tunnel bench --throughput --size 1GB --duration 30s
 
     # Show interactive examples
-    quantum-vpn example
+    quantum-tunnel example
 
 PROJECT:
-    Quantum-Go - Cascaded Hybrid KEM (CH-KEM) VPN Encryption
+    Quantum-Go - Cascaded Hybrid KEM (CH-KEM) Tunnel Encryption
     https://github.com/sara-star-quant/quantum-go
 
     Security: ML-KEM-1024 (NIST FIPS 203) + X25519 (RFC 7748)
@@ -97,7 +97,7 @@ func demoCommand() {
 	fs := flag.NewFlagSet("demo", flag.ExitOnError)
 	mode := fs.String("mode", "server", "Mode: server or client")
 	addr := fs.String("addr", "localhost:8443", "Address to listen/connect")
-	message := fs.String("message", "Hello from quantum-vpn!", "Message to send (client mode)")
+	message := fs.String("message", "Hello from quantum-tunnel!", "Message to send (client mode)")
 	verbose := fs.Bool("verbose", false, "Verbose output")
 	obsAddr := fs.String("obs-addr", ":9090", "Observability server address (server mode). Empty disables")
 	logLevel := fs.String("log-level", "warn", "Log level: debug, info, warn, error, silent")
@@ -105,22 +105,22 @@ func demoCommand() {
 	tracing := fs.String("tracing", "none", "Tracing mode: none, simple, otel (requires -tags otel)")
 
 	fs.Usage = func() {
-		fmt.Println(`USAGE: quantum-vpn demo [options]
+		fmt.Println(`USAGE: quantum-tunnel demo [options]
 
-Run an interactive client/server demo of the quantum-resistant VPN tunnel.
+Run an interactive client/server demo of the quantum-resistant tunnel.
 
 OPTIONS:`)
 		fs.PrintDefaults()
 		fmt.Println(`
 EXAMPLES:
     # Terminal 1: Start server
-    quantum-vpn demo --mode server --addr :8443
+    quantum-tunnel demo --mode server --addr :8443
 
     # Terminal 2: Connect client
-    quantum-vpn demo --mode client --addr localhost:8443 --message "Test message"
+    quantum-tunnel demo --mode client --addr localhost:8443 --message "Test message"
 
     # Verbose output (show handshake details)
-    quantum-vpn demo --mode server --addr :8443 --verbose`)
+    quantum-tunnel demo --mode server --addr :8443 --verbose`)
 	}
 
 	_ = fs.Parse(os.Args[2:])
@@ -138,7 +138,7 @@ func benchCommand() {
 	cipherSuite := fs.String("cipher", "aes-gcm", "Cipher suite: aes-gcm or chacha20")
 
 	fs.Usage = func() {
-		fmt.Println(`USAGE: quantum-vpn bench [options]
+		fmt.Println(`USAGE: quantum-tunnel bench [options]
 
 Run performance benchmarks for handshake and data throughput.
 
@@ -147,19 +147,19 @@ OPTIONS:`)
 		fmt.Println(`
 EXAMPLES:
     # Benchmark 100 stream (TCP) handshakes
-    quantum-vpn bench --handshakes 100
+    quantum-tunnel bench --handshakes 100
 
     # Benchmark 100 datagram (UDP) handshakes
-    quantum-vpn bench --datagram-handshakes 100
+    quantum-tunnel bench --datagram-handshakes 100
 
     # Benchmark throughput for 30 seconds
-    quantum-vpn bench --throughput --duration 30s
+    quantum-tunnel bench --throughput --duration 30s
 
     # Benchmark 1GB data transfer with ChaCha20-Poly1305
-    quantum-vpn bench --throughput --size 1GB --cipher chacha20
+    quantum-tunnel bench --throughput --size 1GB --cipher chacha20
 
     # Run all benchmarks
-    quantum-vpn bench --handshakes 100 --throughput --size 500MB`)
+    quantum-tunnel bench --handshakes 100 --throughput --size 500MB`)
 	}
 
 	_ = fs.Parse(os.Args[2:])
@@ -169,7 +169,7 @@ EXAMPLES:
 
 func exampleCommand() {
 	if len(os.Args) > 2 && (os.Args[2] == "--help" || os.Args[2] == "-h") {
-		fmt.Println(`USAGE: quantum-vpn example
+		fmt.Println(`USAGE: quantum-tunnel example
 
 Display interactive examples with code snippets showing how to use the library.
 

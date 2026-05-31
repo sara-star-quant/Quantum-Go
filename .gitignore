@@ -22,7 +22,7 @@ go.work.sum
 /bin/
 /dist/
 /build/
-quantum-vpn
+quantum-tunnel
 
 # IDE and editor files
 .vscode/

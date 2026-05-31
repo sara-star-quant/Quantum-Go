@@ -1,7 +1,7 @@
 //go:build fips
 // +build fips
 
-// Package protocol defines the wire protocol for the CH-KEM VPN tunnel.
+// Package protocol defines the wire protocol for the CH-KEM tunnel.
 //
 // This file is compiled when the "fips" build tag is specified.
 // In FIPS mode, only FIPS 140-3 approved cipher suites are available.

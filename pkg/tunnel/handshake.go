@@ -216,7 +216,7 @@ func (h *Handshake) CreateClientFinished() ([]byte, error) {
 	// Compute verify_data = SHAKE-256(sharedSecret || transcript || "client finished")
 	// Including the shared secret proves both sides hold the same key material
 	verifyData, err := crypto.DeriveKeyMultiple(
-		"CH-KEM-VPN-ClientFinished",
+		"CH-KEM-Tunnel-ClientFinished",
 		[][]byte{h.sharedSecret, h.transcript.Bytes()},
 		32,
 	)
@@ -264,7 +264,7 @@ func (h *Handshake) ProcessServerFinished(data []byte) error {
 
 	// Compute expected verify_data with shared secret binding
 	expectedVerifyData, err := crypto.DeriveKeyMultiple(
-		"CH-KEM-VPN-ServerFinished",
+		"CH-KEM-Tunnel-ServerFinished",
 		[][]byte{h.sharedSecret, h.transcript.Bytes()},
 		32,
 	)
@@ -416,7 +416,7 @@ func (h *Handshake) ProcessClientFinished(data []byte) error {
 
 	// Compute expected verify_data with shared secret binding
 	expectedVerifyData, err := crypto.DeriveKeyMultiple(
-		"CH-KEM-VPN-ClientFinished",
+		"CH-KEM-Tunnel-ClientFinished",
 		[][]byte{h.sharedSecret, h.transcript.Bytes()},
 		32,
 	)
@@ -443,7 +443,7 @@ func (h *Handshake) CreateServerFinished() ([]byte, error) {
 
 	// Compute verify_data with shared secret binding
 	verifyData, err := crypto.DeriveKeyMultiple(
-		"CH-KEM-VPN-ServerFinished",
+		"CH-KEM-Tunnel-ServerFinished",
 		[][]byte{h.sharedSecret, h.transcript.Bytes()},
 		32,
 	)

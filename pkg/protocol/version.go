@@ -1,4 +1,4 @@
-// Package protocol defines the wire protocol for the CH-KEM VPN tunnel.
+// Package protocol defines the wire protocol for the CH-KEM tunnel.
 //
 // Protocol Version: 1.0
 //
