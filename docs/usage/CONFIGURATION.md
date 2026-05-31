@@ -46,7 +46,7 @@ Attach an observer to collect metrics, tracing, and structured logs per session:
 
 ```go
 collector := metrics.NewCollector(metrics.Labels{
-    "service": "quantum-vpn",
+    "service": "quantum-tunnel",
 })
 
 config.ObserverFactory = func(session *tunnel.Session) tunnel.Observer {

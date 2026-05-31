@@ -1,4 +1,4 @@
-// Package errors defines custom error types for the Quantum-Go VPN encryption system.
+// Package errors defines custom error types for the Quantum-Go tunnel encryption system.
 // These errors provide detailed information for debugging while maintaining
 // security by not leaking sensitive information in error messages.
 package errors

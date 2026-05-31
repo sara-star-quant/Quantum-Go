@@ -35,10 +35,11 @@ func runDemo(mode, addr, message string, verbose bool, obsAddr, logLevel, logFor
 }
 
 func runDemoServer(addr string, verbose bool, obsAddr string, collector *metrics.Collector, observerFactory tunnel.ObserverFactory, logger *metrics.Logger) {
-	fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-	fmt.Println("║      Quantum-Resistant VPN Demo Server                   ║")
-	fmt.Println("║      CH-KEM: ML-KEM-1024 + X25519                        ║")
-	fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+	const bannerWidth = 59
+	fmt.Println("╔" + strings.Repeat("═", bannerWidth) + "╗")
+	fmt.Printf("║%-*s║\n", bannerWidth, "      Quantum-Resistant Tunnel Demo Server")
+	fmt.Printf("║%-*s║\n", bannerWidth, "      CH-KEM: ML-KEM-1024 + X25519")
+	fmt.Println("╚" + strings.Repeat("═", bannerWidth) + "╝")
 	fmt.Println()
 
 	if verbose {
@@ -73,7 +74,7 @@ func runDemoServer(addr string, verbose bool, obsAddr string, collector *metrics
 		server := metrics.NewServer(metrics.ServerConfig{
 			Collector:        collector,
 			Version:          version,
-			Namespace:        "quantum_vpn",
+			Namespace:        "quantum_tunnel",
 			EnablePrometheus: true,
 			EnableHealth:     true,
 		})
@@ -161,10 +162,11 @@ func handleConnection(conn *tunnel.Tunnel, connNum int, verbose bool) {
 }
 
 func runDemoClient(addr, message string, verbose bool, observerFactory tunnel.ObserverFactory) {
-	fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-	fmt.Println("║      Quantum-Resistant VPN Demo Client                   ║")
-	fmt.Println("║      CH-KEM: ML-KEM-1024 + X25519                        ║")
-	fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+	const bannerWidth = 59
+	fmt.Println("╔" + strings.Repeat("═", bannerWidth) + "╗")
+	fmt.Printf("║%-*s║\n", bannerWidth, "      Quantum-Resistant Tunnel Demo Client")
+	fmt.Printf("║%-*s║\n", bannerWidth, "      CH-KEM: ML-KEM-1024 + X25519")
+	fmt.Println("╚" + strings.Repeat("═", bannerWidth) + "╝")
 	fmt.Println()
 
 	if verbose {
@@ -301,7 +303,7 @@ func setupObservability(logLevel, logFormat, tracing string) (*metrics.Collector
 		metrics.WithOutput(os.Stderr),
 		metrics.WithLevel(level),
 		metrics.WithFormat(format),
-		metrics.WithFields(metrics.Fields{"app": "quantum-vpn"}),
+		metrics.WithFields(metrics.Fields{"app": "quantum-tunnel"}),
 	)
 	metrics.SetLogger(logger)
 
@@ -314,13 +316,13 @@ func setupObservability(logLevel, logFormat, tracing string) (*metrics.Collector
 		if !metrics.OTelEnabled() {
 			return nil, nil, nil, fmt.Errorf("otel tracing not enabled (build with -tags otel)")
 		}
-		metrics.SetTracer(metrics.NewOTelTracer("quantum-vpn"))
+		metrics.SetTracer(metrics.NewOTelTracer("quantum-tunnel"))
 	default:
 		return nil, nil, nil, fmt.Errorf("invalid tracing mode: %s (use none, simple, or otel)", tracing)
 	}
 
 	collector := metrics.NewCollector(metrics.Labels{
-		"service": "quantum-vpn",
+		"service": "quantum-tunnel",
 	})
 	metrics.SetGlobal(collector)
 

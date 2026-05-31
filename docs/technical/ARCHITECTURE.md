@@ -20,7 +20,7 @@
 
 ## 1. System Overview
 
-Quantum-Go is a quantum-resistant VPN encryption library implementing the Cascaded Hybrid KEM (CH-KEM) protocol. It provides post-quantum security through ML-KEM-1024 while maintaining classical security guarantees through X25519.
+Quantum-Go is a quantum-resistant tunnel encryption library implementing the Cascaded Hybrid KEM (CH-KEM) protocol. It provides post-quantum security through ML-KEM-1024 while maintaining classical security guarantees through X25519.
 
 ### 1.1 Design Principles
 
@@ -48,13 +48,13 @@ The protocol draws on published post-quantum cryptography research - including w
 ```
 quantum-go/
 ├── cmd/
-│   └── quantum-vpn/           # CLI application
+│   └── quantum-tunnel/           # CLI application
 │       └── main.go
 ├── pkg/
 │   ├── chkem/                 # Cascaded Hybrid KEM
 │   │   ├── chkem.go           # Core implementation
 │   │   └── chkem_test.go      # Unit tests
-│   ├── tunnel/                # VPN tunnel
+│   ├── tunnel/                # tunnel
 │   │   ├── session.go         # Session management
 │   │   ├── handshake.go       # Key exchange protocol
 │   │   ├── transport.go       # Encrypted transport
@@ -221,14 +221,14 @@ All messages follow this structure:
 ```
 Master Secret (32B)
         │
-        ├──> SHAKE-256("CH-KEM-VPN-Handshake") ──> Handshake Keys
+        ├──> SHAKE-256("CH-KEM-Tunnel-Handshake") ──> Handshake Keys
         │
-        ├──> SHAKE-256("CH-KEM-VPN-Traffic") ──> Traffic Keys
+        ├──> SHAKE-256("CH-KEM-Tunnel-Traffic") ──> Traffic Keys
         │
-        ├──> SHAKE-256("CH-KEM-VPN-Rekey") ──> Ratcheted Rekey Secret
+        ├──> SHAKE-256("CH-KEM-Tunnel-Rekey") ──> Ratcheted Rekey Secret
         │         input: [old_master_secret || fresh_KEM_secret]
         │
-        └──> SHAKE-256("CH-KEM-VPN-ClientFinished/ServerFinished")
+        └──> SHAKE-256("CH-KEM-Tunnel-ClientFinished/ServerFinished")
                   input: [shared_secret || transcript]
                   output: verify_data (32B)
 ```
@@ -240,7 +240,7 @@ Ticket Secret (PSK, 32B)
         │
         └──> Fresh CH-KEM Exchange ──> Fresh Secret (32B)
                 │
-                └──> SHAKE-256("CH-KEM-VPN-Resumption")
+                └──> SHAKE-256("CH-KEM-Tunnel-Resumption")
                           input: [PSK || Fresh Secret]
                           output: Resumed Master Secret (32B)
 ```
@@ -273,7 +273,7 @@ The rekey protocol performs a fresh CH-KEM exchange and **ratchets** the new sec
 by mixing the current master secret with the fresh KEM output:
 
 ```
-new_master = SHAKE-256("CH-KEM-VPN-Rekey", [old_master || fresh_KEM_secret])
+new_master = SHAKE-256("CH-KEM-Tunnel-Rekey", [old_master || fresh_KEM_secret])
 ```
 
 This ensures forward secrecy: compromise of a single rekey does not expose prior

@@ -1,4 +1,4 @@
-// Package crypto implements cryptographic primitives for the Quantum-Go VPN.
+// Package crypto implements cryptographic primitives for the Quantum-Go tunnel.
 //
 // This file (buffer_pool.go) provides buffer pooling to reduce memory allocations
 // during encryption/decryption, which is critical for high-throughput scenarios.

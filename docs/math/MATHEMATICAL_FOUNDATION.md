@@ -22,7 +22,7 @@
 
 ## 1. Introduction
 
-This document provides the mathematical foundation for the Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM) implemented in Quantum-Go. CH-KEM is designed to provide quantum-resistant security for VPN encryption while maintaining backward compatibility with classical cryptographic guarantees.
+This document provides the mathematical foundation for the Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM) implemented in Quantum-Go. CH-KEM is designed to provide quantum-resistant security for tunnel encryption while maintaining backward compatibility with classical cryptographic guarantees.
 
 ### 1.1 Security Goals
 

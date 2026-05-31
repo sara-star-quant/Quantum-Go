@@ -1,4 +1,4 @@
-// Package integration provides end-to-end integration tests for the Quantum-Go VPN system.
+// Package integration provides end-to-end integration tests for the Quantum-Go tunnel system.
 //
 // These tests verify the complete flow from handshake to encrypted data transfer.
 package integration

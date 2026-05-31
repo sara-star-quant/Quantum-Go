@@ -1,4 +1,4 @@
-// Package crypto provides cryptographic primitives for the Quantum-Go VPN system.
+// Package crypto provides cryptographic primitives for the Quantum-Go tunnel system.
 // This package wraps Go's standard library cryptographic functions with additional
 // safety checks and consistent error handling.
 //

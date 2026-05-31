@@ -19,7 +19,7 @@ const (
 	HealthStatusUnhealthy HealthStatus = "unhealthy"
 )
 
-// HealthCheck provides health check functionality for the VPN service.
+// HealthCheck provides health check functionality for the tunnel service.
 type HealthCheck struct {
 	mu        sync.RWMutex
 	checks    map[string]CheckFunc
@@ -289,7 +289,7 @@ func NewServer(cfg ServerConfig) *Server {
 		cfg.Collector = Global()
 	}
 	if cfg.Namespace == "" {
-		cfg.Namespace = "quantum_vpn"
+		cfg.Namespace = "quantum_tunnel"
 	}
 
 	s := &Server{

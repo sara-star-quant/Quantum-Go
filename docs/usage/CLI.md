@@ -1,11 +1,11 @@
-# Command-Line Tool (quantum-vpn)
+# Command-Line Tool (quantum-tunnel)
 
-The `quantum-vpn` tool provides interactive demos, examples, and benchmarking utilities.
+The `quantum-tunnel` tool provides interactive demos, examples, and benchmarking utilities.
 
 ## Installation
 
 ```bash
-go install github.com/sara-star-quant/quantum-go/cmd/quantum-vpn@latest
+go install github.com/sara-star-quant/quantum-go/cmd/quantum-tunnel@latest
 ```
 
 Or build from source:
@@ -13,7 +13,7 @@ Or build from source:
 ```bash
 git clone https://github.com/sara-star-quant/quantum-go
 cd quantum-go
-go build -o quantum-vpn ./cmd/quantum-vpn/
+go build -o quantum-tunnel ./cmd/quantum-tunnel/
 ```
 
 ## Demo Mode
@@ -22,16 +22,16 @@ Run an encrypted interactive chat session:
 
 ```bash
 # Terminal 1: Start server
-quantum-vpn demo --mode server --addr :8443
+quantum-tunnel demo --mode server --addr :8443
 
 # Terminal 2: Connect client
-quantum-vpn demo --mode client --addr localhost:8443
+quantum-tunnel demo --mode client --addr localhost:8443
 
 # Interactive mode (type messages)
-quantum-vpn demo --mode client --addr localhost:8443 --message "-"
+quantum-tunnel demo --mode client --addr localhost:8443 --message "-"
 
 # Verbose output (show handshake details)
-quantum-vpn demo --mode server --addr :8443 --verbose
+quantum-tunnel demo --mode server --addr :8443 --verbose
 ```
 
 ### Observability (Server Mode)
@@ -40,7 +40,7 @@ Expose Prometheus metrics and health endpoints alongside the demo server:
 
 ```bash
 # Start demo server with observability endpoints
-quantum-vpn demo --mode server --addr :8443 --obs-addr :9090
+quantum-tunnel demo --mode server --addr :8443 --obs-addr :9090
 ```
 
 Set `--obs-addr ""` to disable the observability server.
@@ -52,20 +52,20 @@ Endpoints:
 - `http://localhost:9090/readyz` (readiness)
 
 Rate limiting metrics (Prometheus counters):
-- `quantum_vpn_rate_limit_connections_total`
-- `quantum_vpn_rate_limit_handshakes_total`
+- `quantum_tunnel_rate_limit_connections_total`
+- `quantum_tunnel_rate_limit_handshakes_total`
 
 Logging and tracing controls:
 
 ```bash
 # Structured logs and tracing options
-quantum-vpn demo --mode server --log-level info --log-format json --tracing otel
+quantum-tunnel demo --mode server --log-level info --log-format json --tracing otel
 ```
 
 Note: OpenTelemetry tracing requires building with the `otel` tag, for example:
 
 ```bash
-go build -tags otel -o quantum-vpn ./cmd/quantum-vpn
+go build -tags otel -o quantum-tunnel ./cmd/quantum-tunnel
 ```
 
 ## Benchmark Mode
@@ -74,19 +74,19 @@ Test performance on your hardware:
 
 ```bash
 # Benchmark 100 stream (TCP) handshakes
-quantum-vpn bench --handshakes 100
+quantum-tunnel bench --handshakes 100
 
 # Benchmark 100 datagram (UDP) handshakes
-quantum-vpn bench --datagram-handshakes 100
+quantum-tunnel bench --datagram-handshakes 100
 
 # Benchmark throughput for 30 seconds
-quantum-vpn bench --throughput --duration 30s
+quantum-tunnel bench --throughput --duration 30s
 
 # Benchmark 1GB data transfer with ChaCha20-Poly1305
-quantum-vpn bench --throughput --size 1GB --cipher chacha20
+quantum-tunnel bench --throughput --size 1GB --cipher chacha20
 
 # Run all benchmarks
-quantum-vpn bench --handshakes 100 --throughput --size 500MB
+quantum-tunnel bench --handshakes 100 --throughput --size 500MB
 ```
 
 ### Verified Performance (Apple M1 Pro, Go 1.26.3, loopback)
@@ -104,7 +104,7 @@ quantum-vpn bench --handshakes 100 --throughput --size 500MB
 View standard implementation patterns directly in your terminal:
 
 ```bash
-quantum-vpn example
+quantum-tunnel example
 ```
 
 Covers:

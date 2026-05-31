@@ -28,7 +28,7 @@ func (pw *promWriter) writef(format string, args ...interface{}) {
 }
 
 // NewPrometheusExporter creates a new Prometheus exporter for the given collector.
-// The namespace is prepended to all metric names (e.g., "quantum_vpn").
+// The namespace is prepended to all metric names (e.g., "quantum_tunnel").
 func NewPrometheusExporter(c *Collector, namespace string) *PrometheusExporter {
 	return &PrometheusExporter{
 		collector: c,

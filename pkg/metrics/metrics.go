@@ -1,4 +1,4 @@
-// Package metrics provides observability primitives for the quantum-go VPN library.
+// Package metrics provides observability primitives for the quantum-go tunnel library.
 //
 // The package includes:
 //   - Counter, Gauge, and Histogram metric types

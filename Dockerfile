@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for Quantum-Go
-# Produces minimal Docker image with quantum-vpn binary
+# Produces minimal Docker image with quantum-tunnel binary
 
 # Build stage
 FROM golang:1.26-alpine AS builder
@@ -26,8 +26,8 @@ ARG GIT_COMMIT
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags "-X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT} -s -w" \
-    -o /quantum-vpn \
-    ./cmd/quantum-vpn
+    -o /quantum-tunnel \
+    ./cmd/quantum-tunnel
 
 # Final stage
 FROM alpine:latest
@@ -40,10 +40,10 @@ RUN addgroup -g 1000 quantum && \
     adduser -D -u 1000 -G quantum quantum
 
 # Copy binary from builder
-COPY --from=builder /quantum-vpn /usr/local/bin/quantum-vpn
+COPY --from=builder /quantum-tunnel /usr/local/bin/quantum-tunnel
 
 # Set ownership
-RUN chown quantum:quantum /usr/local/bin/quantum-vpn
+RUN chown quantum:quantum /usr/local/bin/quantum-tunnel
 
 # Switch to non-root user
 USER quantum
@@ -52,14 +52,14 @@ USER quantum
 EXPOSE 8443
 
 # Set entrypoint
-ENTRYPOINT ["/usr/local/bin/quantum-vpn"]
+ENTRYPOINT ["/usr/local/bin/quantum-tunnel"]
 
 # Default command
 CMD ["help"]
 
 # Labels
 LABEL org.opencontainers.image.title="Quantum-Go"
-LABEL org.opencontainers.image.description="Quantum-Resistant VPN Encryption using CH-KEM (ML-KEM-1024 + X25519)"
+LABEL org.opencontainers.image.description="Quantum-Resistant Tunnel Encryption using CH-KEM (ML-KEM-1024 + X25519)"
 LABEL org.opencontainers.image.url="https://github.com/sara-star-quant/quantum-go"
 LABEL org.opencontainers.image.source="https://github.com/sara-star-quant/quantum-go"
 LABEL org.opencontainers.image.licenses="MIT"
