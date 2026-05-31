@@ -66,9 +66,23 @@ func containsBytes(set [][]byte, want []byte) bool {
 }
 
 // BenchmarkDatagramRecvBatch measures loopback receive throughput through the
-// batched path (run with -benchmem). A background goroutine floods the socket so
-// recv always has data to drain.
+// batched path (run with -benchmem). Compare against BenchmarkDatagramRecvSingle
+// to see the recvmmsg syscall-amortization win.
 func BenchmarkDatagramRecvBatch(b *testing.B) {
+	benchRecv(b, func(rx *net.UDPConn) batchIO { return newBatchIO(rx) })
+}
+
+// BenchmarkDatagramRecvSingle measures the same loopback receive throughput
+// through the portable one-datagram-per-syscall fallback, so the batched
+// benchmark above has a same-machine baseline to compare against.
+func BenchmarkDatagramRecvSingle(b *testing.B) {
+	benchRecv(b, func(rx *net.UDPConn) batchIO { return newFallbackIO(rx) })
+}
+
+// benchRecv floods a loopback socket and drains it through the batchIO that newIO
+// returns, so the batched and single-shot receive paths share one harness.
+func benchRecv(b *testing.B, newIO func(*net.UDPConn) batchIO) {
+	b.Helper()
 	rx, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
 		b.Fatalf("listen: %v", err)
@@ -93,7 +107,7 @@ func BenchmarkDatagramRecvBatch(b *testing.B) {
 		}
 	}()
 
-	bio := newBatchIO(rx)
+	bio := newIO(rx)
 	b.SetBytes(int64(len(payload)))
 	b.ReportAllocs()
 	b.ResetTimer()
