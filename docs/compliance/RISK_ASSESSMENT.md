@@ -397,4 +397,3 @@ type ReplayWindow struct {
 ---
 
 *Document Version: 1.0*
-*Classification: Internal*
