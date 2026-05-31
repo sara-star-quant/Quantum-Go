@@ -113,10 +113,11 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
 		return nil, err
 	}
 	ds := &datagramSession{
-		inbox:    make(chan inboundMsg, inboxCap),
-		peerAddr: dst,
-		recvCh:   make(chan []byte, dataInboxCap),
-		closed:   make(chan struct{}),
+		inbox:      make(chan inboundMsg, inboxCap),
+		peerAddr:   dst,
+		recvCh:     make(chan []byte, dataInboxCap),
+		closed:     make(chan struct{}),
+		rekeyInbox: make(chan []byte, 4),
 	}
 	idx, err := ep.registry.add(ds)
 	if err != nil {
