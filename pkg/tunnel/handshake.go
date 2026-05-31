@@ -88,6 +88,21 @@ type Handshake struct {
 	ticketSecret  []byte         // Initiator's secret for the ticket
 	ticketManager *TicketManager // Server ticket manager to verify
 	resumed       bool           // Whether this is a resumed session
+
+	// datagram selects InitializeDatagramKeys (epoch-keyed, derived nonces) over
+	// the stream InitializeKeys at completion. The datagram FSM sets it; the
+	// stream path leaves it false and is byte-for-byte unchanged.
+	datagram bool
+}
+
+// initializeSessionKeys installs traffic keys at handshake completion, choosing
+// the datagram key setup (derived nonce prefixes + epoch 0) when this handshake
+// runs over the datagram transport, and the stream setup otherwise.
+func (h *Handshake) initializeSessionKeys() error {
+	if h.datagram {
+		return h.session.InitializeDatagramKeys(h.sharedSecret, h.session.CipherSuite)
+	}
+	return h.session.InitializeKeys(h.sharedSecret, h.session.CipherSuite)
 }
 
 // NewHandshake creates a new handshake for the given session.
@@ -278,7 +293,7 @@ func (h *Handshake) ProcessServerFinished(data []byte) error {
 	}
 
 	// Initialize session with traffic keys
-	if err := h.session.InitializeKeys(h.sharedSecret, h.session.CipherSuite); err != nil {
+	if err := h.initializeSessionKeys(); err != nil {
 		return err
 	}
 
@@ -464,7 +479,7 @@ func (h *Handshake) CreateServerFinished() ([]byte, error) {
 	}
 
 	// Initialize session with traffic keys
-	if err := h.session.InitializeKeys(h.sharedSecret, h.session.CipherSuite); err != nil {
+	if err := h.initializeSessionKeys(); err != nil {
 		return nil, err
 	}
 

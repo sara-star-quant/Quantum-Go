@@ -94,6 +94,33 @@ func (w *DatagramReplayWindow) Check(seq uint64) bool {
 	}
 }
 
+// Admissible reports whether seq would be accepted by Check without recording it.
+// The datagram recv path uses it to cheaply reject obvious replays and too-old
+// sequences before doing the (relatively expensive) AEAD Open, so a flood of
+// replayed captured frames cannot force a decryption each. The authoritative
+// record still happens in Check after authentication succeeds. Admissible is safe
+// for concurrent use.
+func (w *DatagramReplayWindow) Admissible(seq uint64) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if !w.seen {
+		return true
+	}
+	switch {
+	case seq > w.highSeq:
+		return true
+	case seq == w.highSeq:
+		return false
+	default:
+		diff := w.highSeq - seq
+		if diff >= w.size {
+			return false
+		}
+		return !w.testBit(diff)
+	}
+}
+
 // advance shifts the bitmap toward higher bit positions by delta, dropping bits
 // that fall off the high end of the window. Existing bit i moves to bit i+delta.
 func (w *DatagramReplayWindow) advance(delta uint64) {

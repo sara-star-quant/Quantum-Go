@@ -39,9 +39,36 @@ const maxIndexAllocAttempts = 100
 // goroutine and the receive loop need no shared lock; session is written once by
 // the handshake goroutine and published via acceptCh / the dial return.
 type datagramSession struct {
-	index   uint32             // the local connection index we assigned (peer echoes it)
-	inbox   chan inboundMsg    // reassembled handshake messages for this session's goroutine
-	session *Session           // set once the handshake establishes
+	index   uint32          // the local connection index we assigned (peer echoes it)
+	inbox   chan inboundMsg // reassembled handshake messages for this session's goroutine
+	session *Session        // set once the handshake establishes
+
+	// Set once at establishment, then read-only. peerIndex is the index the peer
+	// assigned to us (we echo it as RecvIndex when sending so the peer demuxes by
+	// it); peerAddr is the peer's current address (the data-path send target, and
+	// the rebinding anchor for roaming); recvCh delivers decrypted application
+	// payloads to the DatagramConn.
+	peerIndex uint32
+	peerAddr  net.Addr
+	recvCh    chan []byte
+	closed    chan struct{}
+	closeOnce sync.Once
+}
+
+// dataInboxCap buffers decrypted application datagrams between the receive loop
+// and the DatagramConn reader. The receive loop delivers non-blocking, so a slow
+// reader drops datagrams (UDP semantics) rather than stalling the whole endpoint.
+const dataInboxCap = 64
+
+// teardown removes the session from the registry and signals its conn closed. It
+// is idempotent and must be called WITHOUT holding the registry lock.
+func (ds *datagramSession) teardown(r *connRegistry) {
+	r.remove(ds.index)
+	ds.closeOnce.Do(func() {
+		if ds.closed != nil {
+			close(ds.closed)
+		}
+	})
 }
 
 // connRegistry maps the random connection indices we assign to their sessions
@@ -120,6 +147,21 @@ func (r *connRegistry) count() int {
 	return len(r.byIndex)
 }
 
+// idleSince returns established sessions whose last datagram activity predates
+// cutoffNanos. It only snapshots under the lock; the caller tears the victims down
+// afterwards (teardown re-acquires the lock, so holding it here would deadlock).
+func (r *connRegistry) idleSince(cutoffNanos int64) []*datagramSession {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var idle []*datagramSession
+	for _, ds := range r.byIndex {
+		if ds.session != nil && ds.session.lastActivityNanos.Load() < cutoffNanos {
+			idle = append(idle, ds)
+		}
+	}
+	return idle
+}
+
 // tryAddHalfOpen increments the half-open count for source and returns false if
 // the per-source cap is already reached (the caller must then drop the new
 // handshake attempt). Pair every successful call with releaseHalfOpen.
@@ -182,6 +224,10 @@ type DatagramEndpoint struct {
 	rtoInitial time.Duration
 	rtoMax     time.Duration
 
+	// idleTimeout is how long an established session may be idle before the reaper
+	// tears it down; defaulted from constants, overridable for fast tests.
+	idleTimeout time.Duration
+
 	closeOnce sync.Once
 	done      chan struct{}
 }
@@ -195,9 +241,10 @@ func NewDatagramEndpoint(conn net.PacketConn) *DatagramEndpoint {
 		registry:   newConnRegistry(),
 		reasm:      NewReassembler(0, 0, 0),
 		acceptCh:   make(chan *datagramSession, 16),
-		rtoInitial: time.Duration(constants.DatagramHandshakeInitialTimeoutMillis) * time.Millisecond,
-		rtoMax:     time.Duration(constants.DatagramHandshakeMaxTimeoutMillis) * time.Millisecond,
-		done:       make(chan struct{}),
+		rtoInitial:  time.Duration(constants.DatagramHandshakeInitialTimeoutMillis) * time.Millisecond,
+		rtoMax:      time.Duration(constants.DatagramHandshakeMaxTimeoutMillis) * time.Millisecond,
+		idleTimeout: time.Duration(constants.DatagramIdleTimeoutSeconds) * time.Second,
+		done:        make(chan struct{}),
 	}
 }
 
@@ -216,6 +263,7 @@ func (e *DatagramEndpoint) Close() error {
 // routeDatagram until the endpoint is closed. Callers run it in their own
 // goroutine (go ep.Serve()). It returns when the underlying conn is closed.
 func (e *DatagramEndpoint) Serve() {
+	go e.reapIdle()
 	buf := make([]byte, constants.DatagramMTU+512)
 	for {
 		n, src, err := e.conn.ReadFrom(buf)
@@ -225,6 +273,32 @@ func (e *DatagramEndpoint) Serve() {
 		data := make([]byte, n)
 		copy(data, buf[:n])
 		_ = e.routeDatagram(src, data)
+	}
+}
+
+// reapIdle tears down sessions with no datagram activity within idleTimeout. It
+// snapshots victims under the registry lock, then tears them down outside it.
+// There is no FIN over UDP, so idle reaping is the primary teardown mechanism.
+func (e *DatagramEndpoint) reapIdle() {
+	interval := e.idleTimeout / 4
+	if interval <= 0 {
+		interval = time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-e.done:
+			return
+		case <-ticker.C:
+			cutoff := time.Now().Add(-e.idleTimeout).UnixNano()
+			for _, ds := range e.registry.idleSince(cutoff) {
+				if ds.session != nil {
+					ds.session.Close()
+				}
+				ds.teardown(e.registry)
+			}
+		}
 	}
 }
 
@@ -261,26 +335,53 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 			return perr
 		}
 		ds := e.registry.lookup(hdr.RecvIndex)
-		if ds == nil {
-			return nil // unknown index: drop (no error, no state created)
+		if ds == nil || ds.session == nil {
+			return nil // unknown index / not yet established: drop (no state created)
 		}
-		// TODO: hand (hdr, body) to ds.session's datagram recv path — epoch-keyed
-		// cipher selection + AEAD open with the derived nonce
-		// (AAD = DatagramAAD(data)) + global replay window check.
-		_, _ = ds, body
+		// peek -> authenticate -> commit. Admissible cheaply rejects obvious
+		// replays and too-old sequences before the AEAD Open, so replayed captured
+		// frames cannot force a decryption each. The window is only recorded (Check)
+		// after authentication succeeds, so a spoofed sequence cannot advance it.
+		if !ds.session.dgramReplay.Admissible(hdr.Seq) {
+			return nil
+		}
+		pt, oerr := ds.session.DatagramOpen(hdr.Epoch, hdr.Seq, body, protocol.DatagramAAD(data))
+		if oerr != nil {
+			return nil // authentication failed: drop
+		}
+		if !ds.session.dgramReplay.Check(hdr.Seq) {
+			return nil // duplicate that slipped past the peek: drop
+		}
+		ds.session.BytesReceived.Add(int64(len(pt)))
+		ds.session.PacketsRecv.Add(1)
+		select {
+		case ds.recvCh <- pt:
+		default: // slow reader: drop (UDP semantics)
+		}
 		return nil
 	case protocol.DatagramFrameClose:
-		hdr, _, perr := protocol.ParseDatagramHeader(data)
+		hdr, body, perr := protocol.ParseDatagramHeader(data)
 		if perr != nil {
 			return perr
 		}
-		if ds := e.registry.lookup(hdr.RecvIndex); ds != nil {
-			// TODO: a CLOSE carries a seq + AEAD tag like a data frame and MUST be
-			// authenticated (AEAD open with AAD = the header) before teardown;
-			// otherwise an off-path attacker who learns the index could kill the
-			// session. Do nothing here for now; teardown is driven by the idle reaper.
-			_ = ds
+		ds := e.registry.lookup(hdr.RecvIndex)
+		if ds == nil || ds.session == nil {
+			return nil
 		}
+		// A CLOSE is authenticated like a data frame (AEAD tag over the header):
+		// teardown only on a verified, replay-fresh CLOSE, so an off-path attacker
+		// who learns the index cannot kill the session.
+		if !ds.session.dgramReplay.Admissible(hdr.Seq) {
+			return nil
+		}
+		if _, oerr := ds.session.DatagramOpen(hdr.Epoch, hdr.Seq, body, protocol.DatagramAAD(data)); oerr != nil {
+			return nil
+		}
+		if !ds.session.dgramReplay.Check(hdr.Seq) {
+			return nil
+		}
+		ds.session.Close()
+		ds.teardown(e.registry)
 		return nil
 	default:
 		return nil // unknown or reserved frame type (e.g. RETRY, not yet handled): drop
