@@ -224,11 +224,14 @@ func ParseDatagramHandshake(data []byte) (DatagramHandshakeHeader, []byte, error
 		off += cookieLen
 	}
 	fragment := data[off:]
-	// FragLength must describe exactly the fragment bytes present, and the
-	// fragment must fit within the declared total message length.
-	if int(h.FragLength) != len(fragment) {
+	// The bytes present must cover at least FragLength; any extra trailing bytes
+	// are optional anti-fingerprinting padding (see tunnel.fragmentHandshake) and
+	// are sliced off here, so neither reassembly nor the handshake transcript ever
+	// sees them. An unpadded frame has len(fragment) == FragLength and is unchanged.
+	if len(fragment) < int(h.FragLength) {
 		return DatagramHandshakeHeader{}, nil, qerrors.ErrInvalidMessage
 	}
+	fragment = fragment[:h.FragLength]
 	if int(h.FragOffset)+int(h.FragLength) > int(h.TotalLength) {
 		return DatagramHandshakeHeader{}, nil, qerrors.ErrInvalidMessage
 	}

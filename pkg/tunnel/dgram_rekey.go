@@ -180,8 +180,10 @@ func (s *Session) completeDatagramRekey(epoch uint8, respBody []byte, kp *chkem.
 // fragmentRekey splits a rekey control body into datagram HANDSHAKE frames carrying
 // the rekey message type and the sealing epoch. The reassembler keys fragments by
 // (SenderIndex, MsgType), independent of the handshake, so rekey and handshake
-// reassembly never collide.
-func fragmentRekey(ds *datagramSession, epoch uint8, msgType protocol.MessageType, body []byte) ([][]byte, error) {
+// reassembly never collide. pad applies the same uniform-size padding as the
+// handshake (rekey is the same PQ sub-handshake mid-session, so it has the same
+// size fingerprint).
+func fragmentRekey(ds *datagramSession, epoch uint8, msgType protocol.MessageType, body []byte, pad bool) ([][]byte, error) {
 	base := protocol.DatagramHandshakeHeader{
 		DatagramHeader: protocol.DatagramHeader{
 			Type:      protocol.DatagramFrameHandshake,
@@ -191,7 +193,7 @@ func fragmentRekey(ds *datagramSession, epoch uint8, msgType protocol.MessageTyp
 		SenderIndex: ds.index,
 		MsgType:     msgType,
 	}
-	return fragmentHandshake(base, body)
+	return fragmentHandshake(base, body, pad)
 }
 
 // --- initiator driver ---
@@ -219,7 +221,7 @@ func (c *DatagramConn) Rekey() error {
 	if err != nil {
 		return err
 	}
-	frames, err := fragmentRekey(c.ds, epoch, protocol.MessageTypeDatagramRekeyInit, body)
+	frames, err := fragmentRekey(c.ds, epoch, protocol.MessageTypeDatagramRekeyInit, body, c.ep.padHandshake)
 	if err != nil {
 		return err
 	}
@@ -303,7 +305,7 @@ func (e *DatagramEndpoint) handleRekeyInit(ds *datagramSession, epoch uint8, bod
 	if err != nil {
 		return
 	}
-	frames, err := fragmentRekey(ds, respEpoch, protocol.MessageTypeDatagramRekeyResponse, respBody)
+	frames, err := fragmentRekey(ds, respEpoch, protocol.MessageTypeDatagramRekeyResponse, respBody, e.padHandshake)
 	if err != nil {
 		return
 	}
