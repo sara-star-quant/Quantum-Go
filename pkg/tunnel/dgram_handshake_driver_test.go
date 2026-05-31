@@ -284,7 +284,7 @@ func TestDgramHandshakeDriverLingerCoversRetransmitWindow(t *testing.T) {
 // and neither the driver tests nor the e2e (which would just pass, slowly) would
 // catch it.
 func TestDatagramEndpointPropagatesRTO(t *testing.T) {
-	ep := NewDatagramEndpoint(nil)
+	ep := mustEndpoint(t, nil)
 	ep.rtoInitial = 7 * time.Millisecond
 	ep.rtoMax = 70 * time.Millisecond
 

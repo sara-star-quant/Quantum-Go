@@ -8,6 +8,17 @@ import (
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
+// mustEndpoint builds a DatagramEndpoint for tests, failing on the CSPRNG-only
+// construction error so call sites stay terse.
+func mustEndpoint(t *testing.T, conn net.PacketConn) *DatagramEndpoint {
+	t.Helper()
+	ep, err := NewDatagramEndpoint(conn)
+	if err != nil {
+		t.Fatalf("NewDatagramEndpoint: %v", err)
+	}
+	return ep
+}
+
 func TestConnRegistryAddAssignsUniqueNonZeroIndices(t *testing.T) {
 	r := newConnRegistry()
 	const n = 1000
@@ -89,7 +100,7 @@ func TestConnRegistryHalfOpenCap(t *testing.T) {
 }
 
 func TestRouteDatagram(t *testing.T) {
-	e := NewDatagramEndpoint(nil) // routeDatagram does not touch the conn
+	e := mustEndpoint(t, nil) // routeDatagram does not touch the conn
 	src := &net.UDPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 51820}
 
 	// Too-short datagram: the type peek rejects it.

@@ -118,6 +118,7 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
 		recvCh:     make(chan []byte, dataInboxCap),
 		closed:     make(chan struct{}),
 		rekeyInbox: make(chan []byte, 4),
+		retryCh:    make(chan []byte, 1),
 	}
 	idx, err := ep.registry.add(ds)
 	if err != nil {
@@ -165,12 +166,21 @@ type handshakeLoop struct {
 	peerIndex  uint32
 	seq        uint64
 
+	// cookie is the server's anti-DoS cookie echoed on ClientHello resends, set
+	// from a RETRY. retriesHonored bounds how many RETRYs we act on, so a forged
+	// RETRY stream (the index is guessable) cannot drive unbounded resends.
+	cookie         []byte
+	retriesHonored int
+
 	// established, if set, is called once when the session is keyed (responders
 	// surface it on acceptCh). Initiators leave it nil and take the session from
 	// run's return value.
 	established func()
 	surfaced    bool
 }
+
+// maxHonoredRetries bounds RETRY-driven ClientHello resends per handshake.
+const maxHonoredRetries = 3
 
 // run drives the handshake to completion or failure. The initiator sends the
 // first ClientHello; both roles then loop on {inbound, retransmit timer, close},
@@ -196,6 +206,8 @@ func (l *handshakeLoop) run() (*Session, error) {
 				l.peerIndex = m.sender
 			}
 			l.send(l.driver.onInbound(m.typ, m.body))
+		case cookie := <-l.retryCh():
+			l.onRetry(cookie)
 		case <-timer.C:
 			l.send(l.driver.onTimeout())
 		case <-l.ep.done:
@@ -211,6 +223,34 @@ func (l *handshakeLoop) run() (*Session, error) {
 		return nil, errHandshakeFailed
 	}
 	return l.ds.session, nil
+}
+
+// retryCh returns the session's RETRY-cookie channel, or nil for a responder
+// (which has none). A nil channel makes the run-loop's RETRY select case block
+// forever, so only initiators ever react to a RETRY.
+func (l *handshakeLoop) retryCh() chan []byte {
+	if l.ds == nil {
+		return nil
+	}
+	return l.ds.retryCh
+}
+
+// onRetry reacts to a server anti-DoS RETRY: adopt the cookie and re-send the
+// cached ClientHello carrying it. It acts only while the cached flight is still
+// the ClientHello (a RETRY is meaningless once the handshake has advanced) and is
+// bounded by maxHonoredRetries, so a forged RETRY stream (the index is guessable)
+// cannot drive unbounded resends.
+func (l *handshakeLoop) onRetry(cookie []byte) {
+	if l.retriesHonored >= maxHonoredRetries {
+		return
+	}
+	flight := l.driver.cachedFlight()
+	if len(flight) == 0 || flight[0].typ != protocol.MessageTypeClientHello {
+		return
+	}
+	l.retriesHonored++
+	l.cookie = cookie
+	l.send(flight)
 }
 
 // maybeSurface publishes the session the instant it is established (so a responder
@@ -242,6 +282,12 @@ func (l *handshakeLoop) send(msgs []hsMessage) {
 			},
 			SenderIndex: l.localIndex,
 			MsgType:     m.typ,
+		}
+		// Echo the server's anti-DoS cookie only on the ClientHello; the server
+		// only ever demands it on the bootstrap flight, and later flights are
+		// already gated through by then (knownSource is true).
+		if m.typ == protocol.MessageTypeClientHello {
+			base.Cookie = l.cookie
 		}
 		frames, err := fragmentHandshake(base, m.body)
 		if err != nil {

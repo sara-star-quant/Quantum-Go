@@ -18,8 +18,8 @@ import (
 func dgramPair(t *testing.T, seed uint64, drop, dup, reorder float64) (client, server *DatagramConn, epA, epB *DatagramEndpoint) {
 	t.Helper()
 	connA, connB := memPipe(seed, drop, dup, reorder)
-	epA = NewDatagramEndpoint(connA)
-	epB = NewDatagramEndpoint(connB)
+	epA = mustEndpoint(t, connA)
+	epB = mustEndpoint(t, connB)
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
 		ep.rtoInitial = 2 * time.Millisecond
 		ep.rtoMax = 20 * time.Millisecond
@@ -236,7 +236,7 @@ func TestDatagramCloseAuth(t *testing.T) {
 // established session with stale activity is torn down within a few tick periods.
 func TestDatagramIdleReap(t *testing.T) {
 	connA, _ := memPipe(6, 0, 0, 0)
-	ep := NewDatagramEndpoint(connA)
+	ep := mustEndpoint(t, connA)
 	ep.idleTimeout = 40 * time.Millisecond
 	defer func() { _ = ep.Close() }()
 

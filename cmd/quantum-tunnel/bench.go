@@ -123,7 +123,11 @@ func benchDatagramHandshakes(count int) {
 		fmt.Fprintf(os.Stderr, "Error: Failed to open responder socket: %v\n", err)
 		os.Exit(1)
 	}
-	responder := tunnel.NewDatagramEndpoint(responderConn)
+	responder, err := tunnel.NewDatagramEndpoint(responderConn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to create responder endpoint: %v\n", err)
+		os.Exit(1)
+	}
 	go responder.Serve()
 	defer func() { _ = responder.Close() }()
 
@@ -132,7 +136,11 @@ func benchDatagramHandshakes(count int) {
 		fmt.Fprintf(os.Stderr, "Error: Failed to open initiator socket: %v\n", err)
 		os.Exit(1)
 	}
-	initiator := tunnel.NewDatagramEndpoint(initiatorConn)
+	initiator, err := tunnel.NewDatagramEndpoint(initiatorConn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to create initiator endpoint: %v\n", err)
+		os.Exit(1)
+	}
 	go initiator.Serve()
 	defer func() { _ = initiator.Close() }()
 
