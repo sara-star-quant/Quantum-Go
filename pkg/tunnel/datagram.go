@@ -325,20 +325,39 @@ type DatagramEndpoint struct {
 	// tears it down; defaulted from constants, overridable for fast tests.
 	idleTimeout time.Duration
 
+	// padHandshake, when set, zero-pads every outbound handshake and rekey datagram
+	// to DatagramMTU so the flight is uniform-size on the wire (anti-fingerprinting).
+	// Off by default (it costs bandwidth); set via WithHandshakePadding. The receiver
+	// always tolerates padding regardless of this flag, so a padding peer interops
+	// with a non-padding one; full hiding needs both ends to enable it.
+	padHandshake bool
+
 	closeOnce sync.Once
 	done      chan struct{}
+}
+
+// DatagramEndpointOption configures a DatagramEndpoint at construction.
+type DatagramEndpointOption func(*DatagramEndpoint)
+
+// WithHandshakePadding pads every outbound handshake and rekey datagram to the
+// datagram MTU, so ClientHello, ServerHello, and the rekey sub-handshake are all
+// size-indistinguishable on the wire. It trades bandwidth for resistance to
+// passive size-based traffic analysis; the data plane is never padded. For full
+// effect both peers should enable it.
+func WithHandshakePadding() DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.padHandshake = true }
 }
 
 // NewDatagramEndpoint wraps a PacketConn (a *net.UDPConn in production, or a
 // fault-injecting conn in tests). It does not start the receive loop; callers
 // start it explicitly so tests can drive routing deterministically. It returns an
 // error only if the per-endpoint cookie secret cannot be drawn from the CSPRNG.
-func NewDatagramEndpoint(conn net.PacketConn) (*DatagramEndpoint, error) {
+func NewDatagramEndpoint(conn net.PacketConn, opts ...DatagramEndpointOption) (*DatagramEndpoint, error) {
 	cookie, err := newCookieSigner(nil)
 	if err != nil {
 		return nil, err
 	}
-	return &DatagramEndpoint{
+	e := &DatagramEndpoint{
 		conn:                    conn,
 		registry:                newConnRegistry(),
 		reasm:                   NewReassembler(0, 0, 0),
@@ -349,7 +368,11 @@ func NewDatagramEndpoint(conn net.PacketConn) (*DatagramEndpoint, error) {
 		rtoMax:                  time.Duration(constants.DatagramHandshakeMaxTimeoutMillis) * time.Millisecond,
 		idleTimeout:             time.Duration(constants.DatagramIdleTimeoutSeconds) * time.Second,
 		done:                    make(chan struct{}),
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(e)
+	}
+	return e, nil
 }
 
 // underCookiePressure reports whether the endpoint should demand a

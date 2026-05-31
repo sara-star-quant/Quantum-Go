@@ -28,7 +28,13 @@ func maxHandshakeFragmentPayload(cookieLen int) int {
 // TotalLength per fragment and assigns each frame a distinct, increasing
 // sequence number starting at base.Seq. The frames reassemble in any order on
 // the peer.
-func fragmentHandshake(base protocol.DatagramHandshakeHeader, msg []byte) ([][]byte, error) {
+//
+// When pad is set, each frame is zero-extended to exactly DatagramMTU. The
+// padding sits after the fragment payload and is excluded from FragLength, so the
+// receiver's parser slices it off before reassembly - it never enters the message
+// or the handshake transcript. This makes every handshake datagram uniform-size
+// (anti-fingerprinting); it does not equalize the number of datagrams per flight.
+func fragmentHandshake(base protocol.DatagramHandshakeHeader, msg []byte, pad bool) ([][]byte, error) {
 	total := len(msg)
 	if total == 0 || total > constants.DatagramMaxHandshakeMessageSize {
 		return nil, qerrors.ErrMessageTooLarge
@@ -53,6 +59,9 @@ func fragmentHandshake(base protocol.DatagramHandshakeHeader, msg []byte) ([][]b
 		frame, err := protocol.EncodeDatagramHandshake(h, msg[off:end])
 		if err != nil {
 			return nil, err
+		}
+		if pad && len(frame) < constants.DatagramMTU {
+			frame = append(frame, make([]byte, constants.DatagramMTU-len(frame))...)
 		}
 		frames = append(frames, frame)
 		seq++
