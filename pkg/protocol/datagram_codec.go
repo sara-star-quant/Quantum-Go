@@ -234,3 +234,28 @@ func ParseDatagramHandshake(data []byte) (DatagramHandshakeHeader, []byte, error
 	}
 	return h, fragment, nil
 }
+
+// EncodeDatagramRetry builds a RETRY frame: the common header carrying the
+// client's connection index (so the client demuxes it like any other frame),
+// followed by an opaque cookie the client must echo in its next ClientHello.
+// Epoch and Seq are unused (zero); RETRY is sent before any key or replay state
+// exists for the peer.
+func EncodeDatagramRetry(recvIndex uint32, cookie []byte) []byte {
+	buf := make([]byte, DatagramHeaderSize+len(cookie))
+	putDatagramHeader(buf, DatagramHeader{Type: DatagramFrameRetry, RecvIndex: recvIndex})
+	copy(buf[DatagramHeaderSize:], cookie)
+	return buf
+}
+
+// ParseDatagramRetry parses a RETRY frame and returns the client connection
+// index it targets and the opaque cookie. The returned cookie aliases data.
+func ParseDatagramRetry(data []byte) (recvIndex uint32, cookie []byte, err error) {
+	h, body, err := ParseDatagramHeader(data)
+	if err != nil {
+		return 0, nil, err
+	}
+	if h.Type != DatagramFrameRetry {
+		return 0, nil, qerrors.ErrInvalidMessage
+	}
+	return h.RecvIndex, body, nil
+}

@@ -22,7 +22,8 @@ is updated as pieces land.
 | Data path (DatagramConn Send/Recv/Close) + idle reaper | `pkg/tunnel/dgram_conn.go`, `datagram.go` | implemented |
 | Reliable rekey transport (fragmented sub-handshake) | `pkg/tunnel/dgram_rekey.go` | implemented |
 | Zero-alloc / batched I/O | - | future |
-| Stateless cookie / anti-amplification / roaming | - | future |
+| Stateless cookie / anti-amplification | done |
+| Authenticated roaming | future |
 
 ## Wire format
 

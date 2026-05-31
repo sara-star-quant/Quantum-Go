@@ -206,3 +206,14 @@ func (d *dgramDriver) done() bool {
 
 // session returns the underlying session (established once established() is true).
 func (d *dgramDriver) session() *Session { return d.fsm.hs.session }
+
+// cachedFlight returns the FSM's last outbound message for an on-demand resend
+// (the initiator replaying its ClientHello after a RETRY), or nil if the driver
+// is terminal or has nothing cached. It does not touch the retransmit backoff or
+// ceiling, so a resend on a RETRY is independent of the loss-timer budget.
+func (d *dgramDriver) cachedFlight() []hsMessage {
+	if d.status != driverRunning || d.fsm.cached == nil {
+		return nil
+	}
+	return []hsMessage{*d.fsm.cached}
+}
