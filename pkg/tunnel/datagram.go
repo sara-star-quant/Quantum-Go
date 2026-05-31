@@ -18,6 +18,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
@@ -53,7 +54,27 @@ type datagramSession struct {
 	recvCh    chan []byte
 	closed    chan struct{}
 	closeOnce sync.Once
+
+	// Rekey transport state. The initiator (handshake RoleInitiator) drives rekey
+	// from a goroutine and reads RekeyResponse bodies off rekeyInbox; the responder
+	// answers reactively on the receive loop and caches its sealed response frames
+	// (keyed by the epoch the rekey transitions from) to replay verbatim on a
+	// retransmitted RekeyInit, never re-encapsulating. rekeyActive guards a single
+	// in-flight initiator rekey.
+	rekeyInbox      chan []byte
+	rekeyActive     atomic.Bool
+	rekeyRespMu     sync.Mutex
+	rekeyRespFrom   uint8
+	rekeyRespValid  bool
+	rekeyRespFrames [][]byte
 }
+
+// beginRekey claims the single initiator rekey slot, returning false if one is
+// already in flight.
+func (ds *datagramSession) beginRekey() bool { return ds.rekeyActive.CompareAndSwap(false, true) }
+
+// endRekey releases the initiator rekey slot.
+func (ds *datagramSession) endRekey() { ds.rekeyActive.Store(false) }
 
 // dataInboxCap buffers decrypted application datagrams between the receive loop
 // and the DatagramConn reader. The receive loop delivers non-blocking, so a slow
@@ -237,10 +258,10 @@ type DatagramEndpoint struct {
 // start it explicitly so tests can drive routing deterministically.
 func NewDatagramEndpoint(conn net.PacketConn) *DatagramEndpoint {
 	return &DatagramEndpoint{
-		conn:       conn,
-		registry:   newConnRegistry(),
-		reasm:      NewReassembler(0, 0, 0),
-		acceptCh:   make(chan *datagramSession, 16),
+		conn:        conn,
+		registry:    newConnRegistry(),
+		reasm:       NewReassembler(0, 0, 0),
+		acceptCh:    make(chan *datagramSession, 16),
 		rtoInitial:  time.Duration(constants.DatagramHandshakeInitialTimeoutMillis) * time.Millisecond,
 		rtoMax:      time.Duration(constants.DatagramHandshakeMaxTimeoutMillis) * time.Millisecond,
 		idleTimeout: time.Duration(constants.DatagramIdleTimeoutSeconds) * time.Second,
@@ -326,7 +347,12 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 			return aerr
 		}
 		if complete {
-			e.deliverHandshake(src, h, msg)
+			switch h.MsgType {
+			case protocol.MessageTypeDatagramRekeyInit, protocol.MessageTypeDatagramRekeyResponse:
+				e.handleRekey(h, msg)
+			default:
+				e.deliverHandshake(src, h, msg)
+			}
 		}
 		return nil
 	case protocol.DatagramFrameData:

@@ -47,6 +47,13 @@ const (
 	// MessageTypeClose signals graceful connection termination.
 	MessageTypeClose MessageType = 0x14
 
+	// MessageTypeDatagramRekeyInit carries the rekey initiator's fresh CH-KEM
+	// public key over the datagram transport (a fragmented, authenticated message).
+	MessageTypeDatagramRekeyInit MessageType = 0x15
+	// MessageTypeDatagramRekeyResponse carries the rekey responder's CH-KEM
+	// ciphertext back to the initiator over the datagram transport.
+	MessageTypeDatagramRekeyResponse MessageType = 0x16
+
 	// MessageTypeAlert signals an error condition.
 	MessageTypeAlert MessageType = 0xF0
 )
@@ -72,6 +79,10 @@ func (mt MessageType) String() string {
 		return "Pong"
 	case MessageTypeClose:
 		return "Close"
+	case MessageTypeDatagramRekeyInit:
+		return "DatagramRekeyInit"
+	case MessageTypeDatagramRekeyResponse:
+		return "DatagramRekeyResponse"
 	case MessageTypeAlert:
 		return "Alert"
 	default:
