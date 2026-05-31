@@ -18,7 +18,9 @@ is updated as pieces land.
 | Datagram constants | `internal/constants/constants.go` | implemented |
 | Endpoint + demux + dial/accept | `pkg/tunnel/datagram.go` | implemented |
 | Reliable handshake FSM + driver + wiring | `pkg/tunnel/dgram_handshake_{fsm,driver,wire}.go` | implemented |
-| Epoch cipher selection (recv) | `pkg/tunnel/session.go` (datagram path) | pending |
+| Epoch cipher selection + derived-nonce seal/open | `pkg/tunnel/dgram_session.go` | implemented |
+| Data path (DatagramConn Send/Recv/Close) + idle reaper | `pkg/tunnel/dgram_conn.go`, `datagram.go` | implemented |
+| Reliable rekey transport (fragmented sub-handshake) | - | future |
 | Zero-alloc / batched I/O | - | future |
 | Stateless cookie / anti-amplification / roaming | - | future |
 

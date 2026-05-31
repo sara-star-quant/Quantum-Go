@@ -22,6 +22,7 @@ type datagramEpoch struct {
 	epoch       uint8
 	sendCipher  *crypto.AEAD
 	recvCipher  *crypto.AEAD
+	startSeq    uint64    // send sequence at which this epoch became current
 	retireAfter time.Time // zero for the current epoch; set when demoted to prev
 }
 
@@ -75,7 +76,7 @@ func (s *Session) InitializeDatagramKeys(masterSecret []byte, cipherSuite consta
 	s.sendCipher = sendCipher
 	s.recvCipher = recvCipher
 	s.dgramEpochs = &datagramEpochState{
-		cur: &datagramEpoch{epoch: 0, sendCipher: sendCipher, recvCipher: recvCipher},
+		cur: &datagramEpoch{epoch: 0, sendCipher: sendCipher, recvCipher: recvCipher, startSeq: 0},
 	}
 	s.dgramReplay = NewDatagramReplayWindow()
 	s.lastActivityNanos.Store(time.Now().UnixNano())
@@ -136,11 +137,19 @@ func datagramNonce(dst, prefix []byte, seq uint64) {
 // nextDatagramSeq and builds the header (whose epoch must equal datagramSendEpoch).
 func (s *Session) DatagramSeal(aad []byte, seq uint64, plaintext []byte) ([]byte, error) {
 	s.mu.RLock()
-	cipher := s.dgramEpochs.cur.sendCipher
+	cur := s.dgramEpochs.cur
 	prefix := s.sendNoncePrefix
 	s.mu.RUnlock()
-	if cipher == nil {
+	if cur == nil || cur.sendCipher == nil {
 		return nil, qerrors.ErrInvalidState
+	}
+	cipher := cur.sendCipher
+	// Bound how many datagrams one epoch's key seals. Until reliable datagram
+	// rekey lands (a fragmented sub-handshake, since CH-KEM keys exceed the MTU),
+	// a session lives within a single epoch; this cap forces teardown rather than
+	// overrunning the key's safe usage limit.
+	if seq-cur.startSeq >= constants.MaxPacketsBeforeRekey {
+		return nil, qerrors.ErrNonceExhausted
 	}
 
 	var nonce [constants.AESNonceSize]byte
@@ -222,7 +231,7 @@ func (s *Session) AdvanceDatagramEpoch(newSecret []byte) (uint8, error) {
 	old.retireAfter = time.Now().Add(time.Duration(constants.DatagramPrevEpochRetainSeconds) * time.Second)
 	newEpoch := old.epoch + 1
 	s.dgramEpochs.prev = old
-	s.dgramEpochs.cur = &datagramEpoch{epoch: newEpoch, sendCipher: send, recvCipher: recv}
+	s.dgramEpochs.cur = &datagramEpoch{epoch: newEpoch, sendCipher: send, recvCipher: recv, startSeq: s.sendSeq.Load()}
 
 	// Adopt the new secret as the master secret for any subsequent rekey ratchet.
 	s.masterSecret = make([]byte, len(newSecret))
