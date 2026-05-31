@@ -144,10 +144,10 @@ func (s *Session) DatagramSeal(aad []byte, seq uint64, plaintext []byte) ([]byte
 		return nil, qerrors.ErrInvalidState
 	}
 	cipher := cur.sendCipher
-	// Bound how many datagrams one epoch's key seals. Until reliable datagram
-	// rekey lands (a fragmented sub-handshake, since CH-KEM keys exceed the MTU),
-	// a session lives within a single epoch; this cap forces teardown rather than
-	// overrunning the key's safe usage limit.
+	// Hard cap on how many datagrams one epoch's key seals. The initiator starts a
+	// background rekey well before this (datagramRekeyHighWater), so reaching the
+	// cap means rekey could not complete; refuse rather than overrun the key's safe
+	// usage limit.
 	if seq-cur.startSeq >= constants.MaxPacketsBeforeRekey {
 		return nil, qerrors.ErrNonceExhausted
 	}

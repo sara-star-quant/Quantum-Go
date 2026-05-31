@@ -20,7 +20,7 @@ is updated as pieces land.
 | Reliable handshake FSM + driver + wiring | `pkg/tunnel/dgram_handshake_{fsm,driver,wire}.go` | implemented |
 | Epoch cipher selection + derived-nonce seal/open | `pkg/tunnel/dgram_session.go` | implemented |
 | Data path (DatagramConn Send/Recv/Close) + idle reaper | `pkg/tunnel/dgram_conn.go`, `datagram.go` | implemented |
-| Reliable rekey transport (fragmented sub-handshake) | - | future |
+| Reliable rekey transport (fragmented sub-handshake) | `pkg/tunnel/dgram_rekey.go` | implemented |
 | Zero-alloc / batched I/O | - | future |
 | Stateless cookie / anti-amplification / roaming | - | future |
 
@@ -77,6 +77,19 @@ needs no wire change.
   the previous epoch's receive cipher for a bounded window (by sequence distance
   and time) before retiring it. Epoch is mod 256; only adjacent epochs are ever
   live, so wrap is unambiguous.
+
+- **Reliable rekey as a fragmented sub-handshake.** The CH-KEM public key and
+  ciphertext (~1.6 KB each) exceed the MTU, so a rekey is a small two-message
+  exchange (RekeyInit -> RekeyResponse) reusing the handshake fragmenter and
+  reassembler. Each message is authenticated under the *current* epoch (so an
+  off-path party cannot inject a rekey) and carries its own derived nonce. Only
+  the handshake initiator drives rekey, which avoids both sides rekeying at once;
+  it retransmits the RekeyInit with backoff until the response arrives. The
+  responder answers reactively and caches its sealed response, replaying it
+  verbatim on a retransmitted RekeyInit - it must never re-run the randomized
+  `Encapsulate`, which would derive a different secret and desync the epochs. The
+  initiator starts a rekey in the background well before the per-epoch key budget
+  is exhausted (`pkg/tunnel/dgram_rekey.go`).
 
 - **Single, wide, never-reset replay window.** A multi-word sliding bitmap
   (`DatagramReplayWindowBits`, default 1024) over the monotonic sequence,
