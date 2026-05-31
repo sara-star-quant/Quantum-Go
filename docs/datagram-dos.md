@@ -77,9 +77,37 @@ which the off-path attacker cannot receive.
   and invalidates outstanding cookies, costing one extra `RETRY` round trip on the
   next attempt. Periodic in-process rotation (with a two-generation accept window
   so a rotation does not invalidate in-flight cookies) is future work.
-- **Roaming authentication** (binding a moved peer address to an
-  AEAD-authenticated, replay-fresh frame) is tracked separately and not part of
-  this hardening.
+- **Per-source pressure scoping** and a deeper anti-amplification budget are
+  future refinements.
+
+## Authenticated roaming
+
+A datagram session is demultiplexed by its connection index, not its source
+address, so it can survive a peer changing address (NAT rebind, network change).
+The receive loop advances the session's send address (`peerAddr`) to a new source
+only when a DATA frame from that source both authenticates (AEAD Open succeeds)
+and is replay-fresh (passes the replay window's `Check`). See `routeDatagram` in
+`pkg/tunnel/datagram.go`.
+
+Gating the address update on the replay-window `Check` is what makes roaming safe:
+
+- A captured frame replayed from an attacker-controlled address fails `Check`
+  (the sequence is already recorded), so an off-path attacker cannot steer the
+  session to an address it controls, even though it can copy ciphertext verbatim.
+- A forged frame fails AEAD Open, so it never reaches the address update and never
+  advances the replay window (the window is recorded only after authentication).
+- Only the genuine peer, which holds the send key and produces fresh sequence
+  numbers, can move the path.
+
+`peerAddr` is an atomic pointer: the receive loop is the sole writer, while the
+send and rekey goroutines read it lock-free, so roaming adds no contention to the
+data send path. `DatagramConn.RemoteAddr` reflects the current address and so
+follows the peer across a roam.
+
+Residual: there is no explicit path-validation challenge before adopting a new
+address (the authenticated-and-fresh test is the validation). An on-path attacker
+who can both observe and inject within the live sequence window is out of scope,
+as it is for the data plane generally.
 
 ## Tests
 

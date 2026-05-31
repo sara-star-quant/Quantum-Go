@@ -80,11 +80,11 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, first inboundMsg) {
 		return
 	}
 	ds := &datagramSession{
-		inbox:    make(chan inboundMsg, inboxCap),
-		peerAddr: src,
-		recvCh:   make(chan []byte, dataInboxCap),
-		closed:   make(chan struct{}),
+		inbox:  make(chan inboundMsg, inboxCap),
+		recvCh: make(chan []byte, dataInboxCap),
+		closed: make(chan struct{}),
 	}
+	ds.setPeerAddr(src)
 	idx, err := e.registry.add(ds)
 	if err != nil {
 		e.registry.releaseHalfOpen(src.String())
@@ -114,12 +114,12 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
 	}
 	ds := &datagramSession{
 		inbox:      make(chan inboundMsg, inboxCap),
-		peerAddr:   dst,
 		recvCh:     make(chan []byte, dataInboxCap),
 		closed:     make(chan struct{}),
 		rekeyInbox: make(chan []byte, 4),
 		retryCh:    make(chan []byte, 1),
 	}
+	ds.setPeerAddr(dst)
 	idx, err := ep.registry.add(ds)
 	if err != nil {
 		return nil, err

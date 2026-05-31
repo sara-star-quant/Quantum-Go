@@ -22,14 +22,13 @@ import (
 // not safe for concurrent callers (it shares no buffer in this phase, but the
 // contract is reserved for the zero-alloc path).
 type DatagramConn struct {
-	ep   *DatagramEndpoint
-	ds   *datagramSession
-	peer net.Addr
+	ep *DatagramEndpoint
+	ds *datagramSession
 }
 
 // newDatagramConn wraps an established datagram session.
 func newDatagramConn(ep *DatagramEndpoint, ds *datagramSession) *DatagramConn {
-	return &DatagramConn{ep: ep, ds: ds, peer: ds.peerAddr}
+	return &DatagramConn{ep: ep, ds: ds}
 }
 
 // Send encrypts p into a single DATA datagram and writes it to the peer. It
@@ -52,7 +51,7 @@ func (c *DatagramConn) Send(p []byte) error {
 		return err
 	}
 	frame := append(header, ct...)
-	if _, err := c.ep.conn.WriteTo(frame, c.peer); err != nil {
+	if _, err := c.ep.conn.WriteTo(frame, c.ds.currentPeerAddr()); err != nil {
 		return err
 	}
 	s.BytesSent.Add(int64(len(p)))
@@ -92,7 +91,7 @@ func (c *DatagramConn) Close() error {
 			Seq:       seq,
 		})
 		if tag, err := s.DatagramSeal(header, seq, nil); err == nil {
-			_, _ = c.ep.conn.WriteTo(append(header, tag...), c.peer)
+			_, _ = c.ep.conn.WriteTo(append(header, tag...), c.ds.currentPeerAddr())
 		}
 		s.Close()
 	}
@@ -100,8 +99,10 @@ func (c *DatagramConn) Close() error {
 	return nil
 }
 
-// RemoteAddr returns the peer's current address.
-func (c *DatagramConn) RemoteAddr() net.Addr { return c.peer }
+// RemoteAddr returns the peer's current address, which follows the peer across
+// roaming (NAT rebind / path change), so it may differ from the dial/accept
+// address after the peer moves.
+func (c *DatagramConn) RemoteAddr() net.Addr { return c.ds.currentPeerAddr() }
 
 // Session exposes the underlying Session (statistics, state).
 func (c *DatagramConn) Session() *Session { return c.ds.session }
