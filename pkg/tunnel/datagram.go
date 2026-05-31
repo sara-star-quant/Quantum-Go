@@ -44,16 +44,21 @@ type datagramSession struct {
 	inbox   chan inboundMsg // reassembled handshake messages for this session's goroutine
 	session *Session        // set once the handshake establishes
 
-	// Set once at establishment, then read-only. peerIndex is the index the peer
-	// assigned to us (we echo it as RecvIndex when sending so the peer demuxes by
-	// it); peerAddr is the peer's current address (the data-path send target, and
-	// the rebinding anchor for roaming); recvCh delivers decrypted application
-	// payloads to the DatagramConn.
+	// peerIndex is the index the peer assigned to us (we echo it as RecvIndex when
+	// sending so the peer demuxes by it); set once at establishment, then read-only.
+	// recvCh delivers decrypted application payloads to the DatagramConn.
 	peerIndex uint32
-	peerAddr  net.Addr
 	recvCh    chan []byte
 	closed    chan struct{}
 	closeOnce sync.Once
+
+	// peerAddr is the peer's current address: the data-path send target and the
+	// roaming anchor. Unlike peerIndex it is mutable - the receive loop advances it
+	// when an AEAD-authenticated, replay-fresh frame arrives from a new source (see
+	// routeDatagram), so a session follows a peer across NAT rebind/roaming. It is
+	// atomic because the receive loop writes it while the send/rekey goroutines read
+	// it. Access only via currentPeerAddr/setPeerAddr.
+	peerAddr atomic.Pointer[net.Addr]
 
 	// Rekey transport state. The initiator (handshake RoleInitiator) drives rekey
 	// from a goroutine and reads RekeyResponse bodies off rekeyInbox; the responder
@@ -73,6 +78,17 @@ type datagramSession struct {
 	// cookie. Only the initiator (DialDatagram) creates it.
 	retryCh chan []byte
 }
+
+// currentPeerAddr returns the peer's current send address, or nil if unset.
+func (ds *datagramSession) currentPeerAddr() net.Addr {
+	if p := ds.peerAddr.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
+// setPeerAddr updates the peer's send address (roaming, or the initial set).
+func (ds *datagramSession) setPeerAddr(a net.Addr) { ds.peerAddr.Store(&a) }
 
 // beginRekey claims the single initiator rekey slot, returning false if one is
 // already in flight.
@@ -117,6 +133,21 @@ func newConnRegistry() *connRegistry {
 		bySource: make(map[string]*datagramSession),
 		halfOpen: make(map[string]int),
 	}
+}
+
+// addrEqual reports whether two peer addresses are the same endpoint. It compares
+// *net.UDPAddr without allocating (the data hot path runs it per received frame to
+// detect roaming) and falls back to String() for other net.Addr implementations.
+func addrEqual(a, b net.Addr) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	au, aok := a.(*net.UDPAddr)
+	bu, bok := b.(*net.UDPAddr)
+	if aok && bok {
+		return au.Port == bu.Port && au.IP.Equal(bu.IP) && au.Zone == bu.Zone
+	}
+	return a.String() == b.String()
 }
 
 // randIndex draws a non-zero random 32-bit connection index. Index 0 is reserved
@@ -443,6 +474,14 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 		}
 		if !ds.session.dgramReplay.Check(hdr.Seq) {
 			return nil // duplicate that slipped past the peek: drop
+		}
+		// Authenticated roaming: a frame that authenticated AND was replay-fresh is
+		// proof the peer holds the send key and is live at src, so follow it there if
+		// it moved (NAT rebind / roaming). Gating on Check is what makes this safe -
+		// a replayed captured frame fails Check above, so an off-path attacker cannot
+		// steer the session to an address it controls.
+		if !addrEqual(ds.currentPeerAddr(), src) {
+			ds.setPeerAddr(src)
 		}
 		ds.session.BytesReceived.Add(int64(len(pt)))
 		ds.session.PacketsRecv.Add(1)
