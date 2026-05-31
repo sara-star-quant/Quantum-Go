@@ -42,6 +42,7 @@ func FuzzParseDatagramHandshake(f *testing.F) {
 		Cookie:      []byte("a-cookie"),
 	}, []byte("hello"))
 	f.Add(seed)
+	f.Add(append(append([]byte(nil), seed...), make([]byte, 32)...)) // trailing padding
 	f.Add([]byte{0x01})
 	f.Add([]byte(nil))
 

@@ -121,6 +121,22 @@ gap and enforces a strict anti-amplification bound, and a session follows a
 roaming peer only on an authenticated, replay-fresh frame; see
 [datagram-dos.md](datagram-dos.md).
 
+### Optional handshake padding (anti-fingerprinting)
+
+`WithHandshakePadding()` zero-pads every handshake and rekey datagram to the MTU,
+so ClientHello, ServerHello, and the rekey sub-handshake are size-indistinguishable
+on the wire, defeating passive size-based traffic analysis of "a CH-KEM handshake is
+happening here." It is off by default (it costs bandwidth) and never pads the data
+plane. The padding rides after the fragment payload and outside the declared
+fragment length, so the receiver slices it off before reassembly: it never enters
+the reassembled message or the handshake transcript, cannot smuggle bytes into the
+authenticated handshake, and does not change per-source reassembly memory (sized by
+the declared total length, not the datagram size). It also cannot weaken the
+anti-amplification bound, since a RETRY is only ever sent when it is no larger than
+the triggering datagram. The receiver tolerates padding unconditionally, so a
+padding peer interoperates with a non-padding one; for full effect enable it on both
+ends.
+
 ## Out of scope (future)
 
 GSO/GRO offload, PMTU discovery, multipath, and a parallel per-datagram crypto

@@ -289,7 +289,7 @@ func (l *handshakeLoop) send(msgs []hsMessage) {
 		if m.typ == protocol.MessageTypeClientHello {
 			base.Cookie = l.cookie
 		}
-		frames, err := fragmentHandshake(base, m.body)
+		frames, err := fragmentHandshake(base, m.body, l.ep.padHandshake)
 		if err != nil {
 			return
 		}

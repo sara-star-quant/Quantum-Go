@@ -21,7 +21,7 @@ func TestFragmentHandshake_RoundTrip(t *testing.T) {
 		MsgType:        protocol.MessageTypeClientHello,
 	}
 
-	frames, err := fragmentHandshake(base, msg)
+	frames, err := fragmentHandshake(base, msg, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestFragmentHandshake_RoundTrip(t *testing.T) {
 
 func TestFragmentHandshake_SingleFragment(t *testing.T) {
 	base := protocol.DatagramHandshakeHeader{MsgType: protocol.MessageTypeClientHello}
-	frames, err := fragmentHandshake(base, []byte("short message"))
+	frames, err := fragmentHandshake(base, []byte("short message"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,11 +67,11 @@ func TestFragmentHandshake_SingleFragment(t *testing.T) {
 
 func TestFragmentHandshake_RejectsEmptyAndOversize(t *testing.T) {
 	base := protocol.DatagramHandshakeHeader{MsgType: protocol.MessageTypeClientHello}
-	if _, err := fragmentHandshake(base, nil); err == nil {
+	if _, err := fragmentHandshake(base, nil, false); err == nil {
 		t.Fatal("an empty message must be rejected")
 	}
 	big := make([]byte, constants.DatagramMaxHandshakeMessageSize+1)
-	if _, err := fragmentHandshake(base, big); err == nil {
+	if _, err := fragmentHandshake(base, big, false); err == nil {
 		t.Fatal("an oversize message must be rejected")
 	}
 }
