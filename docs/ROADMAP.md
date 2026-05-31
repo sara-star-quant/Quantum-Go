@@ -248,6 +248,11 @@ produce identical nonce sequences, breaking GCM confidentiality guarantees.
 - [ ] Update all 10 `NewAEAD()` call sites to pass session ID prefix
 - [ ] Add test: verify two sessions with same key produce different nonces
 
+> Scope: this item tracks the **stream/TCP** path. The datagram transport already
+> ships session-bound nonces by construction (`nonce = derived 4-byte prefix || seq`,
+> never transmitted; see UDP / Datagram Transport below). This item closes the gap
+> on the stream path only.
+
 **Reference:** NIST SP 800-38D Section 8.2 (deterministic nonce construction)
 
 #### 3. Resumption Ticket Server Binding
@@ -280,6 +285,11 @@ Current replay window is only 64 packets. At 1 Gbps with 1500-byte packets
 - [ ] Add test: verify out-of-order packets within window are accepted
 - [ ] Add benchmark: measure replay check overhead at larger window sizes
 
+> Scope: this item tracks the **stream/TCP** path's 64-entry window. The datagram
+> transport already uses a 1024-bit multi-word window (`DatagramReplayWindow`,
+> `pkg/tunnel/replay.go`), never reset across rekey. This item carries that design
+> back to the stream path.
+
 #### 6. Rekey Activation Confirmation (DONE in v0.0.10, via trial decryption)
 **Priority:** Critical (was Medium) | **Effort:** Medium
 
@@ -310,6 +320,50 @@ decryption (try current, fall back to pending). Reliable under load and high lat
 - [ ] Add FIPS build/test job: `go test -tags fips -race ./...`
 - [ ] Add `go vet -race` to CI matrix
 - [ ] Fix data race in benchmark tool (`atomic.AddInt64` for counters)
+
+---
+
+## UDP / Datagram Transport (Phased Epic)
+
+A connectionless datagram transport that complements the TCP/stream transport.
+The two share the crypto core (`pkg/chkem`, `pkg/crypto`, and the `Session`
+key/rekey secret derivation) but have **separate wire formats** with no interop,
+by design. See [datagram-transport.md](datagram-transport.md) for the wire format
+and design rationale.
+
+The datagram path is a clean-sheet design that improves on (does not inherit) the
+stream stack: a derived, never-transmitted nonce (`prefix || seq`), demux by random
+connection index (NAT/roam survivable), explicit per-frame epoch for reorder-safe
+rekey, and a 1024-bit never-reset replay window. It therefore realizes roadmap
+items #2 (nonce session binding) and #5 (replay window expansion) natively for UDP.
+
+### Phase 1a - Functional data plane
+
+- [x] Datagram wire codec, fragmentation, bounded reassembler
+- [x] Endpoint + index demux + accept channel
+- [x] Reliable handshake (fragmented PQ flights, retransmission/backoff, flight cache)
+- [x] 1024-bit multi-word replay window
+- [ ] Per-session derived nonce prefix + datagram key init
+- [ ] Epoch-keyed cipher selection on the datagram recv path
+- [ ] Encrypted DATA send/recv + public `DatagramConn` (`Send`/`Recv`/`Close`/`Accept`)
+- [ ] Authenticated CLOSE (AEAD-verified before teardown)
+- [ ] Datagram rekey transport (reliable RekeyInit/Response over the lossy channel)
+- [ ] Idle-timeout reaper
+- [ ] Fault-injection test suite + loopback throughput baseline
+
+### Phase 1b - Performance
+
+- [ ] Zero-alloc steady-state data path (in-place AEAD into a reused buffer)
+- [ ] Batched syscalls (`recvmmsg`/`sendmmsg` via `golang.org/x/net` `ipv4`/`ipv6`)
+- [ ] Coarse deadlines / atomic activity timestamp (no per-packet `time.Now()`)
+
+### Phase 2 - DoS / amplification hardening
+
+- [ ] Stateless retry cookie (no server state until source proves reachability; reuses the reserved cookie field, no wire change)
+- [ ] Anti-amplification bound (never send more than received to an unverified source)
+- [ ] Authenticated address rebinding (roaming only after an AEAD-valid packet)
+- [ ] Threat-model doc + fuzz targets (parser, reassembler, cookie) + spoofed-source negative tests
+- [ ] Optional fixed-size datagram padding (traffic-analysis resistance)
 
 ---
 
