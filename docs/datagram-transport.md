@@ -22,9 +22,10 @@ is updated as pieces land.
 | Data path (DatagramConn Send/Recv/Close) + idle reaper | `pkg/tunnel/dgram_conn.go`, `datagram.go` | implemented |
 | Reliable rekey transport (fragmented sub-handshake) | `pkg/tunnel/dgram_rekey.go` | implemented |
 | Zero-alloc in-place AEAD send path | `pkg/crypto/aead_inplace.go`, `pkg/tunnel/dgram_session_inplace.go`, `dgram_conn.go` | implemented |
-| Batched recvmmsg/sendmmsg I/O | - | future |
+| Batched recvmmsg receive + sendmmsg flights (Linux; portable fallback) | `pkg/tunnel/dgram_batch{,_linux,_other}.go`, `datagram.go` | implemented |
 | Stateless cookie / anti-amplification | `pkg/tunnel/dgram_cookie.go`, `datagram.go` | implemented |
 | Authenticated roaming | `pkg/tunnel/datagram.go` | implemented |
+| Optional fixed-size handshake padding (anti-fingerprinting) | `pkg/tunnel/dgram_handshake.go`, `datagram.go`, `pkg/protocol/datagram_codec.go` | implemented |
 
 ## Wire format
 

@@ -94,10 +94,11 @@ quantum-tunnel bench --handshakes 100 --throughput --size 500MB
 - **Handshakes (datagram/UDP)**: ~1,300/sec (~760us each, full CH-KEM, sequential)
 - **Cipher throughput**: ~2.5 GB/s AES-256-GCM raw AEAD (ARMv8 Crypto Extensions); ~0.7 GB/s ChaCha20-Poly1305
 - **Single-tunnel throughput (stream/TCP)**: ~690 MB/s (5.5 Gb/s) end-to-end over TCP, sustained across automatic rekeys
+- **Datagram data path (UDP)**: encrypted, zero-alloc send (~3 GB/s isolated on M1 Pro darwin); one-way single-flow delivered goodput ~58 MB/s on macOS loopback (a loopback artifact) and ~1.8 Gb/s on Linux (container arm64, indicative)
 
-> The datagram (UDP) transport currently implements the handshake only; its encrypted data
-> path is not yet landed, so there is no datagram throughput number. End-to-end stream
-> throughput is currently allocation-bound and below the raw cipher rate.
+> The datagram data path is syscall-bound, not crypto-bound; macOS loopback has a slow
+> per-datagram socket path, so its single-flow number is a loopback artifact rather than a
+> transport limit. See the README Performance section for the platform breakdown.
 
 ## Example Mode
 

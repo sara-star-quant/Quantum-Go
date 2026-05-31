@@ -90,13 +90,12 @@ See [Quick Start Guide](docs/usage/QUICKSTART.md) for detailed examples.
 Hardware-accelerated where available (ARMv8 Crypto Extensions on Apple Silicon;
 AES-NI / AVX2 / hardware SHA-3 on x86-64). Go 1.26.3 (Green Tea GC).
 
-The stream transport is **TCP** (length-prefixed framing). A connectionless
-**UDP/datagram** transport is in progress: its handshake is implemented (fragmented PQ
-Hellos, retransmission with backoff, replay of cached flights), with the encrypted data
-path not yet landed, so only the datagram handshake rate appears below. For the stream
-path, two distinct numbers matter: the raw AEAD cipher rate, and the rate actually achieved
-end-to-end through a single tunnel (lower, currently allocation-bound; zero-copy data-plane
-work is tracked on the [roadmap](docs/ROADMAP.md)).
+Two transports share the crypto core: a **TCP/stream** transport (length-prefixed
+framing) and a connectionless **UDP/datagram** transport (separate wire format, no
+interop). The datagram path is complete end to end: fragmented PQ handshake with
+retransmission, an encrypted zero-alloc data plane, reliable rekey, a load-gated
+stateless anti-amplification cookie, authenticated roaming, batched `recvmmsg`
+receive on Linux, and optional fixed-size handshake padding.
 
 **Measured (Apple M1 Pro, Go 1.26.3, loopback):**
 
@@ -107,6 +106,33 @@ work is tracked on the [roadmap](docs/ROADMAP.md)).
 | Handshakes/sec (stream/TCP, full CH-KEM, sequential) | ~1,450 (~670 µs each) |
 | Handshakes/sec (datagram/UDP, full CH-KEM, sequential) | ~1,300 (~760 µs each) |
 | Single-tunnel throughput (stream/TCP, AES-GCM, end-to-end) | ~690 MB/s (5.5 Gb/s), sustained across rekeys |
+| Datagram send (seal + frame, isolated, zero-alloc steady state) | ~3.0 GB/s (~380 ns/op, 1 alloc/op) |
+| Datagram goodput (UDP, one-way single flow, full receive loop) | ~58 MB/s on macOS loopback; ~1.8 Gb/s on Linux (see below) |
+
+The datagram data path is **syscall-bound, not crypto-bound**: the isolated send
+path is ~3 GB/s, so per-datagram throughput is set by the send + receive syscalls,
+not the AEAD. macOS loopback has a slow per-datagram socket path, so the single-flow
+goodput there (~58 MB/s) is a loopback artifact, not a transport limit. On Linux the
+same single flow delivers far more:
+
+**Measured (Linux, Go 1.26, single flow, container arm64 - indicative, a VM depresses
+absolutes; relative figures are sound):**
+
+| Metric | Result |
+|--------|--------|
+| Datagram goodput (UDP, one-way single flow, delivered) | ~230 MB/s (~1.8 Gb/s) |
+| Datagram send (isolated, zero-alloc steady state) | ~1.2 GB/s |
+| Datagram receive, `recvmmsg` batch vs one syscall per datagram | ~945 vs ~830 MB/s (~+14%) |
+
+The end-to-end goodput is delivered throughput (the benchmark flow-controls the
+sender so dropped datagrams are never counted), the full path: seal, send, kernel,
+receive loop, demux, AEAD open, delivery. A CPU profile of that path is ~35% AES
+(already hardware-accelerated), ~30% syscalls, the rest framing/alloc/bookkeeping;
+work toward higher per-flow and multi-Gb aggregate throughput (GSO/GRO offload,
+pooled receive) is tracked on the [roadmap](docs/ROADMAP.md). Optional handshake
+padding (`WithHandshakePadding`) trades roughly +42% handshake bandwidth (a
+ClientHello flight grows from ~1700 to 2400 bytes) for uniform-size,
+fingerprint-resistant handshake datagrams; it never touches the data plane.
 
 **Estimated on other hardware** (extrapolated from cipher throughput; not yet
 independently measured; run the benchmark to verify):
