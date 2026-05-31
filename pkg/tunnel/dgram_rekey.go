@@ -240,8 +240,9 @@ func (c *DatagramConn) Rekey() error {
 			if attempts > constants.DatagramHandshakeMaxRetries {
 				return errRekeyTimeout
 			}
+			peer := c.ds.currentPeerAddr() // re-read so a mid-rekey roam is followed
 			for _, f := range frames {
-				_, _ = c.ep.conn.WriteTo(f, c.peer)
+				_, _ = c.ep.conn.WriteTo(f, peer)
 			}
 			attempts++
 			armTimer(timer, rto)
@@ -291,8 +292,9 @@ func (e *DatagramEndpoint) handleRekeyInit(ds *datagramSession, epoch uint8, bod
 	defer ds.rekeyRespMu.Unlock()
 
 	if ds.rekeyRespValid && ds.rekeyRespFrom == epoch {
+		peer := ds.currentPeerAddr()
 		for _, f := range ds.rekeyRespFrames {
-			_, _ = e.conn.WriteTo(f, ds.peerAddr)
+			_, _ = e.conn.WriteTo(f, peer)
 		}
 		return
 	}
@@ -312,7 +314,8 @@ func (e *DatagramEndpoint) handleRekeyInit(ds *datagramSession, epoch uint8, bod
 	ds.rekeyRespFrom = epoch
 	ds.rekeyRespFrames = frames
 	ds.rekeyRespValid = true
+	peer := ds.currentPeerAddr()
 	for _, f := range frames {
-		_, _ = e.conn.WriteTo(f, ds.peerAddr)
+		_, _ = e.conn.WriteTo(f, peer)
 	}
 }

@@ -22,8 +22,8 @@ is updated as pieces land.
 | Data path (DatagramConn Send/Recv/Close) + idle reaper | `pkg/tunnel/dgram_conn.go`, `datagram.go` | implemented |
 | Reliable rekey transport (fragmented sub-handshake) | `pkg/tunnel/dgram_rekey.go` | implemented |
 | Zero-alloc / batched I/O | - | future |
-| Stateless cookie / anti-amplification | done |
-| Authenticated roaming | future |
+| Stateless cookie / anti-amplification | `pkg/tunnel/dgram_cookie.go`, `datagram.go` | implemented |
+| Authenticated roaming | `pkg/tunnel/datagram.go` | implemented |
 
 ## Wire format
 
@@ -113,10 +113,12 @@ needs no wire change.
 
 Amplification is inherently low: the ~1.7 KB ClientHello must be fully received
 and reassembled before the comparable ServerHello is sent (response:request ≈
-1:1, not an amplifier). The current implementation additionally reuses the
-existing rate limiters and caps concurrent half-open handshakes per source and
-overall. A future stateless cookie will close the residual spoofed-source
-state-exhaustion gap and enforce a strict anti-amplification bound.
+1:1, not an amplifier). The implementation additionally reuses the existing rate
+limiters and caps concurrent half-open handshakes per source and overall. A
+load-gated stateless cookie closes the residual spoofed-source state-exhaustion
+gap and enforces a strict anti-amplification bound, and a session follows a
+roaming peer only on an authenticated, replay-fresh frame; see
+[datagram-dos.md](datagram-dos.md).
 
 ## Out of scope (future)
 
