@@ -18,12 +18,12 @@ func TestLinuxBatchIORecvLoopback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen rx: %v", err)
 	}
-	defer rx.Close()
+	defer func() { _ = rx.Close() }()
 	tx, err := net.DialUDP("udp", nil, rx.LocalAddr().(*net.UDPAddr))
 	if err != nil {
 		t.Fatalf("dial tx: %v", err)
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	bio := newBatchIO(rx)
 	if _, ok := bio.(*linuxBatchIO); !ok {
@@ -73,12 +73,12 @@ func BenchmarkDatagramRecvBatch(b *testing.B) {
 	if err != nil {
 		b.Fatalf("listen: %v", err)
 	}
-	defer rx.Close()
+	defer func() { _ = rx.Close() }()
 	tx, err := net.DialUDP("udp", nil, rx.LocalAddr().(*net.UDPAddr))
 	if err != nil {
 		b.Fatalf("dial: %v", err)
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	payload := make([]byte, 1200)
 	stop := make(chan struct{})
