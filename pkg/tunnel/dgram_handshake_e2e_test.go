@@ -156,8 +156,8 @@ func TestDgramHandshakeE2E(t *testing.T) {
 func runE2E(t *testing.T, seed uint64, drop, dup, reorder float64) {
 	t.Helper()
 	connA, connB := memPipe(seed, drop, dup, reorder)
-	epA := NewDatagramEndpoint(connA)
-	epB := NewDatagramEndpoint(connB)
+	epA := mustEndpoint(t, connA)
+	epB := mustEndpoint(t, connB)
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
 		ep.rtoInitial = 2 * time.Millisecond
 		ep.rtoMax = 20 * time.Millisecond
@@ -199,6 +199,60 @@ func runE2E(t *testing.T, seed uint64, drop, dup, reorder float64) {
 	if client == nil || server == nil {
 		t.Fatal("nil session(s) after handshake")
 	}
+	if client.State() != SessionStateEstablished || server.State() != SessionStateEstablished {
+		t.Fatalf("not established: client=%v server=%v", client.State(), server.State())
+	}
+	assertDataRoundTrip(t, client, server)
+	assertDataRoundTrip(t, server, client)
+}
+
+// TestDgramHandshakeCookieRoundTrip drives a full handshake with the responder
+// forced permanently under cookie pressure, so the initiator's first ClientHello
+// is answered with a RETRY. It asserts the initiator adopts the cookie, re-sends,
+// and the handshake then completes with working bidirectional data keys.
+func TestDgramHandshakeCookieRoundTrip(t *testing.T) {
+	connA, connB := memPipe(1, 0, 0, 0) // lossless: isolate the cookie round trip
+	epA := mustEndpoint(t, connA)
+	epB := mustEndpoint(t, connB)
+	epB.cookiePressureHighWater = 0 // responder always demands a cookie
+	for _, ep := range []*DatagramEndpoint{epA, epB} {
+		ep.rtoInitial = 2 * time.Millisecond
+		ep.rtoMax = 20 * time.Millisecond
+	}
+	go epA.Serve()
+	go epB.Serve()
+	defer func() { _ = epA.Close() }()
+	defer func() { _ = epB.Close() }()
+
+	type dialResult struct {
+		conn *DatagramConn
+		err  error
+	}
+	dialCh := make(chan dialResult, 1)
+	go func() {
+		c, err := DialDatagram(epA, connB.addr)
+		dialCh <- dialResult{c, err}
+	}()
+
+	var server *Session
+	select {
+	case ds := <-epB.acceptCh:
+		server = ds.session
+	case <-time.After(5 * time.Second):
+		t.Fatal("responder did not surface a session through the cookie gate")
+	}
+
+	var client *Session
+	select {
+	case r := <-dialCh:
+		if r.err != nil {
+			t.Fatalf("dial: %v", r.err)
+		}
+		client = r.conn.Session()
+	case <-time.After(5 * time.Second):
+		t.Fatal("dial did not complete through the cookie gate")
+	}
+
 	if client.State() != SessionStateEstablished || server.State() != SessionStateEstablished {
 		t.Fatalf("not established: client=%v server=%v", client.State(), server.State())
 	}

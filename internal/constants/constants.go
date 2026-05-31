@@ -220,6 +220,15 @@ const (
 	// sources.
 	DatagramMaxHalfOpenTotal = 1024
 
+	// DatagramCookiePressureHighWater is the load at which the datagram endpoint
+	// starts demanding a stateless return-routability cookie from new sources
+	// before committing handshake state (the QUIC-style anti-DoS posture). It is
+	// compared against both the in-progress reassembly source count and the global
+	// half-open count; either crossing it flips the endpoint into cookie-required
+	// mode. Set to half of DatagramMaxHalfOpenTotal so cookies engage well before
+	// the hard caps are reached, leaving headroom for the verified path.
+	DatagramCookiePressureHighWater = DatagramMaxHalfOpenTotal / 2
+
 	// DatagramReplayWindowBits is the width of the datagram anti-replay window.
 	DatagramReplayWindowBits = 1024
 

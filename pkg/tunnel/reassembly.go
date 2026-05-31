@@ -155,6 +155,16 @@ func (r *Reassembler) Drop(source string) {
 	r.mu.Unlock()
 }
 
+// sourceCount returns the number of sources with in-progress reassembly state.
+// The endpoint reads it as one of the cookie-pressure signals; it is only
+// consulted on the handshake-frame path (never the data hot path), so the lock
+// cost is irrelevant and a mirrored atomic is not worth the desync risk.
+func (r *Reassembler) sourceCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.bySource)
+}
+
 func (r *Reassembler) evictExpiredLocked() {
 	deadline := r.now().Add(-r.timeout)
 	for src, bufs := range r.bySource {

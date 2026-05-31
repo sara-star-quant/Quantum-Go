@@ -67,6 +67,11 @@ type datagramSession struct {
 	rekeyRespFrom   uint8
 	rekeyRespValid  bool
 	rekeyRespFrames [][]byte
+
+	// retryCh delivers a server anti-DoS cookie (from a RETRY frame) to an
+	// initiator handshake goroutine so it can re-send its ClientHello carrying the
+	// cookie. Only the initiator (DialDatagram) creates it.
+	retryCh chan []byte
 }
 
 // beginRekey claims the single initiator rekey slot, returning false if one is
@@ -99,10 +104,11 @@ func (ds *datagramSession) teardown(r *connRegistry) {
 // per-source caps are the active pre-auth memory bounds. A future stateless
 // cookie/retry exchange removes the spoofed-source vector entirely.
 type connRegistry struct {
-	mu       sync.Mutex
-	byIndex  map[uint32]*datagramSession
-	bySource map[string]*datagramSession // in-progress responder handshakes, keyed by source
-	halfOpen map[string]int              // source identity -> count of un-established sessions
+	mu            sync.Mutex
+	byIndex       map[uint32]*datagramSession
+	bySource      map[string]*datagramSession // in-progress responder handshakes, keyed by source
+	halfOpen      map[string]int              // source identity -> count of un-established sessions
+	halfOpenTotal int                         // sum of halfOpen across all sources (cookie-pressure signal)
 }
 
 func newConnRegistry() *connRegistry {
@@ -193,6 +199,7 @@ func (r *connRegistry) tryAddHalfOpen(source string) bool {
 		return false
 	}
 	r.halfOpen[source]++
+	r.halfOpenTotal++
 	return true
 }
 
@@ -201,11 +208,41 @@ func (r *connRegistry) tryAddHalfOpen(source string) bool {
 func (r *connRegistry) releaseHalfOpen(source string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if n := r.halfOpen[source]; n > 1 {
+	n := r.halfOpen[source]
+	if n == 0 {
+		return
+	}
+	if n > 1 {
 		r.halfOpen[source] = n - 1
 	} else {
 		delete(r.halfOpen, source)
 	}
+	r.halfOpenTotal--
+}
+
+// halfOpenLoad returns the global half-open count, one of the endpoint's
+// cookie-pressure signals.
+func (r *connRegistry) halfOpenLoad() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.halfOpenTotal
+}
+
+// knownSource reports whether an incoming handshake frame belongs to a source we
+// already track: an established session under index, or an in-progress responder
+// for src. The cookie gate lets known sources through unchallenged; gating on
+// "known" (not on RecvIndex == 0) is what stops an attacker from dodging the gate
+// by stamping a random nonzero RecvIndex on a spoofed bootstrap ClientHello.
+func (r *connRegistry) knownSource(index uint32, src string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if index != 0 {
+		if _, ok := r.byIndex[index]; ok {
+			return true
+		}
+	}
+	_, ok := r.bySource[src]
+	return ok
 }
 
 // addSource registers an in-progress responder handshake under its source so a
@@ -240,6 +277,14 @@ type DatagramEndpoint struct {
 	reasm    *Reassembler
 	acceptCh chan *datagramSession
 
+	// cookie mints and verifies stateless return-routability cookies for the
+	// anti-DoS gate (see dgram_cookie.go).
+	cookie *cookieSigner
+	// cookiePressureHighWater is the load at which the endpoint demands a cookie
+	// from new sources; defaulted from constants, lowered (in-package) for tests
+	// so pressure can be forced without thousands of real sources.
+	cookiePressureHighWater int
+
 	// rtoInitial/rtoMax bound handshake retransmission backoff; defaulted from
 	// constants, overridable (in-package) for fast tests.
 	rtoInitial time.Duration
@@ -255,18 +300,36 @@ type DatagramEndpoint struct {
 
 // NewDatagramEndpoint wraps a PacketConn (a *net.UDPConn in production, or a
 // fault-injecting conn in tests). It does not start the receive loop; callers
-// start it explicitly so tests can drive routing deterministically.
-func NewDatagramEndpoint(conn net.PacketConn) *DatagramEndpoint {
-	return &DatagramEndpoint{
-		conn:        conn,
-		registry:    newConnRegistry(),
-		reasm:       NewReassembler(0, 0, 0),
-		acceptCh:    make(chan *datagramSession, 16),
-		rtoInitial:  time.Duration(constants.DatagramHandshakeInitialTimeoutMillis) * time.Millisecond,
-		rtoMax:      time.Duration(constants.DatagramHandshakeMaxTimeoutMillis) * time.Millisecond,
-		idleTimeout: time.Duration(constants.DatagramIdleTimeoutSeconds) * time.Second,
-		done:        make(chan struct{}),
+// start it explicitly so tests can drive routing deterministically. It returns an
+// error only if the per-endpoint cookie secret cannot be drawn from the CSPRNG.
+func NewDatagramEndpoint(conn net.PacketConn) (*DatagramEndpoint, error) {
+	cookie, err := newCookieSigner(nil)
+	if err != nil {
+		return nil, err
 	}
+	return &DatagramEndpoint{
+		conn:                    conn,
+		registry:                newConnRegistry(),
+		reasm:                   NewReassembler(0, 0, 0),
+		acceptCh:                make(chan *datagramSession, 16),
+		cookie:                  cookie,
+		cookiePressureHighWater: constants.DatagramCookiePressureHighWater,
+		rtoInitial:              time.Duration(constants.DatagramHandshakeInitialTimeoutMillis) * time.Millisecond,
+		rtoMax:                  time.Duration(constants.DatagramHandshakeMaxTimeoutMillis) * time.Millisecond,
+		idleTimeout:             time.Duration(constants.DatagramIdleTimeoutSeconds) * time.Second,
+		done:                    make(chan struct{}),
+	}, nil
+}
+
+// underCookiePressure reports whether the endpoint should demand a
+// return-routability cookie from new sources. Either the in-progress reassembly
+// source count or the global half-open count crossing the high-water mark trips
+// it: reassembler occupancy catches a partial-fragment flood (nothing completes,
+// so the half-open count stays at zero), while the half-open count catches a
+// completed-ClientHello / CH-KEM flood.
+func (e *DatagramEndpoint) underCookiePressure() bool {
+	return e.reasm.sourceCount() >= e.cookiePressureHighWater ||
+		e.registry.halfOpenLoad() >= e.cookiePressureHighWater
 }
 
 // Close shuts the endpoint down and closes the underlying PacketConn. It is
@@ -342,6 +405,9 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 		if perr != nil {
 			return perr
 		}
+		if e.cookieGateRejects(src, h, data) {
+			return nil // dropped before any reassembly/CH-KEM state is committed
+		}
 		msg, complete, aerr := e.reasm.Add(src.String(), h, fragment)
 		if aerr != nil {
 			return aerr
@@ -409,7 +475,47 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 		ds.session.Close()
 		ds.teardown(e.registry)
 		return nil
+	case protocol.DatagramFrameRetry:
+		// A server's anti-DoS RETRY: hand the cookie to the initiator handshake
+		// named by RecvIndex so it can re-send its ClientHello carrying the cookie.
+		recvIndex, cookie, rerr := protocol.ParseDatagramRetry(data)
+		if rerr != nil {
+			return rerr
+		}
+		ds := e.registry.lookup(recvIndex)
+		if ds == nil || ds.retryCh == nil {
+			return nil // unknown index or not an initiator handshake: drop
+		}
+		select {
+		case ds.retryCh <- append([]byte(nil), cookie...):
+		default: // a RETRY is already queued: drop (the initiator only needs one)
+		}
+		return nil
 	default:
-		return nil // unknown or reserved frame type (e.g. RETRY, not yet handled): drop
+		return nil // unknown frame type: drop
 	}
+}
+
+// cookieGateRejects implements the stateless return-routability gate. Under load,
+// a handshake frame from a source we do not already track must echo a valid cookie
+// (return-routability proof) or it is dropped before committing any reassembly or
+// CH-KEM state. It answers a plausible bootstrap ClientHello first fragment with a
+// RETRY carrying a fresh cookie, but only when that RETRY is no larger than the
+// triggering datagram, so RETRY can never be an amplifier. It returns true when
+// the caller must drop the frame.
+func (e *DatagramEndpoint) cookieGateRejects(src net.Addr, h protocol.DatagramHandshakeHeader, data []byte) bool {
+	if !e.underCookiePressure() {
+		return false
+	}
+	if e.registry.knownSource(h.RecvIndex, src.String()) {
+		return false
+	}
+	if e.cookie.verify(src, h.Cookie) {
+		return false
+	}
+	retry := protocol.EncodeDatagramRetry(h.SenderIndex, e.cookie.issue(src))
+	if h.MsgType == protocol.MessageTypeClientHello && h.FragOffset == 0 && len(data) >= len(retry) {
+		_, _ = e.conn.WriteTo(retry, src)
+	}
+	return true
 }
