@@ -241,9 +241,7 @@ func (c *DatagramConn) Rekey() error {
 				return errRekeyTimeout
 			}
 			peer := c.ds.currentPeerAddr() // re-read so a mid-rekey roam is followed
-			for _, f := range frames {
-				_, _ = c.ep.conn.WriteTo(f, peer)
-			}
+			c.ep.batch.writeAll(frames, peer)
 			attempts++
 			armTimer(timer, rto)
 			if rto *= 2; rto > c.ep.rtoMax {
@@ -293,9 +291,7 @@ func (e *DatagramEndpoint) handleRekeyInit(ds *datagramSession, epoch uint8, bod
 
 	if ds.rekeyRespValid && ds.rekeyRespFrom == epoch {
 		peer := ds.currentPeerAddr()
-		for _, f := range ds.rekeyRespFrames {
-			_, _ = e.conn.WriteTo(f, peer)
-		}
+		e.batch.writeAll(ds.rekeyRespFrames, peer)
 		return
 	}
 	// Only a rekey transitioning from the current epoch is processed; stale or
@@ -315,7 +311,5 @@ func (e *DatagramEndpoint) handleRekeyInit(ds *datagramSession, epoch uint8, bod
 	ds.rekeyRespFrames = frames
 	ds.rekeyRespValid = true
 	peer := ds.currentPeerAddr()
-	for _, f := range frames {
-		_, _ = e.conn.WriteTo(f, peer)
-	}
+	e.batch.writeAll(frames, peer)
 }
