@@ -21,6 +21,7 @@
 - [x] Prometheus metrics and OpenTelemetry tracing
 - [x] FIPS 140-3 build mode with POST/CST self-tests
 - [x] Regulatory clarity (EU open source exemption, user deployment guidance)
+- [x] UDP/datagram transport handshake (fragmented PQ flights, retransmission, replay; encrypted data path in progress)
 
 ---
 
