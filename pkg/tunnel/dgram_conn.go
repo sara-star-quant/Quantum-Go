@@ -24,11 +24,20 @@ import (
 type DatagramConn struct {
 	ep *DatagramEndpoint
 	ds *datagramSession
+
+	// sendBuf is the reusable frame buffer for Send (header || ciphertext || tag),
+	// retained across calls so the steady-state send path allocates nothing. Send
+	// is single-goroutine by contract, so it needs no lock.
+	sendBuf []byte
 }
 
 // newDatagramConn wraps an established datagram session.
 func newDatagramConn(ep *DatagramEndpoint, ds *datagramSession) *DatagramConn {
-	return &DatagramConn{ep: ep, ds: ds}
+	return &DatagramConn{
+		ep:      ep,
+		ds:      ds,
+		sendBuf: make([]byte, 0, constants.DatagramMTU),
+	}
 }
 
 // Send encrypts p into a single DATA datagram and writes it to the peer. It
@@ -40,17 +49,19 @@ func (c *DatagramConn) Send(p []byte) error {
 	}
 	s := c.ds.session
 	seq := s.nextDatagramSeq()
-	header := protocol.EncodeDatagramHeader(protocol.DatagramHeader{
-		Type:      protocol.DatagramFrameData,
+	// Build header || ciphertext || tag in the reusable buffer: the header is both
+	// the frame prefix and the AEAD AAD, and DatagramSealTo appends the sealed
+	// payload after it in place, so the steady-state send path allocates nothing.
+	header := protocol.AppendDatagramDataHeader(c.sendBuf[:0], protocol.DatagramHeader{
 		Epoch:     s.datagramSendEpoch(),
 		RecvIndex: c.ds.peerIndex,
 		Seq:       seq,
 	})
-	ct, err := s.DatagramSeal(header, seq, p)
+	frame, err := s.DatagramSealTo(header, header, seq, p)
 	if err != nil {
 		return err
 	}
-	frame := append(header, ct...)
+	c.sendBuf = frame[:0] // retain the (grown) backing array for the next Send
 	if _, err := c.ep.conn.WriteTo(frame, c.ds.currentPeerAddr()); err != nil {
 		return err
 	}
