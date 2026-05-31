@@ -173,6 +173,11 @@ const (
 	// per Send; no PMTU discovery).
 	DatagramMaxDataPayload = DatagramMTU - DatagramDataOverhead
 
+	// DatagramBatchSize is how many datagrams the receive loop reads per recvmmsg
+	// syscall on platforms that support it (Linux). It bounds the reusable
+	// per-endpoint receive buffer set (DatagramBatchSize * (DatagramMTU+512)).
+	DatagramBatchSize = 32
+
 	// DatagramNoncePrefixSize is the size of the per-session random nonce prefix.
 	// The 12-byte AEAD nonce is the prefix followed by the 8-byte sequence
 	// number, so the prefix is the AEAD nonce size minus 8.
