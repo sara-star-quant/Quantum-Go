@@ -57,6 +57,12 @@ func (c *DatagramConn) Send(p []byte) error {
 	}
 	s.BytesSent.Add(int64(len(p)))
 	s.PacketsSent.Add(1)
+
+	// Rotate the epoch well before the per-epoch key budget is exhausted. Only the
+	// initiator drives rekey; it runs in the background so Send never blocks.
+	if s.Role == RoleInitiator && !c.ds.rekeyActive.Load() && s.datagramRekeyDue(seq) {
+		go func() { _ = c.Rekey() }()
+	}
 	return nil
 }
 
