@@ -304,6 +304,7 @@ func (r *connRegistry) removeSource(source string) {
 // and surfaces newly-established inbound sessions on an accept channel.
 type DatagramEndpoint struct {
 	conn     net.PacketConn
+	batch    batchIO
 	registry *connRegistry
 	reasm    *Reassembler
 	acceptCh chan *datagramSession
@@ -340,6 +341,7 @@ func NewDatagramEndpoint(conn net.PacketConn) (*DatagramEndpoint, error) {
 	}
 	return &DatagramEndpoint{
 		conn:                    conn,
+		batch:                   newBatchIO(conn),
 		registry:                newConnRegistry(),
 		reasm:                   NewReassembler(0, 0, 0),
 		acceptCh:                make(chan *datagramSession, 16),
@@ -379,15 +381,13 @@ func (e *DatagramEndpoint) Close() error {
 // goroutine (go ep.Serve()). It returns when the underlying conn is closed.
 func (e *DatagramEndpoint) Serve() {
 	go e.reapIdle()
-	buf := make([]byte, constants.DatagramMTU+512)
+	dispatch := func(src net.Addr, data []byte) {
+		_ = e.routeDatagram(src, data)
+	}
 	for {
-		n, src, err := e.conn.ReadFrom(buf)
-		if err != nil {
+		if err := e.batch.recv(dispatch); err != nil {
 			return
 		}
-		data := make([]byte, n)
-		copy(data, buf[:n])
-		_ = e.routeDatagram(src, data)
 	}
 }
 

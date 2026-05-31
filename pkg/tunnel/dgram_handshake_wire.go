@@ -293,9 +293,7 @@ func (l *handshakeLoop) send(msgs []hsMessage) {
 		if err != nil {
 			return
 		}
-		for _, f := range frames {
-			_, _ = l.ep.conn.WriteTo(f, l.src)
-		}
+		l.ep.batch.writeAll(frames, l.src)
 		l.seq += uint64(len(frames))
 	}
 }
