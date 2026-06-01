@@ -124,24 +124,26 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
    - **You must implement** authentication externally (certificates, PSK, static key pinning)
    - Identity binding to CH-KEM public keys is the deployer's responsibility
 
-2. **No role binding in CH-KEM transcript** (planned: v0.0.10):
+2. **No role binding in CH-KEM transcript** (planned: a later stream-hardening release):
    - The transcript hash does not include the initiator/responder role or protocol version
    - Theoretically enables reflection attacks (initiator completes handshake with itself)
    - Mitigated in practice by the handshake state machine (separate initiator/responder flows)
    - Full fix requires adding role indicator to `TranscriptHash` components
 
-3. **AEAD nonce prefix is zero** (planned: v0.0.10):
+3. **AEAD nonce prefix is zero** (planned: a later stream-hardening release):
    - Nonce format is `[0000 || counter(8B)]` -- the upper 4 bytes are not session-bound
    - Two sessions with the same encryption key would produce identical nonce sequences
    - Risk is low in practice because traffic keys are derived from unique shared secrets
+   - The datagram transport already derives a session-bound nonce prefix; this gap is the stream path only
    - Full fix: use session ID bytes as nonce prefix
 
-4. **Replay window is 64 packets** (planned: v0.0.10):
+4. **Replay window is 64 packets** (planned: a later stream-hardening release):
    - At high throughput (~83,000 pps at 1 Gbps), this gives <1ms tolerance for reordering
    - Packets arriving more than 64 positions out of order are silently dropped
+   - The datagram transport already uses a 1024-bit multi-word window; this gap is the stream path only
    - Full fix: expand to 1024+ using multi-word bitmap
 
-5. **Resumption tickets not bound to server identity** (planned: v0.0.10):
+5. **Resumption tickets not bound to server identity** (planned: a later stream-hardening release):
    - Session tickets contain only master secret and cipher suite
    - A captured ticket could theoretically be replayed against a different server
    - Risk is low: requires the attacker to know the ticket encryption key

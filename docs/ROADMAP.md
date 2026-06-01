@@ -5,7 +5,13 @@
 
 ---
 
-## Current Status: v0.0.10
+## Current Status: v0.0.11
+
+> **Direction.** Next is **stream security parity**: bring the TCP/stream path up to the
+> datagram path and clear the hardening backlog (role binding, ticket server binding,
+> 1024-bit stream replay window, session-bound stream nonce, real `.text` module integrity,
+> CI security). After that, **crypto-agility and endpoint authentication** toward v0.1.0
+> (HQC code-based KEM diversification for a CH-KEM v2 triple cascade; peer authentication).
 
 ### Completed Features
 - [x] CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)
@@ -21,7 +27,8 @@
 - [x] Prometheus metrics and OpenTelemetry tracing
 - [x] FIPS 140-3 build mode with POST/CST self-tests
 - [x] Regulatory clarity (EU open source exemption, user deployment guidance)
-- [x] UDP/datagram transport handshake (fragmented PQ flights, retransmission, replay; encrypted data path in progress)
+- [x] UDP/datagram transport (fragmented PQ handshake, encrypted data plane, reliable rekey, stateless cookie/anti-amplification, authenticated roaming, SO_REUSEPORT receive scaling, UDP_GRO offload)
+- [x] Stream handshake timeout on Accept (slow-loris bound); honest KAT-vector module-integrity check
 
 ---
 
@@ -218,10 +225,11 @@ composition needs strengthening.
 > **Status:** v0.0.10 shipped as *Data-Plane Rekey Reliability & Throughput* (see
 > CHANGELOG): the rekey send-deadlock fix, dual-cipher trial-decryption activation
 > (item #6 below, delivered without a new wire message), the boundary-packet replay fix,
-> the 64 GiB rekey-byte threshold, and the stdlib `crypto/sha3` migration. The remaining
-> hardening items below (role binding, nonce session binding, ticket server binding,
-> handshake timeout, replay-window expansion, module integrity) carry forward to a
-> subsequent hardening release.
+> the 64 GiB rekey-byte threshold, and the stdlib `crypto/sha3` migration. v0.0.11 then
+> shipped the datagram transport plus two of these items - handshake timeout (#4) and an
+> honest KAT-vector module-integrity check (#7, full `.text` integrity still pending). The
+> rest (role binding, ticket server binding, and the stream-path nonce/replay catch-up)
+> carry forward to the stream-security-parity release.
 
 #### 1. Role Binding in CH-KEM Transcript
 **Priority:** Critical | **Effort:** Small
@@ -271,9 +279,9 @@ can be replayed against a different server that shares the same ticket encryptio
 `Listener.Accept()` calls `ResponderHandshake` with no timeout. A malicious client
 can connect and never send data, exhausting goroutines and file descriptors.
 
-- [ ] Set `conn.SetDeadline` before `ResponderHandshake`
-- [ ] Make handshake timeout configurable via `TransportConfig` (default: 30s)
-- [ ] Add test: verify slow-loris style connections are terminated
+- [x] Set `conn.SetDeadline` before `ResponderHandshake` (v0.0.11)
+- [x] Make handshake timeout configurable via `TransportConfig` (default: 30s) (v0.0.11)
+- [x] Add test: verify slow-loris style connections are terminated (v0.0.11)
 
 #### 5. Replay Window Expansion
 **Priority:** Medium | **Effort:** Small
@@ -306,12 +314,14 @@ decryption (try current, fall back to pending). Reliable under load and high lat
 #### 7. Module Integrity Verification
 **Priority:** Medium | **Effort:** Medium
 
-`CheckModuleIntegrity()` unconditionally returns `Verified: true` with a placeholder hash.
+`CheckModuleIntegrity()` used to unconditionally return `Verified: true` with a placeholder
+hash. v0.0.11 made it honest: a real comparison of the embedded KAT vectors against a pinned
+hash, scoped in the docs as KAT-vector integrity, not binary `.text` integrity.
 
-- [ ] Implement build-time hash embedding (HMAC of `.text` section or binary)
-- [ ] Compare actual vs expected hash at runtime
-- [ ] In FIPS mode: fail hard if integrity check fails
-- [ ] Alternative: remove `Verified: true` and document as not-yet-implemented
+- [x] Pin the real KAT-vector hash and report a real comparison; document the scope (v0.0.11)
+- [ ] Implement build-time `.text`/binary HMAC embedding (full module integrity)
+- [ ] Compare actual vs expected `.text` hash at runtime
+- [ ] In FIPS mode: fail hard if the `.text` integrity check fails
 
 #### 8. CI Security Improvements
 **Priority:** Medium | **Effort:** Low
