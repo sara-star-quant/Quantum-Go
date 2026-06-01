@@ -14,9 +14,18 @@ import (
 // dgram_batch_linux.go / dgram_batch_other.go.
 type batchIO interface {
 	// recv reads one batch of datagrams and calls dispatch for each, in arrival
-	// order, with a freshly-allocated payload copy the callee may retain. It blocks
-	// until at least one datagram is available and returns the underlying read
-	// error (e.g. on close) so the receive loop can exit.
+	// order. It blocks until at least one datagram is available and returns the
+	// underlying read error (e.g. on close) so the receive loop can exit.
+	//
+	// CONTRACT: the payload is borrowed - it is backed by a reusable receive buffer
+	// and is valid ONLY for the duration of the dispatch call. The callee MUST copy
+	// any bytes it needs to retain past return. routeDatagram (the sole dispatcher)
+	// already honors this: the handshake reassembler copies each fragment, the RETRY
+	// path copies the cookie, CLOSE is consumed synchronously, and a DATA frame's
+	// delivered plaintext is freshly allocated by the AEAD Open (it does not alias
+	// the payload). Eliminating the per-datagram copy here removes an allocation on
+	// the receive hot path; if a future change makes routeDatagram retain the
+	// payload, it must copy explicitly or this breaks.
 	recv(dispatch func(src net.Addr, payload []byte)) error
 	// writeAll writes every frame to dst, best-effort: write errors are ignored,
 	// matching the single-shot send sites (handshake/rekey retransmission recovers
@@ -43,9 +52,8 @@ func (f *fallbackIO) recv(dispatch func(src net.Addr, payload []byte)) error {
 	if err != nil {
 		return err
 	}
-	data := make([]byte, n)
-	copy(data, f.buf[:n])
-	dispatch(src, data)
+	// Borrowed buffer: dispatch must not retain it (see recv contract). No copy.
+	dispatch(src, f.buf[:n])
 	return nil
 }
 

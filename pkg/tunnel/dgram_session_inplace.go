@@ -7,8 +7,6 @@
 package tunnel
 
 import (
-	"time"
-
 	"github.com/sara-star-quant/quantum-go/internal/constants"
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 )
@@ -35,7 +33,7 @@ func (s *Session) DatagramSealTo(dst, aad []byte, seq uint64, plaintext []byte) 
 	if err != nil {
 		return nil, err
 	}
-	s.lastActivityNanos.Store(time.Now().UnixNano())
+	s.lastActivityNanos.Store(coarseTimeNanos())
 	return out, nil
 }
 
@@ -57,6 +55,6 @@ func (s *Session) DatagramOpenTo(dst []byte, epoch uint8, seq uint64, ciphertext
 	if err != nil {
 		return nil, err
 	}
-	s.lastActivityNanos.Store(time.Now().UnixNano())
+	s.lastActivityNanos.Store(coarseTimeNanos())
 	return pt, nil
 }

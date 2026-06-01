@@ -46,11 +46,11 @@ func (b *linuxBatchIO) recv(dispatch func(src net.Addr, payload []byte)) error {
 	}
 	for i := 0; i < n; i++ {
 		m := &b.rmsgs[i]
-		// Copy out before the next ReadBatch overwrites the shared buffer; the
-		// payload is routed onward (reassembly / recvCh) and outlives this call.
-		data := make([]byte, m.N)
-		copy(data, m.Buffers[0][:m.N])
-		dispatch(m.Addr, data)
+		// Borrowed buffer: dispatch must not retain it (see the recv contract in
+		// dgram_batch.go). Each message has its own backing buffer in rmsgs, and the
+		// next ReadBatch only overwrites them after this loop returns, so passing the
+		// slice directly is safe and avoids a per-datagram copy.
+		dispatch(m.Addr, m.Buffers[0][:m.N])
 	}
 	return nil
 }
