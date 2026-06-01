@@ -224,8 +224,8 @@ func (r *connRegistry) idleSince(cutoffNanos int64) []*datagramSession {
 }
 
 // tryAddHalfOpen increments the half-open count for source and returns false if
-// the per-source cap is already reached (the caller must then drop the new
-// handshake attempt). Pair every successful call with releaseHalfOpen.
+// the global half-open ceiling is already reached (the caller must then drop the
+// new handshake attempt). Pair every successful call with releaseHalfOpen.
 func (r *connRegistry) tryAddHalfOpen(source string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -303,7 +303,7 @@ func (r *connRegistry) knownSource(index uint32, src string) bool {
 //   - (existing, false): a responder for source already exists (this goroutine raced
 //     a retransmit, or the kernel hashed two copies to two sockets); the caller
 //     routes the ClientHello to existing. build did not run.
-//   - (nil, false): the per-source half-open cap is reached; the caller drops. build
+//   - (nil, false): the global half-open ceiling is reached; the caller drops. build
 //     did not run.
 func (r *connRegistry) reserveSource(source string, build func() *datagramSession) (ds *datagramSession, reserved bool) {
 	r.mu.Lock()
