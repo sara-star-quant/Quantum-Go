@@ -17,6 +17,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -276,19 +277,42 @@ func (r *connRegistry) knownSource(index uint32, src string) bool {
 	return ok
 }
 
-// addSource registers an in-progress responder handshake under its source so a
-// retransmitted ClientHello (which still carries RecvIndex 0) routes to it.
+// reserveSource makes the bootstrap decision for a RecvIndex-0 ClientHello from
+// source atomically under one lock, so concurrent receive goroutines (the
+// SO_REUSEPORT parallel-receive path) cannot both start a responder for the same new
+// source. The caller passes a freshly-built (not-yet-keyed) session to install if
+// source is new. It returns:
+//   - (ds, true): source was new and admitted - the passed session is now registered
+//     in bySource and a half-open slot is claimed; the caller MUST run startResponder
+//     with this session and release the slot on failure. Registering in bySource
+//     here (not later, after the slow CH-KEM work in startResponder) is what closes
+//     the window where a second goroutine could also start a responder.
+//   - (existing, false): a responder for source already exists (this goroutine raced
+//     a retransmit, or the kernel hashed two copies to two sockets); the caller
+//     routes the ClientHello to existing and discards its freshly-built session.
+//   - (nil, false): the per-source half-open cap is reached; the caller drops.
+func (r *connRegistry) reserveSource(source string, fresh *datagramSession) (ds *datagramSession, reserved bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if existing := r.bySource[source]; existing != nil {
+		return existing, false
+	}
+	if r.halfOpen[source] >= constants.DatagramMaxHalfOpenPerSource {
+		return nil, false
+	}
+	r.bySource[source] = fresh
+	r.halfOpen[source]++
+	r.halfOpenTotal++
+	return fresh, true
+}
+
+// addSource registers an in-progress responder handshake under its source. The
+// production bootstrap path installs the session atomically via reserveSource; this
+// remains as a direct primitive for tests that set up registry state.
 func (r *connRegistry) addSource(source string, s *datagramSession) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.bySource[source] = s
-}
-
-// lookupSource returns the in-progress responder handshake for a source, or nil.
-func (r *connRegistry) lookupSource(source string) *datagramSession {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.bySource[source]
 }
 
 // removeSource drops the source mapping (on establishment or teardown). It is
@@ -303,11 +327,19 @@ func (r *connRegistry) removeSource(source string) {
 // It demultiplexes incoming datagrams to per-session state by connection index
 // and surfaces newly-established inbound sessions on an accept channel.
 type DatagramEndpoint struct {
-	conn     net.PacketConn
-	batch    batchIO
-	registry *connRegistry
-	reasm    *Reassembler
-	acceptCh chan *datagramSession
+	// conn is the designated send socket and the primary receive socket; batch is
+	// its batchIO. All outbound sends (data plane, cookie RETRY, handshake/rekey
+	// flights) go through conn. With SO_REUSEPORT parallel receive (ListenDatagram),
+	// extraBatch holds the batchIO for the additional receive sockets; Serve runs one
+	// receive goroutine per socket, all dispatching into the shared, concurrency-safe
+	// routeDatagram. extraConns keeps those sockets only so Close can shut them.
+	conn       net.PacketConn
+	batch      batchIO
+	extraConns []net.PacketConn
+	extraBatch []batchIO
+	registry   *connRegistry
+	reasm      *Reassembler
+	acceptCh   chan *datagramSession
 
 	// cookie mints and verifies stateless return-routability cookies for the
 	// anti-DoS gate (see dgram_cookie.go).
@@ -333,6 +365,11 @@ type DatagramEndpoint struct {
 	// with a non-padding one; full hiding needs both ends to enable it.
 	padHandshake bool
 
+	// receiveSockets is the requested SO_REUSEPORT socket count for ListenDatagram,
+	// set by WithReceiveSockets; 0 means use the default. Ignored by
+	// NewDatagramEndpoint.
+	receiveSockets int
+
 	closeOnce sync.Once
 	done      chan struct{}
 }
@@ -349,11 +386,30 @@ func WithHandshakePadding() DatagramEndpointOption {
 	return func(e *DatagramEndpoint) { e.padHandshake = true }
 }
 
+// WithReceiveSockets sets how many SO_REUSEPORT receive sockets ListenDatagram
+// opens (clamped to [1, DatagramMaxReceiveSockets]). More sockets let the kernel
+// spread inbound datagrams across more cores, raising aggregate receive throughput
+// for a busy multi-session server. The default is min(GOMAXPROCS,
+// DatagramMaxReceiveSockets). It has no effect on NewDatagramEndpoint (single
+// socket) or on platforms without SO_REUSEPORT (which degrade to one socket).
+func WithReceiveSockets(n int) DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.receiveSockets = n }
+}
+
 // NewDatagramEndpoint wraps a PacketConn (a *net.UDPConn in production, or a
 // fault-injecting conn in tests). It does not start the receive loop; callers
 // start it explicitly so tests can drive routing deterministically. It returns an
 // error only if the per-endpoint cookie secret cannot be drawn from the CSPRNG.
+//
+// It serves a single socket. For a server that wants the receive path spread across
+// cores, use ListenDatagram.
 func NewDatagramEndpoint(conn net.PacketConn, opts ...DatagramEndpointOption) (*DatagramEndpoint, error) {
+	return newEndpoint(conn, opts)
+}
+
+// newEndpoint builds an endpoint around its primary (send + first receive) conn and
+// applies opts. ListenDatagram fills extraConns/extraBatch afterward.
+func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramEndpoint, error) {
 	cookie, err := newCookieSigner(nil)
 	if err != nil {
 		return nil, err
@@ -377,6 +433,49 @@ func NewDatagramEndpoint(conn net.PacketConn, opts ...DatagramEndpointOption) (*
 	return e, nil
 }
 
+// ListenDatagram opens a datagram endpoint on (network, addr) whose receive path is
+// spread across multiple SO_REUSEPORT sockets so demux and AEAD-open scale across
+// cores - the way a busy multi-session tunnel server reaches aggregate throughput
+// past a single core. network is "udp", "udp4", or "udp6". The socket count is
+// WithReceiveSockets, defaulting to min(GOMAXPROCS, DatagramMaxReceiveSockets);
+// addr may use port 0 to get an ephemeral port (resolved once and shared by all
+// sockets). On platforms without SO_REUSEPORT it transparently uses one socket.
+//
+// Callers start the receive loop with Serve, as with NewDatagramEndpoint.
+func ListenDatagram(network, addr string, opts ...DatagramEndpointOption) (*DatagramEndpoint, error) {
+	probe := &DatagramEndpoint{}
+	for _, opt := range opts {
+		opt(probe)
+	}
+	n := probe.receiveSockets
+	if n <= 0 {
+		n = runtime.GOMAXPROCS(0)
+	}
+	if n > constants.DatagramMaxReceiveSockets {
+		n = constants.DatagramMaxReceiveSockets
+	}
+	if n < 1 {
+		n = 1
+	}
+
+	conns, err := listenReusePort(network, addr, n)
+	if err != nil {
+		return nil, err
+	}
+	e, err := newEndpoint(conns[0], opts)
+	if err != nil {
+		for _, c := range conns {
+			_ = c.Close()
+		}
+		return nil, err
+	}
+	for _, c := range conns[1:] {
+		e.extraConns = append(e.extraConns, c)
+		e.extraBatch = append(e.extraBatch, newBatchIO(c))
+	}
+	return e, nil
+}
+
 // underCookiePressure reports whether the endpoint should demand a
 // return-routability cookie from new sources. Either the in-progress reassembly
 // source count or the global half-open count crossing the high-water mark trips
@@ -388,30 +487,59 @@ func (e *DatagramEndpoint) underCookiePressure() bool {
 		e.registry.halfOpenLoad() >= e.cookiePressureHighWater
 }
 
-// Close shuts the endpoint down and closes the underlying PacketConn. It is
-// idempotent and safe for concurrent use.
+// Close shuts the endpoint down and closes every underlying socket (the send conn
+// and any extra SO_REUSEPORT receive sockets). It is idempotent and safe for
+// concurrent use. Closing the sockets unblocks all receive goroutines in Serve.
 func (e *DatagramEndpoint) Close() error {
 	var err error
 	e.closeOnce.Do(func() {
 		close(e.done)
 		err = e.conn.Close()
+		for _, c := range e.extraConns {
+			if cerr := c.Close(); cerr != nil && err == nil {
+				err = cerr
+			}
+		}
 	})
 	return err
 }
 
-// Serve runs the receive loop: it reads datagrams and dispatches each through
-// routeDatagram until the endpoint is closed. Callers run it in their own
-// goroutine (go ep.Serve()). It returns when the underlying conn is closed.
+// Serve runs the receive loop until the endpoint is closed. It dispatches every
+// datagram through routeDatagram. Callers run it in their own goroutine
+// (go ep.Serve()); it returns when the sockets are closed.
+//
+// With SO_REUSEPORT parallel receive (ListenDatagram), it runs one receive
+// goroutine per socket - the kernel load-balances inbound datagrams across the
+// sockets by flow hash, so demux and AEAD-open scale across cores. routeDatagram is
+// concurrency-safe (the registry, each session's replay window, and the reassembler
+// are all mutex-guarded, and the RecvIndex-0 bootstrap goes through the atomic
+// reserveSource), so the goroutines need no further coordination. A single-socket
+// endpoint (NewDatagramEndpoint) runs exactly one receive goroutine, as before.
 func (e *DatagramEndpoint) Serve() {
 	go e.reapIdle()
 	dispatch := func(src net.Addr, data []byte) {
 		_ = e.routeDatagram(src, data)
 	}
-	for {
-		if err := e.batch.recv(dispatch); err != nil {
-			return
+	recvLoop := func(bio batchIO) {
+		for {
+			if err := bio.recv(dispatch); err != nil {
+				return
+			}
 		}
 	}
+	if len(e.extraBatch) == 0 {
+		recvLoop(e.batch) // single-socket: stay on the caller's goroutine, as before
+		return
+	}
+	var wg sync.WaitGroup
+	for _, bio := range append([]batchIO{e.batch}, e.extraBatch...) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			recvLoop(bio)
+		}()
+	}
+	wg.Wait()
 }
 
 // reapIdle tears down sessions with no datagram activity within idleTimeout. It
