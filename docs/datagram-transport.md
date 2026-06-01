@@ -149,6 +149,14 @@ per socket, so demux and AEAD-open spread across cores. On platforms without
 `SO_REUSEPORT` it transparently degrades to one socket. `NewDatagramEndpoint`
 (single socket) is unchanged.
 
+Measured on an 8-core arm64 Linux container (loopback, indicative): a single receive
+goroutine tops out around 365 MB/s aggregate delivered goodput; spreading receive
+across sockets lifts it about 1.6x, from ~355 MB/s (1 socket) to ~565 MB/s (8
+sockets). The scaling is sublinear here because the loopback path and the benchmark's
+own senders share the same 8 cores; a many-core host with real NIC receive queues has
+more headroom. The single-flow path remains syscall-bound (~280 MB/s, ~2.2 Gb/s), so
+the next per-flow lever is `UDP_SEGMENT`/`UDP_GRO` offload (see "Out of scope" below).
+
 ```go
 ep, err := tunnel.ListenDatagram("udp", "0.0.0.0:51820")
 if err != nil { /* ... */ }

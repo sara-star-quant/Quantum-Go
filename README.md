@@ -120,16 +120,23 @@ absolutes; relative figures are sound):**
 
 | Metric | Result |
 |--------|--------|
-| Datagram goodput (UDP, one-way single flow, delivered) | ~230 MB/s (~1.8 Gb/s) |
+| Datagram goodput (UDP, one-way single flow, delivered) | ~280 MB/s (~2.2 Gb/s) |
+| Datagram aggregate goodput (single receive goroutine, 1-8 flows) | peaks ~365 MB/s near 4 flows, then plateaus |
+| Datagram aggregate goodput (`SO_REUSEPORT`, 8 flows, 1->8 sockets) | ~355 -> ~565 MB/s (~1.6x across 8 cores) |
 | Datagram send (isolated, zero-alloc steady state) | ~1.2 GB/s |
-| Datagram receive, `recvmmsg` batch vs one syscall per datagram | ~945 vs ~830 MB/s (~+14%) |
+| Datagram receive, `recvmmsg` batch vs one syscall per datagram | ~1030 vs ~975 MB/s |
 
 The end-to-end goodput is delivered throughput (the benchmark flow-controls the
 sender so dropped datagrams are never counted), the full path: seal, send, kernel,
-receive loop, demux, AEAD open, delivery. A CPU profile of that path is ~35% AES
-(already hardware-accelerated), ~30% syscalls, the rest framing/alloc/bookkeeping;
-work toward higher per-flow and multi-Gb aggregate throughput (GSO/GRO offload,
-pooled receive) is tracked on the [roadmap](docs/ROADMAP.md). Optional handshake
+receive loop, demux, AEAD open, delivery. A single receive goroutine demuxing and
+AEAD-opening every datagram is the per-endpoint ceiling (~365 MB/s aggregate on this
+8-core VM); `ListenDatagram` spreads that work across cores with `SO_REUSEPORT`,
+lifting aggregate goodput ~1.6x (to ~565 MB/s here) and scaling further on a
+many-core host. A CPU profile of the delivered path is ~35% AES (already
+hardware-accelerated), ~30% syscalls, the rest framing/alloc/bookkeeping. The
+~2.5 GB/s aggregate mark is a cores-in-parallel target (AES-GCM is ~2.5 GB/s/core):
+reaching it takes more cores than this VM plus fewer syscalls per datagram, which
+`UDP_SEGMENT`/`UDP_GRO` offload (on the [roadmap](docs/ROADMAP.md)) provides. Optional handshake
 padding (`WithHandshakePadding`) trades roughly +42% handshake bandwidth (a
 ClientHello flight grows from ~1700 to 2400 bytes) for uniform-size,
 fingerprint-resistant handshake datagrams; it never touches the data plane.

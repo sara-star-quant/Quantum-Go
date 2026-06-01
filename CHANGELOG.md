@@ -16,8 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Rebranded to "tunnel"**, the precise term for this project. The CLI binary is now `quantum-tunnel`, the Prometheus metric namespace `quantum_vpn` is now `quantum_tunnel`, and the CH-KEM protocol and key-derivation labels move to `CH-KEM-Tunnel-*`.
 
+### Performance
+- **Datagram data plane**: zero-alloc steady-state send (in-place AEAD into a reused buffer), batched `recvmmsg`/`sendmmsg` on Linux, `SO_REUSEPORT` multi-socket receive that spreads demux and AEAD-open across cores, and a coarse activity clock that drops per-datagram `time.Now()`. Measured on an 8-core arm64 Linux container (loopback, indicative): single-flow delivered goodput ~280 MB/s (~2.2 Gb/s); a single receive goroutine tops out ~365 MB/s aggregate, which `SO_REUSEPORT` lifts ~1.6x to ~565 MB/s across 8 sockets; isolated send ~1.2 GB/s; batched receive ~1030 MB/s. Reaching the ~2.5 GB/s aggregate mark needs more cores plus `UDP_SEGMENT`/`UDP_GRO` offload (roadmap).
+
 ### Not yet implemented (datagram)
-- Data-path performance work (zero-alloc steady state, batched syscalls) and a datagram throughput benchmark.
 - The stateless cookie/RETRY anti-amplification exchange and connection roaming.
 
 ### Planned: v0.0.11 - Security Hardening (carryover)

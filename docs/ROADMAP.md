@@ -353,9 +353,12 @@ items #2 (nonce session binding) and #5 (replay window expansion) natively for U
 
 ### Phase 1b - Performance
 
-- [ ] Zero-alloc steady-state data path (in-place AEAD into a reused buffer)
-- [ ] Batched syscalls (`recvmmsg`/`sendmmsg` via `golang.org/x/net` `ipv4`/`ipv6`)
-- [ ] Coarse deadlines / atomic activity timestamp (no per-packet `time.Now()`)
+- [x] Zero-alloc steady-state data path (in-place AEAD into a reused buffer)
+- [x] Batched syscalls (`recvmmsg`/`sendmmsg` via `golang.org/x/net` `ipv4`/`ipv6`)
+- [x] Coarse deadlines / atomic activity timestamp (no per-packet `time.Now()`)
+- [x] `SO_REUSEPORT` multi-socket receive (demux + AEAD-open spread across cores; ~1.6x aggregate on 8 cores)
+- [ ] `UDP_SEGMENT`/`UDP_GRO` offload (fewer syscalls per datagram, toward multi-Gb aggregate)
+- [ ] Parallel per-datagram crypto pipeline
 
 ### Phase 2 - DoS / amplification hardening
 
