@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.11][] - 2026-06-01
+
+**Theme:** Connectionless UDP/datagram transport (reliable handshake, encrypted data plane, reliable rekey, anti-DoS, Linux receive scaling and offload) and datagram performance, plus two stream-path hardening fixes.
+
 ### Added
 - **UDP/datagram transport (handshake)**: a connectionless transport alongside the TCP/stream one, demultiplexed by a random per-session connection index rather than source address (survives NAT rebind and roaming). It carries the full CH-KEM handshake over a lossy link: the large post-quantum Hellos are fragmented across datagrams and reassembled (`pkg/tunnel/reassembly.go`), and a transport-agnostic state machine plus reliability driver (`pkg/tunnel/dgram_handshake_{fsm,driver,wire}.go`) add retransmission with exponential backoff, a retry ceiling, duplicate/replay handling, and a responder linger that recovers a lost final flight. A bad or forged datagram drops rather than failing the handshake. The responder runs no decapsulation and sends no ServerHello until a full ClientHello arrives and a per-source half-open slot is granted, so it never sends more than it received from an unvalidated source. `DialDatagram` performs the initiator handshake and returns an established session.
 - **Datagram handshake benchmark**: `quantum-tunnel bench --datagram-handshakes N` measures the datagram handshake rate over loopback UDP (~1,300/sec, ~760 µs each on an M1 Pro, vs ~1,450/sec for the stream path).
@@ -20,13 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Datagram data plane**: zero-alloc steady-state send (in-place AEAD into a reused buffer), batched `recvmmsg`/`sendmmsg` on Linux, `SO_REUSEPORT` multi-socket receive that spreads demux and AEAD-open across cores, and a coarse activity clock that drops per-datagram `time.Now()`. Measured on an 8-core arm64 Linux container (loopback, indicative): single-flow delivered goodput ~280 MB/s (~2.2 Gb/s); a single receive goroutine tops out ~365 MB/s aggregate, which `SO_REUSEPORT` lifts ~1.6x to ~565 MB/s across 8 sockets; isolated send ~1.2 GB/s; batched receive ~1030 MB/s. Reaching the ~2.5 GB/s aggregate mark needs more cores plus GSO/GRO offload (roadmap).
 - **Datagram receive offload (Linux)**: `WithDatagramOffload()` enables `UDP_GRO`, so the kernel coalesces a same-flow datagram burst into one buffer and the receive loop re-splits it, cutting receive syscalls on a busy flow. Off by default and Linux-only; a no-op on other platforms, non-UDP conns, or kernels without `UDP_GRO`. Send-side `UDP_SEGMENT` (GSO) is not yet wired.
 
-### Not yet implemented (datagram)
-- The stateless cookie/RETRY anti-amplification exchange and connection roaming.
+### Security
+- **Handshake timeout on the stream Accept path**: `Listener.performHandshake` set no deadline around `ResponderHandshake`, so a peer that connected and stalled mid-handshake pinned a goroutine and session indefinitely (slow-loris). `TransportConfig.HandshakeTimeout` (default 30s) now bounds it; the datagram path already had timeouts.
+- **Honest module-integrity self-test**: `crypto.CheckModuleIntegrity` no longer hardcodes `Verified: true`. It pins the SHA-256 of the embedded KAT vectors and reports a real comparison, scoped in the docs as KAT-vector integrity, not binary `.text` integrity (which stays future FIPS work).
 
-### Planned: v0.0.11 - Security Hardening (carryover)
-- Handshake timeout on server Accept
-- Module integrity verification (fix always-true check)
-- CI security improvements (FIPS testing, Gosec enforcement)
+### Deferred (stream-path hardening, a later release)
+- Role binding in the CH-KEM transcript (reflection-attack resistance; affects the shared crypto core).
+- Resumption ticket server binding (`SHA-256(server public key)` in the ticket plaintext).
+- Stream-path session-bound AEAD nonce prefix and 1024-bit replay window (the datagram path already has both).
+- Real binary/`.text` module integrity (the KAT-vector check landed; full module integrity is future FIPS work).
+- CI security: drop the Gosec `-no-fail`, add a FIPS build/test job.
 
 ## [0.0.10][] - 2026-05-30
 
@@ -298,7 +305,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.10...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.11...HEAD
+[0.0.11]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.9...v0.0.10
 [0.0.9]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.7...v0.0.8
