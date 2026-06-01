@@ -76,6 +76,13 @@ func TestCheckModuleIntegrity(t *testing.T) {
 		t.Error("ExpectedHash should not be empty")
 	}
 
+	// The KAT-vector hash must match the pinned value (a real comparison now, not a
+	// hardcoded pass). A failure here means the KAT vectors or the pinned hash drifted.
+	if !integrity.Verified || integrity.ActualHash != integrity.ExpectedHash {
+		t.Errorf("KAT-vector integrity should verify: actual=%s expected=%s verified=%v",
+			integrity.ActualHash, integrity.ExpectedHash, integrity.Verified)
+	}
+
 	t.Logf("Module integrity - Expected: %s, Actual: %s, Verified: %v",
 		integrity.ExpectedHash, integrity.ActualHash, integrity.Verified)
 }
