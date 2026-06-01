@@ -232,6 +232,12 @@ integrity := crypto.CheckModuleIntegrity()
 fmt.Printf("Verified: %v\n", integrity.Verified)
 ```
 
+This is a narrow check: it confirms the embedded known-answer-test (KAT) vectors have not
+been altered in the binary (SHA-256 against a value pinned at source). It does NOT hash the
+binary `.text` section, so it is not full FIPS 140-3 module integrity. A real binary/`.text`
+HMAC that fails hard in FIPS mode is future work; `Verified` reflects only the KAT-vector
+comparison.
+
 ## Conditional Self-Tests (CST)
 
 In addition to POST, FIPS 140-3 requires Conditional Self-Tests that run during specific cryptographic operations.
