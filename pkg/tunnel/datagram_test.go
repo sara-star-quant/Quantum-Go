@@ -20,7 +20,7 @@ func mustEndpoint(t *testing.T, conn net.PacketConn) *DatagramEndpoint {
 }
 
 func TestConnRegistryAddAssignsUniqueNonZeroIndices(t *testing.T) {
-	r := newConnRegistry()
+	r := newConnRegistry(constants.DatagramMaxHalfOpenFloor)
 	const n = 1000
 	seen := make(map[uint32]*datagramSession, n)
 
@@ -47,7 +47,7 @@ func TestConnRegistryAddAssignsUniqueNonZeroIndices(t *testing.T) {
 }
 
 func TestConnRegistryLookupAndRemove(t *testing.T) {
-	r := newConnRegistry()
+	r := newConnRegistry(constants.DatagramMaxHalfOpenFloor)
 	ds := &datagramSession{}
 	idx, err := r.add(ds)
 	if err != nil {
@@ -72,21 +72,23 @@ func TestConnRegistryLookupAndRemove(t *testing.T) {
 }
 
 func TestConnRegistryHalfOpenCap(t *testing.T) {
-	r := newConnRegistry()
+	const ceiling = 4
+	r := newConnRegistry(ceiling)
 	const src = "203.0.113.7:51820"
 
-	for i := 0; i < constants.DatagramMaxHalfOpenPerSource; i++ {
+	// The ceiling is global, not per-source. tryAddHalfOpen is the direct primitive
+	// (reserveSource dedups in production), so it bumps the global counter each call.
+	for i := 0; i < ceiling; i++ {
 		if !r.tryAddHalfOpen(src) {
-			t.Fatalf("half-open %d should be admitted (cap %d)", i, constants.DatagramMaxHalfOpenPerSource)
+			t.Fatalf("half-open %d should be admitted (ceiling %d)", i, ceiling)
 		}
 	}
 	if r.tryAddHalfOpen(src) {
-		t.Fatal("half-open over the cap must be rejected")
+		t.Fatal("half-open over the global ceiling must be rejected")
 	}
-
-	// A different source is unaffected by the first source's cap.
-	if !r.tryAddHalfOpen("198.51.100.9:51820") {
-		t.Fatal("a distinct source must have its own half-open budget")
+	// A different source does NOT get its own budget: the ceiling is global.
+	if r.tryAddHalfOpen("198.51.100.9:51820") {
+		t.Fatal("the half-open ceiling is global; a distinct source must not bypass it")
 	}
 
 	// Releasing one slot lets exactly one more in.
@@ -95,7 +97,7 @@ func TestConnRegistryHalfOpenCap(t *testing.T) {
 		t.Fatal("after release, one more half-open should be admitted")
 	}
 	if r.tryAddHalfOpen(src) {
-		t.Fatal("still over the cap after a single release")
+		t.Fatal("still at the ceiling after a single release")
 	}
 }
 
@@ -134,12 +136,13 @@ func TestRouteDatagram(t *testing.T) {
 }
 
 func TestConnRegistryReleaseHalfOpenNeverNegative(t *testing.T) {
-	r := newConnRegistry()
+	const ceiling = 4
+	r := newConnRegistry(ceiling)
 	const src = "192.0.2.1:1"
-	// Release with no prior add must not underflow or panic, and the source must
-	// then accept the full cap.
+	// Release with no prior add must not underflow halfOpenTotal (the per-source map
+	// no-ops at 0), and the registry must then still accept the full ceiling.
 	r.releaseHalfOpen(src)
-	for i := 0; i < constants.DatagramMaxHalfOpenPerSource; i++ {
+	for i := 0; i < ceiling; i++ {
 		if !r.tryAddHalfOpen(src) {
 			t.Fatalf("admit %d after spurious release", i)
 		}
