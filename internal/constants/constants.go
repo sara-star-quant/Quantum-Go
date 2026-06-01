@@ -178,6 +178,12 @@ const (
 	// per-endpoint receive buffer set (DatagramBatchSize * (DatagramMTU+512)).
 	DatagramBatchSize = 32
 
+	// DatagramMaxReceiveSockets caps how many SO_REUSEPORT receive sockets
+	// ListenDatagram opens (default min(GOMAXPROCS, this)). It bounds the parallel
+	// receive fan-out: enough to spread demux + AEAD-open across cores on a typical
+	// server without opening an unbounded number of sockets and goroutines.
+	DatagramMaxReceiveSockets = 8
+
 	// DatagramNoncePrefixSize is the size of the per-session random nonce prefix.
 	// The 12-byte AEAD nonce is the prefix followed by the 8-byte sequence
 	// number, so the prefix is the AEAD nonce size minus 8.

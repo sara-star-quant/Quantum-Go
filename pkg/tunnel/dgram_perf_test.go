@@ -138,14 +138,9 @@ func BenchmarkDatagramEndToEnd(b *testing.B) {
 	}
 }
 
-// dialFlows establishes n concurrent sessions into one shared responder endpoint,
-// each from its own initiator endpoint (socket). One initiator per flow is both
-// realistic (n clients = n sockets) and necessary: the responder bootstraps a new
-// handshake keyed by source address for the RecvIndex-0 ClientHello, so several
-// simultaneous handshakes from one source would collide at bootstrap (they are only
-// index-demuxed after establishment). The shared responder endpoint is the system
-// under test - its single Serve goroutine demuxes and drains all n flows. Returns
-// the n initiator conns paired with their responder sessions and a stop func.
+// dialFlows establishes n concurrent sessions into one shared single-socket
+// responder endpoint. See dialFlowsInto for the mechanics and why one initiator per
+// flow is used.
 func dialFlows(tb testing.TB, n int) (clients []*DatagramConn, servers []*datagramSession, stop func()) {
 	tb.Helper()
 	rxB, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
@@ -162,7 +157,20 @@ func dialFlows(tb testing.TB, n int) (clients []*DatagramConn, servers []*datagr
 		tb.Fatalf("responder endpoint: %v", err)
 	}
 	go epB.Serve()
+	return dialFlowsInto(tb, epB, rxB.LocalAddr(), n)
+}
 
+// dialFlowsInto dials n concurrent sessions into the already-serving responder
+// endpoint at dst, each from its own initiator endpoint (socket). One initiator per
+// flow is both realistic (n clients = n sockets) and necessary: the responder
+// bootstraps a new handshake keyed by source address for the RecvIndex-0
+// ClientHello, so several simultaneous handshakes from one source would collide at
+// bootstrap (they are only index-demuxed after establishment). The responder is the
+// system under test - its receive goroutine(s) demux and drain all n flows. Returns
+// the n initiator conns paired with their responder sessions and a stop func that
+// closes both the responder and the initiators.
+func dialFlowsInto(tb testing.TB, responder *DatagramEndpoint, dst net.Addr, n int) (clients []*DatagramConn, servers []*datagramSession, stop func()) {
+	tb.Helper()
 	initiators := make([]*DatagramEndpoint, 0, n)
 	type dialResult struct {
 		conn *DatagramConn
@@ -181,13 +189,13 @@ func dialFlows(tb testing.TB, n int) (clients []*DatagramConn, servers []*datagr
 		go epA.Serve()
 		initiators = append(initiators, epA)
 		go func() {
-			c, derr := DialDatagram(epA, rxB.LocalAddr())
+			c, derr := DialDatagram(epA, dst)
 			dialCh <- dialResult{c, derr}
 		}()
 	}
 	for range n {
 		select {
-		case ds := <-epB.acceptCh:
+		case ds := <-responder.acceptCh:
 			servers = append(servers, ds)
 		case <-time.After(10 * time.Second):
 			tb.Fatalf("only %d of %d responder sessions surfaced", len(servers), n)
@@ -204,7 +212,7 @@ func dialFlows(tb testing.TB, n int) (clients []*DatagramConn, servers []*datagr
 	}
 
 	stop = func() {
-		_ = epB.Close()
+		_ = responder.Close()
 		for _, ep := range initiators {
 			_ = ep.Close()
 		}
@@ -238,111 +246,143 @@ func BenchmarkDatagramEndToEndFlows(b *testing.B) {
 		b.Run(fmt.Sprintf("flows=%d", flows), func(b *testing.B) {
 			clients, servers, stop := dialFlows(b, flows)
 			defer stop()
-
-			payload := make([]byte, constants.DatagramMaxDataPayload)
-			const window = 16 // per-flow in-flight bound; well below dataInboxCap (64)
-			var received int64
-			stopDrain := make(chan struct{})
-			var drainWG sync.WaitGroup
-
-			// Per-flow credit semaphores (buffered channels), pre-filled to the window.
-			credits := make([]chan struct{}, flows)
-			for i := range credits {
-				credits[i] = make(chan struct{}, window)
-				for range window {
-					credits[i] <- struct{}{}
-				}
-			}
-
-			// One drainer per responder session: count the delivery and return a credit
-			// to its flow (non-blocking - the window cap means the channel can be full).
-			for i := range servers {
-				srv, cr := servers[i], credits[i]
-				drainWG.Add(1)
-				go func() {
-					defer drainWG.Done()
-					for {
-						select {
-						case <-srv.recvCh:
-							atomic.AddInt64(&received, 1)
-							select {
-							case cr <- struct{}{}:
-							default:
-							}
-						case <-srv.closed:
-							return
-						case <-stopDrain:
-							return
-						}
-					}
-				}()
-			}
-
-			// Watchdog: restore a credit per flow every 100ms so a kernel-dropped
-			// datagram (whose credit the drainer never returns) cannot permanently wedge
-			// a sender. Far below the real delivery rate, so it does not pace the bench.
-			go func() {
-				t := time.NewTicker(100 * time.Millisecond)
-				defer t.Stop()
-				for {
-					select {
-					case <-t.C:
-						for _, cr := range credits {
-							select {
-							case cr <- struct{}{}:
-							default:
-							}
-						}
-					case <-stopDrain:
-						return
-					}
-				}
-			}()
-
-			b.SetBytes(int64(len(payload)))
-			b.ReportAllocs()
-			b.ResetTimer()
-
-			// Spread b.N sends across the flows concurrently so all cores stay busy.
-			// Capture the first send error atomically rather than calling b.Errorf from
-			// these goroutines: testing.B is not safe for concurrent Errorf, and CI runs
-			// under -race. Report it on the main goroutine after the senders join.
-			var wg sync.WaitGroup
-			var sendErr atomic.Value
-			per := b.N / flows
-			for i := range clients {
-				count := per
-				if i == len(clients)-1 {
-					count = b.N - per*(flows-1) // remainder on the last flow
-				}
-				c, cr := clients[i], credits[i]
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					for range count {
-						<-cr
-						if err := c.Send(payload); err != nil {
-							sendErr.CompareAndSwap(nil, err)
-							return
-						}
-					}
-				}()
-			}
-			wg.Wait()
-			elapsed := b.Elapsed()
-			b.StopTimer()
-			close(stopDrain)
-			drainWG.Wait() // do not leak drainers into the next sub-benchmark
-
-			if err, _ := sendErr.Load().(error); err != nil {
-				b.Fatalf("send: %v", err)
-			}
-			if secs := elapsed.Seconds(); secs > 0 {
-				got := atomic.LoadInt64(&received)
-				b.ReportMetric(float64(got*int64(len(payload)))/secs/1e6, "recv-MB/s")
-			}
+			runFlowGoodput(b, clients, servers)
 		})
 	}
+}
+
+// runFlowGoodput drives the closed-loop aggregate-goodput measurement over the
+// established clients/servers: each flow sends b.N/flows datagrams paced by a
+// per-flow credit window the drainer refills on delivery, with a watchdog top-up so
+// a kernel drop cannot wedge a sender. SetBytes reports the send rate; recv-MB/s
+// reports delivered goodput over the same wall-clock. Shared by the single-socket
+// (BenchmarkDatagramEndToEndFlows) and SO_REUSEPORT (BenchmarkDatagramListenScale)
+// benchmarks so they measure identically.
+func runFlowGoodput(b *testing.B, clients []*DatagramConn, servers []*datagramSession) {
+	b.Helper()
+	flows := len(clients)
+	payload := make([]byte, constants.DatagramMaxDataPayload)
+	const window = 16 // per-flow in-flight bound; well below dataInboxCap (64)
+	var received int64
+	stopDrain := make(chan struct{})
+	var drainWG sync.WaitGroup
+
+	// Per-flow credit semaphores (buffered channels), pre-filled to the window.
+	credits := make([]chan struct{}, flows)
+	for i := range credits {
+		credits[i] = make(chan struct{}, window)
+		for range window {
+			credits[i] <- struct{}{}
+		}
+	}
+
+	// One drainer per responder session: count the delivery and return a credit to
+	// its flow (non-blocking - the window cap means the channel can be full).
+	for i := range servers {
+		srv, cr := servers[i], credits[i]
+		drainWG.Add(1)
+		go func() {
+			defer drainWG.Done()
+			for {
+				select {
+				case <-srv.recvCh:
+					atomic.AddInt64(&received, 1)
+					select {
+					case cr <- struct{}{}:
+					default:
+					}
+				case <-srv.closed:
+					return
+				case <-stopDrain:
+					return
+				}
+			}
+		}()
+	}
+
+	// Watchdog: restore a credit per flow every 100ms so a kernel-dropped datagram
+	// (whose credit the drainer never returns) cannot permanently wedge a sender. Far
+	// below the real delivery rate, so it does not pace the bench.
+	go func() {
+		t := time.NewTicker(100 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				for _, cr := range credits {
+					select {
+					case cr <- struct{}{}:
+					default:
+					}
+				}
+			case <-stopDrain:
+				return
+			}
+		}
+	}()
+
+	b.SetBytes(int64(len(payload)))
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	// Spread b.N sends across the flows concurrently so all cores stay busy. Capture
+	// the first send error atomically rather than calling b.Errorf from these
+	// goroutines: testing.B is not safe for concurrent Errorf, and CI runs under
+	// -race. Report it on the main goroutine after the senders join.
+	var wg sync.WaitGroup
+	var sendErr atomic.Value
+	per := b.N / flows
+	for i := range clients {
+		count := per
+		if i == len(clients)-1 {
+			count = b.N - per*(flows-1) // remainder on the last flow
+		}
+		c, cr := clients[i], credits[i]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range count {
+				<-cr
+				if err := c.Send(payload); err != nil {
+					sendErr.CompareAndSwap(nil, err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	elapsed := b.Elapsed()
+	b.StopTimer()
+	close(stopDrain)
+	drainWG.Wait() // do not leak drainers past this measurement
+
+	if err, _ := sendErr.Load().(error); err != nil {
+		b.Fatalf("send: %v", err)
+	}
+	if secs := elapsed.Seconds(); secs > 0 {
+		got := atomic.LoadInt64(&received)
+		b.ReportMetric(float64(got*int64(len(payload)))/secs/1e6, "recv-MB/s")
+	}
+}
+
+// benchListenFlows runs the aggregate-goodput measurement against a ListenDatagram
+// responder configured with the given SO_REUSEPORT socket count, so the benchmark
+// shows how aggregate throughput scales with receive sockets.
+func benchListenFlows(b *testing.B, sockets, flows int) {
+	b.Helper()
+	responder, err := ListenDatagram("udp", "127.0.0.1:0", WithReceiveSockets(sockets))
+	if err != nil {
+		b.Fatalf("ListenDatagram: %v", err)
+	}
+	for _, c := range append([]net.PacketConn{responder.conn}, responder.extraConns...) {
+		if uc, ok := c.(*net.UDPConn); ok {
+			_ = uc.SetReadBuffer(8 << 20)
+		}
+	}
+	go responder.Serve()
+	clients, servers, stop := dialFlowsInto(b, responder, responder.conn.LocalAddr(), flows)
+	defer stop()
+	runFlowGoodput(b, clients, servers)
 }
 
 // BenchmarkDatagramRecvBacklog measures the receive path under a real backlog: a

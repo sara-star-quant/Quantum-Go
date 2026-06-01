@@ -60,37 +60,45 @@ func (e *DatagramEndpoint) deliverHandshake(src net.Addr, h protocol.DatagramHan
 	if h.MsgType != protocol.MessageTypeClientHello {
 		return
 	}
-	if ds := e.registry.lookupSource(src.String()); ds != nil {
-		trySend(ds.inbox, in)
-		return
-	}
-	if !e.registry.tryAddHalfOpen(src.String()) {
-		return
-	}
-	e.startResponder(src, in)
-}
-
-// startResponder allocates the responder's connection index, registers it (in
-// byIndex so the ClientFinished routes, and in bySource so ClientHello
-// retransmits route), and runs the handshake in its own goroutine.
-func (e *DatagramEndpoint) startResponder(src net.Addr, first inboundMsg) {
-	session, err := NewSession(RoleResponder)
-	if err != nil {
-		e.registry.releaseHalfOpen(src.String())
-		return
-	}
+	// Atomically resolve the bootstrap under one registry lock: route to an existing
+	// in-progress responder, or install this fresh session and start one, or drop at
+	// the cap. reserveSource registers the session in bySource as it claims the
+	// half-open slot - BEFORE the slow CH-KEM work in startResponder - so concurrent
+	// receive goroutines (the SO_REUSEPORT path) cannot both start a responder for the
+	// same new source: the loser sees the winner's session and routes to it.
 	ds := &datagramSession{
 		inbox:  make(chan inboundMsg, inboxCap),
 		recvCh: make(chan []byte, dataInboxCap),
 		closed: make(chan struct{}),
 	}
 	ds.setPeerAddr(src)
-	idx, err := e.registry.add(ds)
+	reserved, won := e.registry.reserveSource(src.String(), ds)
+	if !won {
+		if reserved != nil { // an existing responder owns this source: route the retransmit
+			trySend(reserved.inbox, in)
+		}
+		return // reserved == nil means the per-source cap is reached: drop
+	}
+	e.startResponder(src, ds, in)
+}
+
+// startResponder finishes bootstrapping the responder session ds (already registered
+// in bySource and holding a half-open slot, via reserveSource): it keys a session,
+// allocates the connection index, and runs the handshake in its own goroutine. On a
+// setup error it unwinds the source reservation and the half-open slot.
+func (e *DatagramEndpoint) startResponder(src net.Addr, ds *datagramSession, first inboundMsg) {
+	session, err := NewSession(RoleResponder)
 	if err != nil {
+		e.registry.removeSource(src.String())
 		e.registry.releaseHalfOpen(src.String())
 		return
 	}
-	e.registry.addSource(src.String(), ds)
+	idx, err := e.registry.add(ds)
+	if err != nil {
+		e.registry.removeSource(src.String())
+		e.registry.releaseHalfOpen(src.String())
+		return
+	}
 
 	l := &handshakeLoop{
 		ep:          e,
