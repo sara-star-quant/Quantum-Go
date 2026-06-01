@@ -65,7 +65,9 @@ func TestFallbackIORecvDispatchesEachDatagram(t *testing.T) {
 			if src != addr {
 				t.Errorf("src = %v, want %v", src, addr)
 			}
-			got = append(got, payload)
+			// The payload is borrowed (valid only during dispatch), so copy it to
+			// compare after the loop - exactly what a retaining caller must do.
+			got = append(got, append([]byte(nil), payload...))
 		})
 		if err != nil {
 			break
@@ -82,9 +84,12 @@ func TestFallbackIORecvDispatchesEachDatagram(t *testing.T) {
 	}
 }
 
-func TestFallbackIORecvCopiesPayload(t *testing.T) {
-	// recv must hand the callee a copy that survives the reuse of the read buffer
-	// on the following recv.
+func TestFallbackIORecvPayloadBorrowed(t *testing.T) {
+	// The recv payload is borrowed: correct during dispatch, and a copy taken
+	// during dispatch survives a later recv that reuses the buffer. (The old
+	// contract handed out a fresh copy per call; recv now passes the reused buffer
+	// directly to avoid a per-datagram allocation, so retaining without copying is a
+	// caller bug - this test pins the copy-during-dispatch behavior callers rely on.)
 	addr := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}
 	conn := &scriptedConn{reads: []scriptedPkt{
 		{data: []byte("first"), addr: addr},
@@ -92,12 +97,18 @@ func TestFallbackIORecvCopiesPayload(t *testing.T) {
 	}}
 
 	bio := newBatchIO(conn)
-	var retained []byte
-	_ = bio.recv(func(_ net.Addr, payload []byte) { retained = payload })
-	_ = bio.recv(func(_ net.Addr, _ []byte) {})
 
-	if !bytes.Equal(retained, []byte("first")) {
-		t.Fatalf("retained payload corrupted by a later recv: %q", retained)
+	var duringDispatch, copied []byte
+	_ = bio.recv(func(_ net.Addr, payload []byte) {
+		duringDispatch = payload                 // borrowed view
+		copied = append([]byte(nil), payload...) // what a retaining caller does
+	})
+	if !bytes.Equal(duringDispatch, []byte("first")) {
+		t.Fatalf("payload during dispatch = %q, want %q", duringDispatch, "first")
+	}
+	_ = bio.recv(func(_ net.Addr, _ []byte) {})
+	if !bytes.Equal(copied, []byte("first")) {
+		t.Fatalf("a copy taken during dispatch must survive a later recv: got %q", copied)
 	}
 }
 

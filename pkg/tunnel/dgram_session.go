@@ -158,7 +158,7 @@ func (s *Session) DatagramSeal(aad []byte, seq uint64, plaintext []byte) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	s.lastActivityNanos.Store(time.Now().UnixNano())
+	s.lastActivityNanos.Store(coarseTimeNanos())
 	return ct, nil
 }
 
@@ -182,7 +182,7 @@ func (s *Session) DatagramOpen(epoch uint8, seq uint64, ciphertext, aad []byte) 
 	if err != nil {
 		return nil, err
 	}
-	s.lastActivityNanos.Store(time.Now().UnixNano())
+	s.lastActivityNanos.Store(coarseTimeNanos())
 	return pt, nil
 }
 
