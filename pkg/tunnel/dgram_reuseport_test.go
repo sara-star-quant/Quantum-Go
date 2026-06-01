@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/sara-star-quant/quantum-go/internal/constants"
 )
 
 // TestReserveSourceBootstrapRace drives two concurrent bootstrap ClientHellos for
@@ -67,6 +69,59 @@ func (c *blackholeConn) LocalAddr() net.Addr              { return &net.UDPAddr{
 func (c *blackholeConn) SetDeadline(time.Time) error      { return nil }
 func (c *blackholeConn) SetReadDeadline(time.Time) error  { return nil }
 func (c *blackholeConn) SetWriteDeadline(time.Time) error { return nil }
+
+// TestReserveSourceOutcomes exercises reserveSource's three outcomes directly: admit
+// a new source, route a second ClientHello for an in-progress source to the existing
+// responder, and drop once the per-source half-open cap is reached. It also asserts
+// the build closure runs ONLY on the admit path, so a lost retransmit or a capped
+// ClientHello allocates no session. This is the production bootstrap admission path
+// the SO_REUSEPORT fan-out relies on; the tryAddHalfOpen-based tests no longer cover
+// it since reserveSource owns the decision.
+//
+// The cap branch is defensive: in production reserveSource is the only half-open
+// incrementer and it dedups per source (the existing-responder check fires first), so
+// one source tops out at a single in-progress responder and never reaches the cap on
+// its own. The test fills the slots directly via tryAddHalfOpen to reach that branch.
+func TestReserveSourceOutcomes(t *testing.T) {
+	r := newConnRegistry()
+	builds := 0
+	build := func() *datagramSession { builds++; return &datagramSession{} }
+
+	// New source: admitted, build runs once, one slot claimed.
+	const src = "203.0.113.7:51820"
+	first, won := r.reserveSource(src, build)
+	if !won || first == nil {
+		t.Fatalf("new source: got (%v, %v), want admitted", first, won)
+	}
+	if builds != 1 || r.halfOpenLoad() != 1 {
+		t.Fatalf("after admit: builds=%d halfOpen=%d, want 1 and 1", builds, r.halfOpenLoad())
+	}
+
+	// Same in-progress source: routes to the existing responder, no build, no extra slot.
+	again, won := r.reserveSource(src, build)
+	if won || again != first {
+		t.Fatalf("retransmit: got (%v, %v), want the existing session and won=false", again, won)
+	}
+	if builds != 1 || r.halfOpenLoad() != 1 {
+		t.Fatalf("after retransmit: builds=%d halfOpen=%d, want unchanged 1 and 1", builds, r.halfOpenLoad())
+	}
+
+	// Capped source: fill its half-open slots, then reserveSource must drop without building.
+	const capped = "198.51.100.4:51820"
+	for i := 0; i < constants.DatagramMaxHalfOpenPerSource; i++ {
+		if !r.tryAddHalfOpen(capped) {
+			t.Fatalf("slot %d for capped source should be admitted (cap %d)", i, constants.DatagramMaxHalfOpenPerSource)
+		}
+	}
+	buildsBefore := builds
+	ds, won := r.reserveSource(capped, build)
+	if won || ds != nil {
+		t.Fatalf("capped source: got (%v, %v), want (nil, false)", ds, won)
+	}
+	if builds != buildsBefore {
+		t.Fatalf("build ran on the capped path (%d -> %d), want no allocation", buildsBefore, builds)
+	}
+}
 
 // TestListenDatagram checks the constructor works on every platform: it returns a
 // usable endpoint bound to a concrete port, honoring WithReceiveSockets. On Linux it

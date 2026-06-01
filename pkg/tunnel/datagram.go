@@ -115,11 +115,11 @@ func (ds *datagramSession) teardown(r *connRegistry) {
 }
 
 // connRegistry maps the random connection indices we assign to their sessions
-// and provides per-source half-open (un-established) accounting. The handshake
-// FSM gates new half-open sessions through tryAddHalfOpen (releasing on
-// establishment or teardown); until that is wired, the reassembler's global and
-// per-source caps are the active pre-auth memory bounds. A future stateless
-// cookie/retry exchange removes the spoofed-source vector entirely.
+// and provides per-source half-open (un-established) accounting. The bootstrap
+// path admits new half-open responder sessions through reserveSource and releases
+// them on establishment or teardown; that per-source half-open cap, the
+// reassembler's global and per-source caps, and the stateless cookie gate are the
+// pre-auth memory bounds against spoofed sources.
 type connRegistry struct {
 	mu            sync.Mutex
 	byIndex       map[uint32]*datagramSession
@@ -227,6 +227,13 @@ func (r *connRegistry) idleSince(cutoffNanos int64) []*datagramSession {
 func (r *connRegistry) tryAddHalfOpen(source string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.addHalfOpenLocked(source)
+}
+
+// addHalfOpenLocked increments the half-open count for source, or returns false if
+// the per-source cap is already reached. The caller must hold r.mu. It is the single
+// admission check shared by tryAddHalfOpen and reserveSource.
+func (r *connRegistry) addHalfOpenLocked(source string) bool {
 	if r.halfOpen[source] >= constants.DatagramMaxHalfOpenPerSource {
 		return false
 	}
@@ -280,29 +287,30 @@ func (r *connRegistry) knownSource(index uint32, src string) bool {
 // reserveSource makes the bootstrap decision for a RecvIndex-0 ClientHello from
 // source atomically under one lock, so concurrent receive goroutines (the
 // SO_REUSEPORT parallel-receive path) cannot both start a responder for the same new
-// source. The caller passes a freshly-built (not-yet-keyed) session to install if
-// source is new. It returns:
-//   - (ds, true): source was new and admitted - the passed session is now registered
+// source. build constructs the not-yet-keyed session to install, and runs ONLY when
+// source is admitted - so a retransmit that loses the race or a ClientHello past the
+// cap costs no session allocation. It returns:
+//   - (ds, true): source was new and admitted - the built session is now registered
 //     in bySource and a half-open slot is claimed; the caller MUST run startResponder
 //     with this session and release the slot on failure. Registering in bySource
 //     here (not later, after the slow CH-KEM work in startResponder) is what closes
 //     the window where a second goroutine could also start a responder.
 //   - (existing, false): a responder for source already exists (this goroutine raced
 //     a retransmit, or the kernel hashed two copies to two sockets); the caller
-//     routes the ClientHello to existing and discards its freshly-built session.
-//   - (nil, false): the per-source half-open cap is reached; the caller drops.
-func (r *connRegistry) reserveSource(source string, fresh *datagramSession) (ds *datagramSession, reserved bool) {
+//     routes the ClientHello to existing. build did not run.
+//   - (nil, false): the per-source half-open cap is reached; the caller drops. build
+//     did not run.
+func (r *connRegistry) reserveSource(source string, build func() *datagramSession) (ds *datagramSession, reserved bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if existing := r.bySource[source]; existing != nil {
 		return existing, false
 	}
-	if r.halfOpen[source] >= constants.DatagramMaxHalfOpenPerSource {
+	if !r.addHalfOpenLocked(source) {
 		return nil, false
 	}
+	fresh := build()
 	r.bySource[source] = fresh
-	r.halfOpen[source]++
-	r.halfOpenTotal++
 	return fresh, true
 }
 
