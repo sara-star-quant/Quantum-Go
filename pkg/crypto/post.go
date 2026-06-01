@@ -227,14 +227,15 @@ func runMLKEMKAT() error {
 
 // ModuleIntegrity contains information about the crypto module's integrity
 type ModuleIntegrity struct {
-	// ExpectedHash is the expected SHA-256 hash of critical code sections
-	// In a real FIPS implementation, this would be computed at build time
+	// ExpectedHash is the SHA-256 of the embedded KAT vectors, pinned at source. It is
+	// NOT a hash of the binary .text section (see CheckModuleIntegrity).
 	ExpectedHash string
 
-	// ActualHash is computed at runtime
+	// ActualHash is the runtime SHA-256 of the same KAT vectors.
 	ActualHash string
 
-	// Verified indicates if the integrity check passed
+	// Verified is true when ActualHash matches ExpectedHash, i.e. the KAT vectors in the
+	// binary were not altered. It does NOT attest the binary as a whole.
 	Verified bool
 }
 
@@ -244,15 +245,13 @@ var (
 	postIntegrityOnce sync.Once
 )
 
-// CheckModuleIntegrity performs a module integrity check.
-// This is a simplified implementation - a full FIPS implementation would
-// hash the actual binary code sections.
-//
-// For this implementation, we verify that the KAT values themselves have not
-// been tampered with by checking their hash.
+// CheckModuleIntegrity verifies that the embedded known-answer-test (KAT) vectors have
+// not been altered in the binary, by comparing their SHA-256 against a value pinned at
+// source. This is a NARROW check: it covers the KAT vectors POST relies on, not the
+// binary .text section. Full module integrity (an HMAC over the .text/binary, failing
+// hard in FIPS mode) is future FIPS work; this no longer claims it.
 func CheckModuleIntegrity() *ModuleIntegrity {
 	postIntegrityOnce.Do(func() {
-		// Compute hash of KAT values
 		h := sha256.New()
 		h.Write(postKATKDFInput)
 		h.Write(postKATKDFExpected)
@@ -261,19 +260,16 @@ func CheckModuleIntegrity() *ModuleIntegrity {
 		h.Write(postKATAESPlaintext)
 		h.Write(postKATAESExpected)
 		h.Write(postKATMLKEMSeed)
-
 		actualHash := hex.EncodeToString(h.Sum(nil))
 
-		// Expected hash of the KAT values
-		// This was pre-computed and embedded at build time
-		expectedHash := "f3b5c7e8d9a1b2c4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192"
+		// SHA-256 of the KAT vectors above, pinned at source. A mismatch means a KAT
+		// vector was altered in the binary. Recompute and update this if the vectors change.
+		const expectedHash = "0aa6a0d630f79affdeb0850b02bf827416cb43bfd04a1bb1be7e2241c1ad1868"
 
 		postIntegrity = &ModuleIntegrity{
 			ExpectedHash: expectedHash,
 			ActualHash:   actualHash,
-			// In a real implementation, we would verify these match
-			// For now, we just record the actual hash
-			Verified: true, // Simplified - always passes
+			Verified:     actualHash == expectedHash,
 		}
 	})
 
