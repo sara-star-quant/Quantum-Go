@@ -79,6 +79,15 @@ func BenchmarkDatagramRecvSingle(b *testing.B) {
 	benchRecv(b, func(rx *net.UDPConn) batchIO { return newFallbackIO(rx) })
 }
 
+// BenchmarkDatagramRecvGRO measures loopback receive throughput with UDP_GRO enabled,
+// the offload-on counterpart of BenchmarkDatagramRecvBatch (offload off): on a busy
+// flow the kernel coalesces datagrams, so each recvmmsg drains more of them. The
+// numbers are indicative on loopback/VM; the keep/drop decision for offload needs a
+// many-core bare-metal host.
+func BenchmarkDatagramRecvGRO(b *testing.B) {
+	benchRecv(b, func(rx *net.UDPConn) batchIO { return newBatchIO(rx, true) })
+}
+
 // benchRecv floods a loopback socket and drains it through the batchIO that newIO
 // returns, so the batched and single-shot receive paths share one harness.
 func benchRecv(b *testing.B, newIO func(*net.UDPConn) batchIO) {
