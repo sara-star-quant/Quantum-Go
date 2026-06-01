@@ -25,7 +25,7 @@ func TestLinuxBatchIORecvLoopback(t *testing.T) {
 	}
 	defer func() { _ = tx.Close() }()
 
-	bio := newBatchIO(rx)
+	bio := newBatchIO(rx, false)
 	if _, ok := bio.(*linuxBatchIO); !ok {
 		t.Fatalf("newBatchIO over *net.UDPConn = %T, want *linuxBatchIO", bio)
 	}
@@ -69,7 +69,7 @@ func containsBytes(set [][]byte, want []byte) bool {
 // batched path (run with -benchmem). Compare against BenchmarkDatagramRecvSingle
 // to see the recvmmsg syscall-amortization win.
 func BenchmarkDatagramRecvBatch(b *testing.B) {
-	benchRecv(b, func(rx *net.UDPConn) batchIO { return newBatchIO(rx) })
+	benchRecv(b, func(rx *net.UDPConn) batchIO { return newBatchIO(rx, false) })
 }
 
 // BenchmarkDatagramRecvSingle measures the same loopback receive throughput

@@ -58,7 +58,7 @@ func TestFallbackIORecvDispatchesEachDatagram(t *testing.T) {
 		conn.reads = append(conn.reads, scriptedPkt{data: d, addr: addr})
 	}
 
-	bio := newBatchIO(conn)
+	bio := newBatchIO(conn, false)
 	var got [][]byte
 	for {
 		err := bio.recv(func(src net.Addr, payload []byte) {
@@ -96,7 +96,7 @@ func TestFallbackIORecvPayloadBorrowed(t *testing.T) {
 		{data: []byte("SECOND-and-longer"), addr: addr},
 	}}
 
-	bio := newBatchIO(conn)
+	bio := newBatchIO(conn, false)
 
 	var duringDispatch, copied []byte
 	_ = bio.recv(func(_ net.Addr, payload []byte) {
@@ -117,7 +117,7 @@ func TestWriteAllEmitsEachFrameToDst(t *testing.T) {
 	frames := [][]byte{[]byte("f0"), []byte("f1"), []byte("f2")}
 	conn := &scriptedConn{}
 
-	bio := newBatchIO(conn)
+	bio := newBatchIO(conn, false)
 	bio.writeAll(frames, dst)
 
 	if len(conn.writes) != len(frames) {
@@ -135,7 +135,7 @@ func TestWriteAllEmitsEachFrameToDst(t *testing.T) {
 
 func TestWriteAllEmptyEmitsNothing(t *testing.T) {
 	conn := &scriptedConn{}
-	bio := newBatchIO(conn)
+	bio := newBatchIO(conn, false)
 	bio.writeAll(nil, &net.UDPAddr{})
 	if len(conn.writes) != 0 {
 		t.Fatalf("empty writeAll emitted %d datagrams", len(conn.writes))
