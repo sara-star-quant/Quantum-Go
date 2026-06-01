@@ -223,22 +223,19 @@ const (
 	// reaped (there is no FIN over UDP; close is best-effort).
 	DatagramIdleTimeoutSeconds = 120
 
-	// DatagramMaxHalfOpenPerSource caps concurrent half-open (un-established)
-	// handshakes from a single source address.
-	DatagramMaxHalfOpenPerSource = 8
-
-	// DatagramMaxHalfOpenTotal caps concurrent half-open handshakes across all
-	// sources.
-	DatagramMaxHalfOpenTotal = 1024
-
-	// DatagramCookiePressureHighWater is the load at which the datagram endpoint
-	// starts demanding a stateless return-routability cookie from new sources
-	// before committing handshake state (the QUIC-style anti-DoS posture). It is
-	// compared against both the in-progress reassembly source count and the global
-	// half-open count; either crossing it flips the endpoint into cookie-required
-	// mode. Set to half of DatagramMaxHalfOpenTotal so cookies engage well before
-	// the hard caps are reached, leaving headroom for the verified path.
-	DatagramCookiePressureHighWater = DatagramMaxHalfOpenTotal / 2
+	// The concurrent half-open (un-established) handshake ceiling autoscales with
+	// core count: an endpoint's effective cap is clamp(GOMAXPROCS * PerCore, Floor,
+	// Ceiling), and the cookie-pressure water-mark is half of it. A busy multi-core
+	// server (the SO_REUSEPORT receive path) gets proportional headroom while a small
+	// host stays bounded. WithMaxHalfOpen overrides the autoscaled default.
+	//
+	// DatagramMaxHalfOpenFloor is the minimum ceiling (and the NewReassembler default
+	// source cap); DatagramMaxHalfOpenPerCore is the per-core allotment;
+	// DatagramMaxHalfOpenCeiling is the hard upper bound that keeps a high-core host
+	// from committing to an unbounded half-open table.
+	DatagramMaxHalfOpenFloor   = 1024
+	DatagramMaxHalfOpenPerCore = 256
+	DatagramMaxHalfOpenCeiling = 8192
 
 	// DatagramReplayWindowBits is the width of the datagram anti-replay window.
 	DatagramReplayWindowBits = 1024

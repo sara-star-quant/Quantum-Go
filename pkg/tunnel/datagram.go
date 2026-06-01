@@ -115,24 +115,26 @@ func (ds *datagramSession) teardown(r *connRegistry) {
 }
 
 // connRegistry maps the random connection indices we assign to their sessions
-// and provides per-source half-open (un-established) accounting. The bootstrap
-// path admits new half-open responder sessions through reserveSource and releases
-// them on establishment or teardown; that per-source half-open cap, the
-// reassembler's global and per-source caps, and the stateless cookie gate are the
-// pre-auth memory bounds against spoofed sources.
+// and provides half-open (un-established) accounting. The bootstrap path admits new
+// half-open responder sessions through reserveSource and releases them on
+// establishment or teardown; the global half-open ceiling (maxHalfOpen) it enforces,
+// the reassembler's caps, and the stateless cookie gate are the pre-auth memory
+// bounds against spoofed sources.
 type connRegistry struct {
 	mu            sync.Mutex
 	byIndex       map[uint32]*datagramSession
 	bySource      map[string]*datagramSession // in-progress responder handshakes, keyed by source
 	halfOpen      map[string]int              // source identity -> count of un-established sessions
 	halfOpenTotal int                         // sum of halfOpen across all sources (cookie-pressure signal)
+	maxHalfOpen   int                         // hard ceiling on halfOpenTotal; reserveSource drops new sources at it
 }
 
-func newConnRegistry() *connRegistry {
+func newConnRegistry(maxHalfOpen int) *connRegistry {
 	return &connRegistry{
-		byIndex:  make(map[uint32]*datagramSession),
-		bySource: make(map[string]*datagramSession),
-		halfOpen: make(map[string]int),
+		byIndex:     make(map[uint32]*datagramSession),
+		bySource:    make(map[string]*datagramSession),
+		halfOpen:    make(map[string]int),
+		maxHalfOpen: maxHalfOpen,
 	}
 }
 
@@ -230,11 +232,14 @@ func (r *connRegistry) tryAddHalfOpen(source string) bool {
 	return r.addHalfOpenLocked(source)
 }
 
-// addHalfOpenLocked increments the half-open count for source, or returns false if
-// the per-source cap is already reached. The caller must hold r.mu. It is the single
-// admission check shared by tryAddHalfOpen and reserveSource.
+// addHalfOpenLocked admits one half-open session, or returns false if the global
+// half-open ceiling (maxHalfOpen) is already reached. The caller must hold r.mu. It
+// is the single admission check shared by tryAddHalfOpen and reserveSource. The
+// per-source halfOpen map is kept for release idempotency (see releaseHalfOpen), not
+// for a per-source cap: reserveSource dedups per source before calling this, so a
+// source holds at most one half-open slot.
 func (r *connRegistry) addHalfOpenLocked(source string) bool {
-	if r.halfOpen[source] >= constants.DatagramMaxHalfOpenPerSource {
+	if r.halfOpenTotal >= r.maxHalfOpen {
 		return false
 	}
 	r.halfOpen[source]++
@@ -353,8 +358,8 @@ type DatagramEndpoint struct {
 	// anti-DoS gate (see dgram_cookie.go).
 	cookie *cookieSigner
 	// cookiePressureHighWater is the load at which the endpoint demands a cookie
-	// from new sources; defaulted from constants, lowered (in-package) for tests
-	// so pressure can be forced without thousands of real sources.
+	// from new sources; derived as maxHalfOpen/2 in newEndpoint, lowered (in-package)
+	// for tests so pressure can be forced without thousands of real sources.
 	cookiePressureHighWater int
 
 	// rtoInitial/rtoMax bound handshake retransmission backoff; defaulted from
@@ -377,6 +382,11 @@ type DatagramEndpoint struct {
 	// set by WithReceiveSockets; 0 means use the default. Ignored by
 	// NewDatagramEndpoint.
 	receiveSockets int
+
+	// maxHalfOpen is the operator override for the half-open ceiling, set by
+	// WithMaxHalfOpen; 0 means autoscale with core count. newEndpoint resolves it into
+	// the registry's hard cap and the cookie-pressure water-mark.
+	maxHalfOpen int
 
 	closeOnce sync.Once
 	done      chan struct{}
@@ -404,6 +414,31 @@ func WithReceiveSockets(n int) DatagramEndpointOption {
 	return func(e *DatagramEndpoint) { e.receiveSockets = n }
 }
 
+// WithMaxHalfOpen overrides the concurrent half-open handshake ceiling (the number
+// of in-progress, not-yet-established responder sessions the endpoint admits before
+// dropping new sources). The default autoscales with core count
+// (clamp(GOMAXPROCS*DatagramMaxHalfOpenPerCore, floor, ceiling)); set this to pin a
+// fixed budget for a known deployment. Values below 1 are ignored (autoscale stays
+// in effect); larger values are honored as-is. The cookie-pressure water-mark tracks
+// at half the effective ceiling.
+func WithMaxHalfOpen(n int) DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.maxHalfOpen = n }
+}
+
+// clampMaxHalfOpen returns the autoscaled half-open ceiling for a host with the given
+// core count: cores * per-core allotment, clamped to [floor, ceiling]. Pure so the
+// scaling curve is testable without touching GOMAXPROCS.
+func clampMaxHalfOpen(cores int) int {
+	n := cores * constants.DatagramMaxHalfOpenPerCore
+	if n < constants.DatagramMaxHalfOpenFloor {
+		return constants.DatagramMaxHalfOpenFloor
+	}
+	if n > constants.DatagramMaxHalfOpenCeiling {
+		return constants.DatagramMaxHalfOpenCeiling
+	}
+	return n
+}
+
 // NewDatagramEndpoint wraps a PacketConn (a *net.UDPConn in production, or a
 // fault-injecting conn in tests). It does not start the receive loop; callers
 // start it explicitly so tests can drive routing deterministically. It returns an
@@ -423,21 +458,29 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 		return nil, err
 	}
 	e := &DatagramEndpoint{
-		conn:                    conn,
-		batch:                   newBatchIO(conn),
-		registry:                newConnRegistry(),
-		reasm:                   NewReassembler(0, 0, 0),
-		acceptCh:                make(chan *datagramSession, 16),
-		cookie:                  cookie,
-		cookiePressureHighWater: constants.DatagramCookiePressureHighWater,
-		rtoInitial:              time.Duration(constants.DatagramHandshakeInitialTimeoutMillis) * time.Millisecond,
-		rtoMax:                  time.Duration(constants.DatagramHandshakeMaxTimeoutMillis) * time.Millisecond,
-		idleTimeout:             time.Duration(constants.DatagramIdleTimeoutSeconds) * time.Second,
-		done:                    make(chan struct{}),
+		conn:        conn,
+		batch:       newBatchIO(conn),
+		reasm:       NewReassembler(0, 0, 0),
+		acceptCh:    make(chan *datagramSession, 16),
+		cookie:      cookie,
+		rtoInitial:  time.Duration(constants.DatagramHandshakeInitialTimeoutMillis) * time.Millisecond,
+		rtoMax:      time.Duration(constants.DatagramHandshakeMaxTimeoutMillis) * time.Millisecond,
+		idleTimeout: time.Duration(constants.DatagramIdleTimeoutSeconds) * time.Second,
+		done:        make(chan struct{}),
 	}
 	for _, opt := range opts {
 		opt(e)
 	}
+	// Resolve the half-open ceiling after opts: autoscale with core count unless an
+	// operator pinned it via WithMaxHalfOpen. The cookie-pressure water-mark and the
+	// reassembler's source cap both track it so the soft (cookie) and hard (drop)
+	// anti-DoS signals stay proportional across host sizes.
+	if e.maxHalfOpen < 1 {
+		e.maxHalfOpen = clampMaxHalfOpen(runtime.GOMAXPROCS(0))
+	}
+	e.cookiePressureHighWater = e.maxHalfOpen / 2
+	e.registry = newConnRegistry(e.maxHalfOpen)
+	e.reasm.maxSources = e.maxHalfOpen
 	return e, nil
 }
 
