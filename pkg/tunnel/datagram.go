@@ -388,6 +388,11 @@ type DatagramEndpoint struct {
 	// the registry's hard cap and the cookie-pressure water-mark.
 	maxHalfOpen int
 
+	// offload requests Linux UDP receive offload (UDP_GRO), set by WithDatagramOffload.
+	// newEndpoint passes it to each receive socket's batchIO; it is a no-op off Linux,
+	// on non-UDP conns, or on kernels without UDP_GRO.
+	offload bool
+
 	closeOnce sync.Once
 	done      chan struct{}
 }
@@ -425,6 +430,17 @@ func WithMaxHalfOpen(n int) DatagramEndpointOption {
 	return func(e *DatagramEndpoint) { e.maxHalfOpen = n }
 }
 
+// WithDatagramOffload enables Linux UDP receive offload (UDP_GRO): the kernel
+// coalesces a burst of same-flow datagrams into one larger buffer, so one recvmmsg
+// returns many datagrams' worth of bytes and the receive loop re-splits them, cutting
+// receive syscalls on a busy flow. It is off by default and Linux-only; on other
+// platforms, non-UDP conns, or kernels without UDP_GRO it is a no-op and the receive
+// path runs unchanged. Send-side UDP_SEGMENT (GSO) is not yet wired. Enabling it grows
+// the per-socket receive buffers (it must hold a coalesced burst).
+func WithDatagramOffload() DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.offload = true }
+}
+
 // clampMaxHalfOpen returns the autoscaled half-open ceiling for a host with the given
 // core count: cores * per-core allotment, clamped to [floor, ceiling]. Pure so the
 // scaling curve is testable without touching GOMAXPROCS.
@@ -459,7 +475,6 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 	}
 	e := &DatagramEndpoint{
 		conn:        conn,
-		batch:       newBatchIO(conn),
 		reasm:       NewReassembler(0, 0, 0),
 		acceptCh:    make(chan *datagramSession, 16),
 		cookie:      cookie,
@@ -481,6 +496,8 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 	e.cookiePressureHighWater = e.maxHalfOpen / 2
 	e.registry = newConnRegistry(e.maxHalfOpen)
 	e.reasm.maxSources = e.maxHalfOpen
+	// Build the primary receive batchIO after opts so WithDatagramOffload is in effect.
+	e.batch = newBatchIO(conn, e.offload)
 	return e, nil
 }
 
@@ -522,7 +539,7 @@ func ListenDatagram(network, addr string, opts ...DatagramEndpointOption) (*Data
 	}
 	for _, c := range conns[1:] {
 		e.extraConns = append(e.extraConns, c)
-		e.extraBatch = append(e.extraBatch, newBatchIO(c))
+		e.extraBatch = append(e.extraBatch, newBatchIO(c, e.offload))
 	}
 	return e, nil
 }

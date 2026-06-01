@@ -422,7 +422,7 @@ func BenchmarkDatagramRecvBacklog(b *testing.B) {
 		}()
 	}
 
-	bio := newBatchIO(rx)
+	bio := newBatchIO(rx, false)
 	b.SetBytes(int64(len(payload)))
 	b.ReportAllocs()
 	b.ResetTimer()

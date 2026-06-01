@@ -170,6 +170,12 @@ go ep.Serve()
   autoscales with core count - `clamp(GOMAXPROCS * 256, 1024, 8192)` - and the
   cookie-pressure water-mark tracks at half of it; see
   [datagram-dos.md](datagram-dos.md).
+- `WithDatagramOffload()` enables Linux UDP receive offload (`UDP_GRO`): the kernel
+  coalesces a same-flow burst into one buffer, so one `recvmmsg` returns many
+  datagrams' worth of bytes and the receive loop re-splits them, cutting receive
+  syscalls on a busy flow. Off by default and Linux-only; a no-op on other platforms,
+  non-UDP conns, or kernels without `UDP_GRO`. It grows the per-socket receive buffers
+  (each must hold a coalesced burst). Send-side `UDP_SEGMENT` (GSO) is not yet wired.
 
 ### High-assurance deployment example
 
@@ -190,5 +196,6 @@ BSI/FIPS profile; for FIPS 140-3 build mode see [FIPS.md](FIPS.md).
 
 ## Out of scope (future)
 
-GSO/GRO offload, PMTU discovery, multipath, and a parallel per-datagram crypto
-pipeline (revisited after the current baseline is measured).
+Send-side `UDP_SEGMENT` (GSO) offload, PMTU discovery, multipath, and a parallel
+per-datagram crypto pipeline (revisited after the current baseline is measured).
+Receive-side `UDP_GRO` is available behind `WithDatagramOffload()` (see above).
