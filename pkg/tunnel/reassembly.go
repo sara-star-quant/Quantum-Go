@@ -66,7 +66,7 @@ func NewReassembler(maxConcurrentPerSource, maxMessageSize int, timeout time.Dur
 	}
 	return &Reassembler{
 		bySource:               make(map[string]map[reasmKey]*fragmentBuffer),
-		maxSources:             constants.DatagramMaxHalfOpenTotal,
+		maxSources:             constants.DatagramMaxHalfOpenFloor,
 		maxConcurrentPerSource: maxConcurrentPerSource,
 		maxMessageSize:         maxMessageSize,
 		timeout:                timeout,

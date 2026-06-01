@@ -38,10 +38,20 @@ address), so it cannot proceed. This is the QUIC `RETRY` posture.
 - **Load-gated.** The gate is inactive under normal load, so honest handshakes add
   zero round trips. It engages only when the endpoint is under pressure, defined as
   either the in-progress reassembly source count **or** the global half-open count
-  crossing `DatagramCookiePressureHighWater` (half of the hard half-open cap). The
+  crossing the cookie-pressure water-mark (half of the half-open ceiling). The
   two signals are complementary: reassembler occupancy catches the
   partial-fragment flood, the half-open count catches a completed-ClientHello /
   CH-KEM flood.
+- **Hard half-open ceiling.** The cookie demand is a soft throttle; behind it,
+  `reserveSource` enforces a hard ceiling on concurrent half-open (un-established)
+  responder sessions. Once `halfOpenTotal` reaches the ceiling, a `ClientHello` from
+  a **new** source is dropped (an in-progress source already holding a slot is
+  exempt, so retransmits still route). This bounds the goroutines and CH-KEM state a
+  source past the cookie gate can pin. The ceiling **autoscales** with core count -
+  `clamp(GOMAXPROCS * 256, 1024, 8192)` - so a busy multi-core server gets
+  proportional headroom while a small host stays bounded; the reassembler's source
+  cap and the cookie water-mark (ceiling/2) track it so the soft and hard signals
+  stay proportional. `WithMaxHalfOpen(n)` pins a fixed ceiling for a known deployment.
 - **Pre-reassembly.** The gate sits in `routeDatagram` *before* `reasm.Add`, so a
   rejected frame allocates no reassembly buffer and triggers no CH-KEM. Verifying a
   cookie (one HMAC over ~40 bytes) is far cheaper than the buffer it prevents.

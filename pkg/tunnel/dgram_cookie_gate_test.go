@@ -58,7 +58,7 @@ func clientHelloFrame(t *testing.T, senderIndex uint32, recvIndex uint32, fragLe
 }
 
 func TestKnownSource(t *testing.T) {
-	r := newConnRegistry()
+	r := newConnRegistry(constants.DatagramMaxHalfOpenFloor)
 	const src = "203.0.113.7:5000"
 
 	if r.knownSource(0, src) {
@@ -86,7 +86,7 @@ func TestKnownSource(t *testing.T) {
 }
 
 func TestHalfOpenGlobalAccounting(t *testing.T) {
-	r := newConnRegistry()
+	r := newConnRegistry(constants.DatagramMaxHalfOpenFloor)
 	if r.halfOpenLoad() != 0 {
 		t.Fatalf("initial load = %d, want 0", r.halfOpenLoad())
 	}
@@ -233,11 +233,14 @@ func TestRouteRetryDeliversCookie(t *testing.T) {
 	}
 }
 
-// Guard: the pressure default is the configured constant.
+// Guard: the cookie-pressure water-mark is derived as half the (autoscaled) half-open
+// ceiling, and that ceiling is at least the floor.
 func TestCookiePressureDefault(t *testing.T) {
 	e := mustEndpoint(t, &captureConn{})
-	if e.cookiePressureHighWater != constants.DatagramCookiePressureHighWater {
-		t.Fatalf("default high-water = %d, want %d",
-			e.cookiePressureHighWater, constants.DatagramCookiePressureHighWater)
+	if e.maxHalfOpen < constants.DatagramMaxHalfOpenFloor {
+		t.Fatalf("autoscaled ceiling = %d, want >= floor %d", e.maxHalfOpen, constants.DatagramMaxHalfOpenFloor)
+	}
+	if want := e.maxHalfOpen / 2; e.cookiePressureHighWater != want {
+		t.Fatalf("high-water = %d, want maxHalfOpen/2 = %d", e.cookiePressureHighWater, want)
 	}
 }

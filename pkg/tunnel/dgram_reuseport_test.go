@@ -6,8 +6,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/sara-star-quant/quantum-go/internal/constants"
 )
 
 // TestReserveSourceBootstrapRace drives two concurrent bootstrap ClientHellos for
@@ -72,18 +70,13 @@ func (c *blackholeConn) SetWriteDeadline(time.Time) error { return nil }
 
 // TestReserveSourceOutcomes exercises reserveSource's three outcomes directly: admit
 // a new source, route a second ClientHello for an in-progress source to the existing
-// responder, and drop once the per-source half-open cap is reached. It also asserts
-// the build closure runs ONLY on the admit path, so a lost retransmit or a capped
-// ClientHello allocates no session. This is the production bootstrap admission path
-// the SO_REUSEPORT fan-out relies on; the tryAddHalfOpen-based tests no longer cover
-// it since reserveSource owns the decision.
-//
-// The cap branch is defensive: in production reserveSource is the only half-open
-// incrementer and it dedups per source (the existing-responder check fires first), so
-// one source tops out at a single in-progress responder and never reaches the cap on
-// its own. The test fills the slots directly via tryAddHalfOpen to reach that branch.
+// responder, and drop a new source once the global half-open ceiling is reached. It
+// also asserts the build closure runs ONLY on the admit path, so a lost retransmit or
+// a capped ClientHello allocates no session. This is the production bootstrap
+// admission path the SO_REUSEPORT fan-out relies on.
 func TestReserveSourceOutcomes(t *testing.T) {
-	r := newConnRegistry()
+	const ceiling = 2
+	r := newConnRegistry(ceiling)
 	builds := 0
 	build := func() *datagramSession { builds++; return &datagramSession{} }
 
@@ -106,20 +99,57 @@ func TestReserveSourceOutcomes(t *testing.T) {
 		t.Fatalf("after retransmit: builds=%d halfOpen=%d, want unchanged 1 and 1", builds, r.halfOpenLoad())
 	}
 
-	// Capped source: fill its half-open slots, then reserveSource must drop without building.
-	const capped = "198.51.100.4:51820"
-	for i := 0; i < constants.DatagramMaxHalfOpenPerSource; i++ {
-		if !r.tryAddHalfOpen(capped) {
-			t.Fatalf("slot %d for capped source should be admitted (cap %d)", i, constants.DatagramMaxHalfOpenPerSource)
-		}
+	// Fill the last slot so the global ceiling is reached, then a brand-new source
+	// must drop without building. The existing-source check is first, so this proves
+	// the global-cap branch, not the dedup branch.
+	if !r.tryAddHalfOpen("198.51.100.4:51820") {
+		t.Fatal("second slot should be admitted below the ceiling")
 	}
 	buildsBefore := builds
-	ds, won := r.reserveSource(capped, build)
+	ds, won := r.reserveSource("198.51.100.9:51820", build)
 	if won || ds != nil {
-		t.Fatalf("capped source: got (%v, %v), want (nil, false)", ds, won)
+		t.Fatalf("at ceiling: got (%v, %v), want (nil, false)", ds, won)
 	}
 	if builds != buildsBefore {
 		t.Fatalf("build ran on the capped path (%d -> %d), want no allocation", buildsBefore, builds)
+	}
+}
+
+// TestClampMaxHalfOpen pins the autoscale curve: cores * per-core, clamped to the
+// floor and ceiling. The values track perCore=256, floor=1024, ceiling=8192.
+func TestClampMaxHalfOpen(t *testing.T) {
+	cases := []struct{ cores, want int }{
+		{1, 1024}, {4, 1024}, {8, 2048}, {16, 4096}, {32, 8192}, {64, 8192},
+	}
+	for _, c := range cases {
+		if got := clampMaxHalfOpen(c.cores); got != c.want {
+			t.Errorf("clampMaxHalfOpen(%d) = %d, want %d", c.cores, got, c.want)
+		}
+	}
+}
+
+// TestWithMaxHalfOpen checks the operator override flows through to the registry's
+// hard cap, the reassembler's source cap, and the cookie-pressure water-mark (half
+// the ceiling), bypassing autoscale.
+func TestWithMaxHalfOpen(t *testing.T) {
+	const n = 256
+	e, err := NewDatagramEndpoint(newBlackholeConn(), WithMaxHalfOpen(n))
+	if err != nil {
+		t.Fatalf("NewDatagramEndpoint: %v", err)
+	}
+	defer func() { _ = e.Close() }()
+
+	if e.maxHalfOpen != n {
+		t.Fatalf("endpoint maxHalfOpen = %d, want %d", e.maxHalfOpen, n)
+	}
+	if e.registry.maxHalfOpen != n {
+		t.Fatalf("registry maxHalfOpen = %d, want %d", e.registry.maxHalfOpen, n)
+	}
+	if e.reasm.maxSources != n {
+		t.Fatalf("reassembler maxSources = %d, want %d", e.reasm.maxSources, n)
+	}
+	if e.cookiePressureHighWater != n/2 {
+		t.Fatalf("cookie water-mark = %d, want %d", e.cookiePressureHighWater, n/2)
 	}
 }
 

@@ -116,7 +116,8 @@ needs no wire change.
 Amplification is inherently low: the ~1.7 KB ClientHello must be fully received
 and reassembled before the comparable ServerHello is sent (response:request ≈
 1:1, not an amplifier). The implementation additionally reuses the existing rate
-limiters and caps concurrent half-open handshakes per source and overall. A
+limiters and enforces a hard, core-scaled ceiling on concurrent half-open
+handshakes (`reserveSource` drops new sources once the ceiling is reached). A
 load-gated stateless cookie closes the residual spoofed-source state-exhaustion
 gap and enforces a strict anti-amplification bound, and a session follows a
 roaming peer only on an authenticated, replay-fresh frame; see
@@ -137,6 +138,47 @@ anti-amplification bound, since a RETRY is only ever sent when it is no larger t
 the triggering datagram. The receiver tolerates padding unconditionally, so a
 padding peer interoperates with a non-padding one; for full effect enable it on both
 ends.
+
+## Scaling and configuration
+
+A single receive goroutine demuxing and AEAD-opening every datagram is the
+aggregate-throughput ceiling on a busy multi-session server. `ListenDatagram`
+opens N `SO_REUSEPORT` sockets bound to one address; the kernel load-balances
+inbound datagrams across them by flow hash and `Serve` runs one receive goroutine
+per socket, so demux and AEAD-open spread across cores. On platforms without
+`SO_REUSEPORT` it transparently degrades to one socket. `NewDatagramEndpoint`
+(single socket) is unchanged.
+
+```go
+ep, err := tunnel.ListenDatagram("udp", "0.0.0.0:51820")
+if err != nil { /* ... */ }
+go ep.Serve()
+```
+
+- `WithReceiveSockets(n)` sets the `SO_REUSEPORT` socket count (clamped to
+  `[1, DatagramMaxReceiveSockets]`); the default is `min(GOMAXPROCS,
+  DatagramMaxReceiveSockets)`.
+- `WithMaxHalfOpen(n)` pins the concurrent half-open handshake ceiling. The default
+  autoscales with core count - `clamp(GOMAXPROCS * 256, 1024, 8192)` - and the
+  cookie-pressure water-mark tracks at half of it; see
+  [datagram-dos.md](datagram-dos.md).
+
+### High-assurance deployment example
+
+A conservative deployment can pin the capacity/DoS knobs and enable handshake
+padding:
+
+```go
+ep, _ := tunnel.ListenDatagram("udp", addr,
+    tunnel.WithMaxHalfOpen(1024),  // pinned, predictable half-open budget
+    tunnel.WithHandshakePadding(), // size-uniform handshakes (traffic analysis)
+)
+```
+
+This only pins capacity and DoS-posture knobs. The cryptography (ML-KEM-1024 +
+X25519 CH-KEM) is fixed and already at the high-assurance tier, matching the
+conservative posture BSI / US-federal guidance favors. It is **not** a certified
+BSI/FIPS profile; for FIPS 140-3 build mode see [FIPS.md](FIPS.md).
 
 ## Out of scope (future)
 
