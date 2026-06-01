@@ -116,7 +116,7 @@ goodput there (~58 MB/s) is a loopback artifact, not a transport limit. On Linux
 same single flow delivers far more:
 
 **Measured (Linux, Go 1.26, single flow, container arm64 - indicative, a VM depresses
-absolutes; relative figures are sound):**
+absolutes):**
 
 | Metric | Result |
 |--------|--------|
