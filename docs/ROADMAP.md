@@ -575,6 +575,21 @@ The following jurisdictions have specific requirements for **users deploying** e
 - **ML-DSA integration** - Post-quantum signatures for authentication
 - **Hybrid certificates** - Dual classical/PQ certificate chains
 - **SLH-DSA (SPHINCS+)** - Stateless hash-based signatures as alternative
+- **CH-KEM v2: code-based KEM diversification (HQC)** - Add a third, family-diverse
+  KEM member so the cascade is secure if ANY of {structured lattice (ML-KEM),
+  code-based (HQC), classical ECDH (X25519)} holds, hedging a hypothetical
+  lattice-family break. HQC is NIST's selected code-based backup KEM (March 2025);
+  it is the only standardized, MTU-workable code-based option (Classic McEliece's
+  ~1 MB public key is impractical for the datagram handshake; BIKE was not selected).
+  Prerequisites and costs, in order: (1) a small KEM-agility interface in `pkg/chkem`
+  so cascade members are pluggable (today ML-KEM-1024 + X25519 are hardcoded);
+  (2) HQC-256 to match Category 5, which carries a ~7 KB public key and ~14.5 KB
+  ciphertext - the datagram handshake grows from ~2 fragments to ~13+, so it leans
+  harder on the existing fragmenter/reassembler and is more loss-sensitive;
+  (3) verify HQC support and parameter set in `cloudflare/circl` before committing.
+  Not urgent: the current ML-KEM-1024 + X25519 hybrid already backstops a lattice
+  weakening classically and a quantum adversary post-quantumly, so this is
+  defense-in-depth diversification, not a fix for a present exposure.
 
 ### Adapted Research Directions
 
