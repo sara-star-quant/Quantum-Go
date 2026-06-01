@@ -51,7 +51,11 @@ type Transport struct {
 type TransportConfig struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
-	RateLimit    RateLimitConfig
+	// HandshakeTimeout bounds how long the responder waits for a peer to complete the
+	// handshake on Accept. Without it a stalled peer pins a goroutine and session
+	// indefinitely (slow-loris). 0 means no handshake deadline.
+	HandshakeTimeout time.Duration
+	RateLimit        RateLimitConfig
 	// Observer is a shared observer for all sessions (ignored if ObserverFactory is set).
 	Observer Observer
 
@@ -80,8 +84,9 @@ type RateLimitConfig struct {
 // DefaultTransportConfig returns sensible defaults.
 func DefaultTransportConfig() TransportConfig {
 	return TransportConfig{
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout:      30 * time.Second,
+		WriteTimeout:     30 * time.Second,
+		HandshakeTimeout: 30 * time.Second,
 	}
 }
 
@@ -738,10 +743,18 @@ func (l *Listener) performHandshake(session *Session, conn net.Conn, remoteIP st
 		return err
 	}
 
+	// Bound the handshake so a stalled peer cannot pin a goroutine + session forever.
+	// Cleared on success so the established transport's own per-op deadlines take over.
+	if l.config.HandshakeTimeout > 0 {
+		_ = conn.SetDeadline(time.Now().Add(l.config.HandshakeTimeout))
+	}
 	if err := ResponderHandshake(session, conn); err != nil {
 		l.failSession(session, err)
 		_ = conn.Close()
 		return err
+	}
+	if l.config.HandshakeTimeout > 0 {
+		_ = conn.SetDeadline(time.Time{})
 	}
 	return nil
 }

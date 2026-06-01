@@ -12,6 +12,41 @@ import (
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
+// TestResponderHandshakeTimeout verifies the Accept path tears down a peer that
+// connects and then stalls mid-handshake (slow-loris), rather than pinning the
+// goroutine and session forever. Without HandshakeTimeout the Accept goroutine would
+// block on the read indefinitely and the outer 2s guard would fire.
+func TestResponderHandshakeTimeout(t *testing.T) {
+	ln, err := Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	ln.config.HandshakeTimeout = 150 * time.Millisecond
+
+	// Connect, then send nothing: the responder waits for a ClientHello that never comes.
+	raw, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = raw.Close() }()
+
+	done := make(chan error, 1)
+	go func() {
+		_, e := ln.Accept()
+		done <- e
+	}()
+
+	select {
+	case e := <-done:
+		if e == nil {
+			t.Fatal("Accept should fail when the peer stalls the handshake")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Accept hung past the handshake timeout")
+	}
+}
+
 func TestTransportAlerts(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer func() { _ = clientConn.Close() }()
