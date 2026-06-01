@@ -61,25 +61,29 @@ func (e *DatagramEndpoint) deliverHandshake(src net.Addr, h protocol.DatagramHan
 		return
 	}
 	// Atomically resolve the bootstrap under one registry lock: route to an existing
-	// in-progress responder, or install this fresh session and start one, or drop at
-	// the cap. reserveSource registers the session in bySource as it claims the
+	// in-progress responder, or build and install a fresh session and start one, or
+	// drop at the cap. reserveSource registers the session in bySource as it claims the
 	// half-open slot - BEFORE the slow CH-KEM work in startResponder - so concurrent
 	// receive goroutines (the SO_REUSEPORT path) cannot both start a responder for the
-	// same new source: the loser sees the winner's session and routes to it.
-	ds := &datagramSession{
-		inbox:  make(chan inboundMsg, inboxCap),
-		recvCh: make(chan []byte, dataInboxCap),
-		closed: make(chan struct{}),
-	}
-	ds.setPeerAddr(src)
-	reserved, won := e.registry.reserveSource(src.String(), ds)
+	// same new source: the loser sees the winner's session and routes to it. The
+	// session is built only when the source is admitted, so a lost retransmit or a
+	// capped ClientHello allocates nothing.
+	reserved, won := e.registry.reserveSource(src.String(), func() *datagramSession {
+		ds := &datagramSession{
+			inbox:  make(chan inboundMsg, inboxCap),
+			recvCh: make(chan []byte, dataInboxCap),
+			closed: make(chan struct{}),
+		}
+		ds.setPeerAddr(src)
+		return ds
+	})
 	if !won {
 		if reserved != nil { // an existing responder owns this source: route the retransmit
 			trySend(reserved.inbox, in)
 		}
 		return // reserved == nil means the per-source cap is reached: drop
 	}
-	e.startResponder(src, ds, in)
+	e.startResponder(src, reserved, in)
 }
 
 // startResponder finishes bootstrapping the responder session ds (already registered
