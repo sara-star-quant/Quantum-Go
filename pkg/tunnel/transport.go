@@ -28,6 +28,13 @@ type Transport struct {
 	conn    net.Conn
 	codec   *protocol.Codec
 
+	// readBuf is the reused per-record receive buffer. Receive is single-reader and a
+	// record is consumed within one Receive iteration (DecodeData copies the
+	// ciphertext out, Decrypt returns a fresh plaintext), so the buffer is reused
+	// across records instead of allocated per record. Owned by the lone receive
+	// goroutine.
+	readBuf []byte
+
 	// Timeouts
 	readTimeout  time.Duration
 	writeTimeout time.Duration
@@ -217,8 +224,7 @@ func (t *Transport) readMessage() ([]byte, protocol.MessageType, error) {
 	if t.readTimeout > 0 {
 		_ = t.conn.SetReadDeadline(time.Now().Add(t.readTimeout))
 	}
-
-	msg, err := t.codec.ReadMessage(t.conn)
+	msg, err := t.codec.ReadMessageInto(t.conn, t.readBuf)
 	if err != nil {
 		if err == io.EOF {
 			return nil, 0, qerrors.ErrTunnelClosed
@@ -226,6 +232,10 @@ func (t *Transport) readMessage() ([]byte, protocol.MessageType, error) {
 		t.recordProtocolError(err)
 		return nil, 0, err
 	}
+	// Retain the (possibly grown) backing buffer for the next record. msg is consumed
+	// within this Receive iteration - DecodeData copies the ciphertext out and Decrypt
+	// returns a fresh plaintext - so reusing it on the next read is safe.
+	t.readBuf = msg
 
 	msgType, err := t.codec.GetMessageType(msg)
 	if err != nil {

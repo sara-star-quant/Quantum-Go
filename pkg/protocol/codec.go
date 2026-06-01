@@ -455,6 +455,39 @@ func (c *Codec) ReadMessage(r io.Reader) ([]byte, error) {
 	return msg, nil
 }
 
+// ReadMessageInto reads a complete message into buf, reusing it when it is large
+// enough and reallocating (returning the new backing slice) otherwise. The returned
+// slice aliases buf, so the caller MUST be done with it before the next
+// ReadMessageInto call on the same buffer. It is the allocation-free hot-path twin of
+// ReadMessage for a single-reader loop; ReadMessage stays for the handshake and any
+// caller that needs an independent slice.
+func (c *Codec) ReadMessageInto(r io.Reader, buf []byte) ([]byte, error) {
+	var header [HeaderSize]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil {
+		return nil, err
+	}
+
+	payloadLen := binary.BigEndian.Uint32(header[1:5])
+	if payloadLen > MaxMessageSize {
+		return nil, qerrors.ErrMessageTooLarge
+	}
+
+	total := HeaderSize + int(payloadLen)
+	if cap(buf) < total {
+		buf = make([]byte, total)
+	}
+	buf = buf[:total]
+	copy(buf, header[:])
+
+	if payloadLen > 0 {
+		if _, err := io.ReadFull(r, buf[HeaderSize:]); err != nil {
+			return nil, err
+		}
+	}
+
+	return buf, nil
+}
+
 // GetMessageType returns the type of a serialized message.
 func (c *Codec) GetMessageType(data []byte) (MessageType, error) {
 	if len(data) < 1 {
