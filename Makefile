@@ -20,7 +20,7 @@ GOMOD=$(GOCMD) mod
 GOFMT=$(GOCMD) fmt
 
 # Targets
-.PHONY: all build clean test coverage bench install uninstall help \
+.PHONY: all build clean test coverage bench bench-datagram install uninstall help \
         build-linux build-darwin build-windows build-all \
         docker release
 
@@ -120,6 +120,11 @@ coverage:
 bench:
 	@echo "Running benchmarks..."
 	$(GOTEST) -bench=. -benchmem ./test/benchmark/
+
+## bench-datagram: Run datagram data-plane throughput benchmarks (run on Linux for representative numbers)
+bench-datagram:
+	@echo "Running datagram benchmarks (single-flow, aggregate multi-flow, and receive batch vs single)..."
+	$(GOTEST) -run '^$$' -bench 'BenchmarkDatagram' -benchmem ./pkg/tunnel/
 
 ## fuzz: Run fuzz tests
 fuzz:
