@@ -8,7 +8,7 @@ import (
 
 func TestEncapsulateInvalidKey(t *testing.T) {
 	// Encapsulate with nil key
-	_, _, err := Encapsulate(nil)
+	_, _, err := Encapsulate(nil, RoleResponder)
 	if err == nil {
 		t.Error("expected error for nil public key in Encapsulate")
 	}
@@ -36,7 +36,7 @@ func TestDecapsulateError(t *testing.T) {
 	}
 
 	// Should fail with garbage ciphertext
-	_, err := Decapsulate(ct, kp)
+	_, err := Decapsulate(ct, kp, RoleInitiator)
 	if err == nil {
 		t.Error("expected error for invalid ciphertext in Decapsulate")
 	}

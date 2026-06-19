@@ -128,7 +128,7 @@ func (s *Session) respondToDatagramRekey(epoch uint8, initBody []byte) (respBody
 	if err != nil {
 		return nil, 0, err
 	}
-	ct, fresh, err := chkem.Encapsulate(pub)
+	ct, fresh, err := chkem.Encapsulate(pub, chkem.RoleResponder)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -161,7 +161,7 @@ func (s *Session) completeDatagramRekey(epoch uint8, respBody []byte, kp *chkem.
 	if err != nil {
 		return err
 	}
-	fresh, err := chkem.Decapsulate(ct, kp)
+	fresh, err := chkem.Decapsulate(ct, kp, chkem.RoleInitiator)
 	if err != nil {
 		return err
 	}

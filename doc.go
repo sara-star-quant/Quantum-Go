@@ -24,8 +24,8 @@
 //	import "github.com/sara-star-quant/quantum-go/pkg/chkem"
 //
 //	keyPair, _ := chkem.GenerateKeyPair()
-//	ciphertext, sharedSecret, _ := chkem.Encapsulate(keyPair.PublicKey())
-//	recoveredSecret, _ := chkem.Decapsulate(ciphertext, keyPair)
+//	ciphertext, sharedSecret, _ := chkem.Encapsulate(keyPair.PublicKey(), chkem.RoleResponder)
+//	recoveredSecret, _ := chkem.Decapsulate(ciphertext, keyPair, chkem.RoleInitiator)
 //
 // # Package Structure
 //

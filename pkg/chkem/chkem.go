@@ -29,7 +29,7 @@
 //	(sk_x_eph, pk_x_eph) ← X25519.KeyGen()
 //	K_x ← X25519.DH(sk_x_eph, pk_x)
 //	ct = pk_x_eph || ct_m
-//	transcript ← SHA3-256(pk_x || pk_m || ct)
+//	transcript ← SHA3-256(pk_x || pk_m || ct || version || role)
 //	K ← SHAKE-256(K_x || K_m || transcript || "CH-KEM-v1-SharedSecret", 256)
 //
 // Decapsulation:
@@ -37,8 +37,12 @@
 //	Parse ct as (pk_x_eph, ct_m)
 //	K_x ← X25519.DH(sk_x, pk_x_eph)
 //	K_m ← ML-KEM-1024.Decaps(sk_m, ct_m)
-//	transcript ← SHA3-256(pk_x || pk_m || ct)
+//	transcript ← SHA3-256(pk_x || pk_m || ct || version || role)
 //	K ← SHAKE-256(K_x || K_m || transcript || "CH-KEM-v1-SharedSecret", 256)
+//
+// version is the 2-byte protocol version and role is the 1-byte role of the
+// encapsulating (responder) party. Both endpoints bind the responder role, so a
+// legit exchange matches while a reflected/same-role exchange does not.
 //
 // # Security Theorem
 //
@@ -66,11 +70,42 @@ package chkem
 
 import (
 	"crypto/ecdh"
+	"encoding/binary"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 )
+
+// Role identifies a party's position in a CH-KEM exchange. It is bound into the
+// transcript so a reflected or role-confused handshake derives a non-matching
+// secret and fails closed. This is composition hardening, not peer authentication.
+type Role uint8
+
+const (
+	// RoleInitiator is the party that decapsulates (the client in a handshake,
+	// the rekey-initiating peer in a rekey).
+	RoleInitiator Role = 0x01
+	// RoleResponder is the party that encapsulates (the server in a handshake,
+	// the rekey-responding peer in a rekey).
+	RoleResponder Role = 0x02
+)
+
+// peer returns the opposite role.
+func (r Role) peer() Role {
+	if r == RoleInitiator {
+		return RoleResponder
+	}
+	return RoleInitiator
+}
+
+// protocolVersionBytes returns the 2-byte big-endian CH-KEM protocol version
+// bound into the transcript.
+func protocolVersionBytes() []byte {
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, constants.ProtocolVersion)
+	return b
+}
 
 // KeyPair represents a CH-KEM key pair combining X25519 and ML-KEM-1024.
 type KeyPair struct {
@@ -145,12 +180,13 @@ func (kp *KeyPair) PublicKey() *PublicKey {
 //
 // Parameters:
 //   - recipientPublic: The recipient's CH-KEM public key
+//   - role: The caller's own role; the responder encapsulates in every real flow
 //
 // Returns:
 //   - ciphertext: Combined X25519 ephemeral public + ML-KEM ciphertext
 //   - sharedSecret: 32-byte derived shared secret
 //   - error: Non-nil if encapsulation fails
-func Encapsulate(recipientPublic *PublicKey) (*Ciphertext, []byte, error) {
+func Encapsulate(recipientPublic *PublicKey, role Role) (*Ciphertext, []byte, error) {
 	if recipientPublic == nil || recipientPublic.x25519 == nil || recipientPublic.mlkem == nil {
 		return nil, nil, qerrors.ErrInvalidPublicKey
 	}
@@ -179,13 +215,16 @@ func Encapsulate(recipientPublic *PublicKey) (*Ciphertext, []byte, error) {
 		mlkemCiphertext: mlkemCiphertext,
 	}
 
-	// Compute transcript hash for domain binding
-	// transcript = SHA3-256(pk_x25519 || pk_mlkem || ct_x25519_eph || ct_mlkem)
+	// Compute transcript hash for domain binding, including the protocol version
+	// and the encapsulating party's role (reflection/role-confusion resistance).
+	// transcript = SHA3-256(pk_x25519 || pk_mlkem || ct_x25519_eph || ct_mlkem || version || role)
 	transcriptHash, err := crypto.TranscriptHash(
 		recipientPublic.x25519.Bytes(),
 		recipientPublic.mlkem.Bytes(),
 		ct.x25519Ephemeral,
 		ct.mlkemCiphertext,
+		protocolVersionBytes(),
+		[]byte{byte(role)},
 	)
 	if err != nil {
 		return nil, nil, err
@@ -214,11 +253,12 @@ func Encapsulate(recipientPublic *PublicKey) (*Ciphertext, []byte, error) {
 // Parameters:
 //   - ct: The ciphertext to decapsulate
 //   - kp: The recipient's key pair
+//   - role: The caller's own role; the initiator decapsulates in every real flow
 //
 // Returns:
 //   - sharedSecret: 32-byte derived shared secret (same as encapsulator)
 //   - error: Non-nil if decapsulation fails
-func Decapsulate(ct *Ciphertext, kp *KeyPair) ([]byte, error) {
+func Decapsulate(ct *Ciphertext, kp *KeyPair, role Role) ([]byte, error) {
 	if ct == nil || len(ct.x25519Ephemeral) == 0 || len(ct.mlkemCiphertext) == 0 {
 		return nil, qerrors.ErrInvalidCiphertext
 	}
@@ -244,12 +284,16 @@ func Decapsulate(ct *Ciphertext, kp *KeyPair) ([]byte, error) {
 		return nil, qerrors.NewCryptoError("CHKEM.Decapsulate", err)
 	}
 
-	// Compute transcript hash (must match encapsulation)
+	// Compute transcript hash (must match encapsulation). The decapsulator binds
+	// the peer's (encapsulating responder's) role, so a legit exchange matches and
+	// a reflected/same-role one does not.
 	transcriptHash, err := crypto.TranscriptHash(
 		kp.x25519Public.Bytes(),
 		kp.mlkemPublic.Bytes(),
 		ct.x25519Ephemeral,
 		ct.mlkemCiphertext,
+		protocolVersionBytes(),
+		[]byte{byte(role.peer())},
 	)
 	if err != nil {
 		return nil, err
