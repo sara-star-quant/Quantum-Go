@@ -161,7 +161,7 @@ func runAESGCMKAT() error {
 	// Test encryption
 	// Note: Hardcoded nonce is intentional for KAT - we need deterministic values
 	// to verify the implementation produces expected outputs.
-	ciphertext := aesgcm.Seal(nil, postKATAESNonce, postKATAESPlaintext, nil) //nolint:gosec // G407: Hardcoded nonce is required for KAT
+	ciphertext := aesgcm.Seal(nil, postKATAESNonce, postKATAESPlaintext, nil) // #nosec G407 -- KAT requires a fixed, known nonce for deterministic output
 	if !bytes.Equal(ciphertext, postKATAESExpected) {
 		return fmt.Errorf("AES-GCM encrypt mismatch: got %x, want %x", ciphertext, postKATAESExpected)
 	}

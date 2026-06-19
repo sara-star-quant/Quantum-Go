@@ -575,7 +575,7 @@ func (h *Handshake) IsComplete() bool {
 func writeEncryptedRecord(w io.Writer, ciphertext []byte) error {
 	// Write length prefix
 	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(ciphertext)))
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(ciphertext))) // #nosec G115 -- record ciphertext bounded by MaxMessageSize, fits uint32
 	if _, err := w.Write(lenBuf); err != nil {
 		return err
 	}
