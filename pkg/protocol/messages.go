@@ -124,7 +124,14 @@ type ClientHello struct {
 	// SessionID for session resumption (16 bytes, or empty for new session)
 	SessionID []byte
 
-	// Client's CH-KEM public key (1600 bytes)
+	// KEMSuite is the KEM suite id the client's CHKEMPublicKey key share uses.
+	KEMSuite uint16
+
+	// KEMSuites lists every KEM suite the client supports, for HelloRetryRequest
+	// when the server does not support KEMSuite. The first entry is KEMSuite.
+	KEMSuites []uint16
+
+	// Client's CH-KEM public key (suite-sized; 1600 bytes for CH-KEM-v1)
 	CHKEMPublicKey []byte
 
 	// Supported cipher suites in preference order
@@ -152,7 +159,10 @@ type ServerHello struct {
 	// SessionID assigned by server (16 bytes)
 	SessionID []byte
 
-	// CH-KEM ciphertext (1600 bytes)
+	// KEMSuite is the KEM suite the server selected (echoes the client's KEMSuite).
+	KEMSuite uint16
+
+	// CH-KEM ciphertext (suite-sized; 1600 bytes for CH-KEM-v1)
 	CHKEMCiphertext []byte
 
 	// Selected cipher suite

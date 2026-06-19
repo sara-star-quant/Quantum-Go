@@ -98,6 +98,10 @@ var (
 	// ErrInvalidPSK indicates a PSK configuration is malformed: the key must be
 	// PSKSize bytes and the identity must be non-empty and within MaxPSKIdentitySize.
 	ErrInvalidPSK = errors.New("protocol: PSK must be 32 bytes with a non-empty identity")
+
+	// ErrUnsupportedKEMSuite indicates a peer offered or selected a KEM suite this
+	// endpoint does not implement.
+	ErrUnsupportedKEMSuite = errors.New("protocol: unsupported KEM suite")
 )
 
 // Sentinel errors for tunnel operations

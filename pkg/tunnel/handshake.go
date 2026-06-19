@@ -157,6 +157,8 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 		Version:        protocol.Current,
 		Random:         h.clientRandom,
 		SessionID:      h.ticket,
+		KEMSuite:       uint16(h.session.kemSuite.ID()),
+		KEMSuites:      supportedKEMSuiteIDs(),
 		CHKEMPublicKey: h.session.LocalKeyPair.PublicKey().Bytes(),
 		CipherSuites:   protocol.SupportedCipherSuites(),
 	}
@@ -207,6 +209,13 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 	// Validate version compatibility
 	if !msg.Version.IsCompatible(protocol.Current) {
 		return qerrors.ErrUnsupportedVersion
+	}
+
+	// The server must echo the KEM suite our key share used (no HelloRetryRequest
+	// yet). A mismatch is a downgrade attempt; the transcript also binds the suite,
+	// so this fails the Finished MAC regardless, but reject early and clearly.
+	if msg.KEMSuite != uint16(h.session.kemSuite.ID()) {
+		return qerrors.ErrUnsupportedKEMSuite
 	}
 
 	// Check if server accepted resumption
@@ -364,6 +373,15 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 		return qerrors.ErrUnsupportedVersion
 	}
 
+	// Negotiate the KEM suite: adopt the suite the client's key share uses. With only
+	// CH-KEM-v1 registered this always resolves; an unsupported suite fails closed for
+	// now (HelloRetryRequest steers the client to a mutual suite in a later change).
+	suite, err := resolveKEMSuite(msg.KEMSuite)
+	if err != nil {
+		return err
+	}
+	h.session.kemSuite = suite
+
 	// Store client random
 	h.clientRandom = msg.Random
 
@@ -461,6 +479,7 @@ func (h *Handshake) CreateServerHello() ([]byte, error) {
 		Version:         protocol.Current,
 		Random:          h.serverRandom,
 		SessionID:       h.session.ID,
+		KEMSuite:        uint16(h.session.kemSuite.ID()),
 		CHKEMCiphertext: ctBytes,
 		CipherSuite:     h.session.CipherSuite,
 	}
@@ -657,6 +676,28 @@ func selectCipherSuite(offered []constants.CipherSuite) constants.CipherSuite {
 	}
 
 	return 0 // No match
+}
+
+// supportedKEMSuiteIDs returns the locally supported KEM suite ids as wire uint16s,
+// for the ClientHello supported-suite list.
+func supportedKEMSuiteIDs() []uint16 {
+	ids := chkem.SupportedSuites()
+	out := make([]uint16, len(ids))
+	for i, id := range ids {
+		out[i] = uint16(id)
+	}
+	return out
+}
+
+// resolveKEMSuite returns the registered suite for a wire id, or an error if this
+// peer does not support it. The HelloRetryRequest path (a later change) will let a
+// server steer an unsupported initiator to a mutual suite instead of failing.
+func resolveKEMSuite(wireID uint16) (chkem.Suite, error) {
+	suite, ok := chkem.GetSuite(chkem.SuiteID(wireID))
+	if !ok {
+		return nil, qerrors.ErrUnsupportedKEMSuite
+	}
+	return suite, nil
 }
 
 // cleanup zeroizes sensitive handshake data.
