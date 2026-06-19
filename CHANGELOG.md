@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.14][] - 2026-06-19
+
+**Theme:** Stream security parity. Two stream/TCP hardening changes bring the stream path level with the datagram path: a session-bound derived AEAD nonce (no longer transmitted) and a 1024-entry replay window. The nonce change is wire-incompatible and moves the protocol version to 3.0.
+
 ### Changed
 - **Session-bound, non-transmitted stream AEAD nonce (wire-incompatible, protocol 3.0)**: the stream/TCP data record no longer carries the 12-byte AEAD nonce. Both peers derive a per-direction nonce prefix from the master secret (`crypto.DeriveStreamNoncePrefixes`) and build `nonce = prefix || seq`, exactly like the datagram path. The nonce is now bound to the session and to the sequence the AEAD already authenticates, so a receiver no longer trusts a wire-supplied nonce and two sessions can never share a nonce sequence (closes the "AEAD nonce prefix is zero" limitation). Records shrink by 12 bytes. Because the stream now seals with `SealWithNonce`, the AEAD's internal counter no longer tracks per-key usage, so the key-wear rekey trigger moves to `seq - sendEpochStartSeq` (mirroring the datagram). The wire format change bumps the protocol version to 3.0; `IsCompatible` is major-only, so a 2.x and a 3.0 peer reject each other at the handshake rather than corrupting data. The datagram path, session tickets, and the handshake are unaffected.
 - **Stream replay window widened from 64 to 1024 sequence numbers**: the stream `ReplayWindow` now reuses the same multi-word sliding bitmap as the datagram path, so it tolerates much deeper out-of-order delivery before dropping a packet as too old (at ~83,000 pps the old 64-packet window gave under 1 ms of reordering tolerance). The live receive path keeps the window across a rekey (the trial-decrypt cipher promotion does not reset it), so the rekey-boundary replay guard is unchanged. The check stays O(1) (~37 ns in-order at the new width, negligible against the per-record AEAD).
@@ -333,7 +337,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.13...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.14...HEAD
+[0.0.14]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.13...v0.0.14
 [0.0.13]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.10...v0.0.11
