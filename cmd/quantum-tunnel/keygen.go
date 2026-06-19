@@ -73,6 +73,9 @@ EXAMPLES:
 func runKeygen(out string, force bool, pubFrom string, w io.Writer) error {
 	keyPath := out + ".key"
 	pubPath := out + ".pub"
+	// A write to the output sink is not recoverable in a CLI, so ignore it here
+	// rather than thread the error through every status line.
+	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
 
 	if pubFrom != "" {
 		kp, err := loadSecretKey(pubFrom)
@@ -84,9 +87,9 @@ func runKeygen(out string, force bool, pubFrom string, w io.Writer) error {
 		if err := writeFile(pubPath, encodeLine(pin), 0o644, force); err != nil {
 			return err
 		}
-		fmt.Fprintf(w, "Re-derived public pin from %s.\n", pubFrom)
-		fmt.Fprintf(w, "  Public pin:   %s  (distribute to clients)\n", pubPath)
-		fmt.Fprintf(w, "  Fingerprint:  %s\n", fingerprint(pin))
+		p("Re-derived public pin from %s.\n", pubFrom)
+		p("  Public pin:   %s  (distribute to clients)\n", pubPath)
+		p("  Fingerprint:  %s\n", fingerprint(pin))
 		return nil
 	}
 
@@ -105,16 +108,16 @@ func runKeygen(out string, force bool, pubFrom string, w io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintln(w, "Generated static CH-KEM server identity.")
-	fmt.Fprintf(w, "  Secret seed:  %s  (keep private, mode 0600)\n", keyPath)
-	fmt.Fprintf(w, "  Public pin:   %s  (distribute to clients)\n", pubPath)
-	fmt.Fprintf(w, "  Fingerprint:  %s  (verify out-of-band)\n", fingerprint(pin))
+	p("Generated static CH-KEM server identity.\n")
+	p("  Secret seed:  %s  (keep private, mode 0600)\n", keyPath)
+	p("  Public pin:   %s  (distribute to clients)\n", pubPath)
+	p("  Fingerprint:  %s  (verify out-of-band)\n", fingerprint(pin))
 	return nil
 }
 
 // loadSecretKey reads a base64 secret seed file and reconstructs the key pair.
 func loadSecretKey(path string) (*chkem.KeyPair, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is an operator-supplied CLI key file argument; reading the named secret is the command's purpose
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +140,7 @@ func writeFile(path string, data []byte, perm os.FileMode, force bool) error {
 	if !force {
 		flags |= os.O_EXCL
 	}
-	f, err := os.OpenFile(path, flags, perm)
+	f, err := os.OpenFile(path, flags, perm) // #nosec G304 -- path is an operator-supplied CLI output file argument; writing the named key file is the command's purpose
 	if err != nil {
 		if os.IsExist(err) {
 			return fmt.Errorf("%s already exists (use --force to overwrite)", path)
@@ -145,7 +148,7 @@ func writeFile(path string, data []byte, perm os.FileMode, force bool) error {
 		return err
 	}
 	if _, err := f.Write(data); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	return f.Close()

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -54,6 +55,9 @@ func TestKeygenRoundTrip(t *testing.T) {
 }
 
 func TestKeygenSecretPerms(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file permission bits are not meaningful on Windows")
+	}
 	out := filepath.Join(t.TempDir(), "server")
 	if err := runKeygen(out, false, "", &bytes.Buffer{}); err != nil {
 		t.Fatalf("runKeygen: %v", err)
