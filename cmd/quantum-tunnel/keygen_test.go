@@ -29,23 +29,23 @@ func readPin(t *testing.T, path string) []byte {
 func TestKeygenRoundTrip(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "server")
 	var buf bytes.Buffer
-	if err := runKeygen(out, false, "", &buf); err != nil {
+	if err := runKeygen(out, false, "", "chkem-v1", &buf); err != nil {
 		t.Fatalf("runKeygen: %v", err)
 	}
 
 	// Secret seed reconstructs a key pair whose public pin matches the .pub file.
 	seed := readPin(t, out+".key")
-	kp, err := chkem.ParseKeyPair(seed)
+	kp, err := chkem.ParseTaggedKeyPair(seed)
 	if err != nil {
-		t.Fatalf("ParseKeyPair: %v", err)
+		t.Fatalf("ParseTaggedKeyPair: %v", err)
 	}
 	defer kp.Zeroize()
 
 	pin := readPin(t, out+".pub")
-	if _, err := chkem.ParsePublicKey(pin); err != nil {
-		t.Fatalf("ParsePublicKey: %v", err)
+	if _, err := chkem.ParseTaggedPublicKey(pin); err != nil {
+		t.Fatalf("ParseTaggedPublicKey: %v", err)
 	}
-	if !bytes.Equal(pin, kp.PublicKey().Bytes()) {
+	if !bytes.Equal(pin, chkem.TagSuite(kp.Suite(), kp.PublicKey().Bytes())) {
 		t.Fatal("public pin does not match the secret key's public key")
 	}
 
@@ -59,7 +59,7 @@ func TestKeygenSecretPerms(t *testing.T) {
 		t.Skip("Unix file permission bits are not meaningful on Windows")
 	}
 	out := filepath.Join(t.TempDir(), "server")
-	if err := runKeygen(out, false, "", &bytes.Buffer{}); err != nil {
+	if err := runKeygen(out, false, "", "chkem-v1", &bytes.Buffer{}); err != nil {
 		t.Fatalf("runKeygen: %v", err)
 	}
 	info, err := os.Stat(out + ".key")
@@ -73,10 +73,10 @@ func TestKeygenSecretPerms(t *testing.T) {
 
 func TestKeygenRefusesOverwrite(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "server")
-	if err := runKeygen(out, false, "", &bytes.Buffer{}); err != nil {
+	if err := runKeygen(out, false, "", "chkem-v1", &bytes.Buffer{}); err != nil {
 		t.Fatalf("first runKeygen: %v", err)
 	}
-	err := runKeygen(out, false, "", &bytes.Buffer{})
+	err := runKeygen(out, false, "", "chkem-v1", &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("expected refusal to overwrite existing files")
 	}
@@ -85,14 +85,14 @@ func TestKeygenRefusesOverwrite(t *testing.T) {
 	}
 
 	// --force overwrites.
-	if err := runKeygen(out, true, "", &bytes.Buffer{}); err != nil {
+	if err := runKeygen(out, true, "", "chkem-v1", &bytes.Buffer{}); err != nil {
 		t.Errorf("force overwrite failed: %v", err)
 	}
 }
 
 func TestKeygenPubFrom(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "server")
-	if err := runKeygen(out, false, "", &bytes.Buffer{}); err != nil {
+	if err := runKeygen(out, false, "", "chkem-v1", &bytes.Buffer{}); err != nil {
 		t.Fatalf("runKeygen: %v", err)
 	}
 	want := readPin(t, out+".pub")
@@ -101,11 +101,44 @@ func TestKeygenPubFrom(t *testing.T) {
 	if err := os.Remove(out + ".pub"); err != nil {
 		t.Fatalf("remove pub: %v", err)
 	}
-	if err := runKeygen(out, false, out+".key", &bytes.Buffer{}); err != nil {
+	if err := runKeygen(out, false, out+".key", "chkem-v1", &bytes.Buffer{}); err != nil {
 		t.Fatalf("pub-from: %v", err)
 	}
 	got := readPin(t, out+".pub")
 	if !bytes.Equal(got, want) {
 		t.Fatal("re-derived pin does not match original")
+	}
+}
+
+func TestKeygenXWingSuite(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "edge")
+	if err := runKeygen(out, false, "", "x-wing", &bytes.Buffer{}); err != nil {
+		t.Fatalf("runKeygen x-wing: %v", err)
+	}
+
+	seed := readPin(t, out+".key")
+	kp, err := chkem.ParseTaggedKeyPair(seed)
+	if err != nil {
+		t.Fatalf("ParseTaggedKeyPair: %v", err)
+	}
+	defer kp.Zeroize()
+	if kp.Suite() != chkem.SuiteXWing {
+		t.Errorf("key suite = %#x, want X-Wing", kp.Suite())
+	}
+
+	pin := readPin(t, out+".pub")
+	pub, err := chkem.ParseTaggedPublicKey(pin)
+	if err != nil {
+		t.Fatalf("ParseTaggedPublicKey: %v", err)
+	}
+	if pub.Suite() != chkem.SuiteXWing {
+		t.Errorf("pin suite = %#x, want X-Wing", pub.Suite())
+	}
+}
+
+func TestKeygenUnknownSuiteRejected(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "x")
+	if err := runKeygen(out, false, "", "bogus", &bytes.Buffer{}); err == nil {
+		t.Fatal("expected an error for an unknown suite")
 	}
 }
