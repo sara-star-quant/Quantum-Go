@@ -37,6 +37,8 @@ func main() {
 		benchCommand()
 	case "example":
 		exampleCommand()
+	case "keygen":
+		keygenCommand()
 	case "version":
 		fmt.Printf("quantum-tunnel version %s\n", getVersion())
 		if buildTime != "unknown" {
@@ -64,6 +66,7 @@ COMMANDS:
     demo      Run interactive demo (client/server)
     bench     Run performance benchmarks
     example   Show example usage with explanations
+    keygen    Generate a static-key server identity for endpoint auth
     version   Print version information
     help      Show this help message
 
@@ -84,6 +87,9 @@ EXAMPLES:
 
     # Show interactive examples
     quantum-tunnel example
+
+    # Generate a static-key server identity (server.key + server.pub)
+    quantum-tunnel keygen
 
 PROJECT:
     Quantum-Go - Cascaded Hybrid KEM (CH-KEM) Tunnel Encryption
