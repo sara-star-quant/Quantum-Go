@@ -409,6 +409,11 @@ type DatagramEndpoint struct {
 	// requires staticIdentity to be set.
 	requireStaticAuth bool
 
+	// psk and pskIdentity are the pre-shared key and its selector for mutual
+	// authentication, set by WithPSK on both endpoints. Nil psk means no PSK.
+	psk         []byte
+	pskIdentity []byte
+
 	closeOnce sync.Once
 	done      chan struct{}
 }
@@ -474,6 +479,17 @@ func WithRequireStaticAuth() DatagramEndpointOption {
 	return func(e *DatagramEndpoint) { e.requireStaticAuth = true }
 }
 
+// WithPSK sets a pre-shared key and its identity label for mutual authentication.
+// Set the same identity and key (constants.PSKSize bytes) on both the dialing and
+// listening endpoints; the PSK folds into the master secret so only holders of it
+// derive matching keys. A malformed pair fails construction with ErrInvalidPSK.
+func WithPSK(identity, key []byte) DatagramEndpointOption {
+	return func(e *DatagramEndpoint) {
+		e.psk = key
+		e.pskIdentity = identity
+	}
+}
+
 // WithPinnedServerKey makes DialDatagram require the server to prove possession of
 // the given static public key; a wrong, absent, or stripped key fails the handshake
 // with ErrServerKeyMismatch. Unset, the initiator does not authenticate the server.
@@ -528,6 +544,9 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 	}
 	if e.requireStaticAuth && e.staticIdentity == nil {
 		return nil, qerrors.ErrStaticAuthMisconfigured
+	}
+	if err := validatePSK(e.psk, e.pskIdentity); err != nil {
+		return nil, err
 	}
 	// Resolve the half-open ceiling after opts: autoscale with core count unless an
 	// operator pinned it via WithMaxHalfOpen. The cookie-pressure water-mark and the

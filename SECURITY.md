@@ -91,7 +91,7 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 | Post-Quantum Resistance   | Provided            | ML-KEM-1024 (NIST Category 5)          |
 | Forward Secrecy           | Provided            | Ephemeral keys per session             |
 | Replay Protection         | Provided            | Sliding window (64-bit sequence)       |
-| Endpoint Authentication   | Partial/Opt-in      | Static-key server pinning (CH-KEM)     |
+| Endpoint Authentication   | Partial/Opt-in      | Static-key pinning (server) + PSK (mutual) |
 | Nonce-Misuse Resistance   | Partial/Conditional | Sequence-based nonces (must not reuse) |
 | Side-Channel Resistance   | Partial/Conditional | Relies on Go stdlib (audited)          |
 | Key Compromise Impersonation | Not provided     | Not designed for (ephemeral keys)      |
@@ -140,7 +140,20 @@ The wire alert stays generic, so a prober that guesses pins learns nothing.
 
 **Requiring authentication (server side)**: by default a server with a static identity still serves clients that do not pin it (the static leg is opt-in from the client). Set `TransportConfig.RequireStaticAuth` (stream) or `tunnel.WithRequireStaticAuth()` (datagram) to reject any client that does not authenticate the server, closing a silent downgrade where a misconfigured or stripped client connects unauthenticated. An unpinned client then fails closed: stream with `ErrStaticAuthRequired`, datagram as a retry-ceiling timeout. Requiring auth without a static key is a misconfiguration that fails closed (`ErrStaticAuthMisconfigured`). This requires clients to prove they used the server's public key; it is not client identity verification (the key is public).
 
-**Not yet provided**: client authentication and PSK-based mutual authentication (planned: v0.0.13). Static-key pinning authenticates the server to the client only; it does not let a server verify a client identity. For mutual authentication today, layer it externally.
+**PSK mutual authentication** (opt-in) gives the mutual property that static-key pinning does not: both peers share a secret 32-byte pre-shared key, so each authenticates the other. Set the same key and identity label on both sides:
+
+```go
+psk := make([]byte, 32) // 256-bit, from crypto/rand; distribute out-of-band
+// Server (Listen):
+cfg := tunnel.TransportConfig{PSK: psk, PSKIdentity: []byte("edge-01")}
+// Client (Dial):
+cfg := tunnel.TransportConfig{PSK: psk, PSKIdentity: []byte("edge-01")}
+// Datagram: tunnel.WithPSK([]byte("edge-01"), psk) on both endpoints.
+```
+
+The client advertises the identity label so the server selects the matching key, and both fold the PSK into the master secret (domain-separated from the static fold, applied after it). Only holders of the same PSK derive matching handshake keys, so a wrong, mismatched, or stripped PSK fails closed at the Finished MAC. An unknown identity skips the fold rather than erroring, so the server leaks no oracle about which identities it knows. The ephemeral leg stays mandatory, so forward secrecy holds even if the PSK later leaks. PSK composes with static-key pinning (configure both and both legs fold). The identity label travels in clear, so treat it as public; keep the key secret. PSK distribution and rotation are the deployer's responsibility.
+
+**Not yet provided**: certificate- or token-based client identity. Static-key pinning authenticates the server to the client; PSK authenticates both peers under a shared secret. Neither binds a per-client asymmetric identity; for that, layer it externally.
 
 ---
 
@@ -157,7 +170,7 @@ The wire alert stays generic, so a prober that guesses pins learns nothing.
 **Out of scope**:
 - Physical attacks on runtime memory
 - Side-channel attacks on non-constant-time operations
-- Malicious participants beyond a pinned server (static-key pinning defends the pinned-server case; client and mutual authentication remain external)
+- Malicious participants beyond static-key pinning (server) and PSK (mutual); per-client asymmetric identity remains external
 - Post-compromise security (PCS) after long-term key compromise
 - Traffic analysis / metadata leakage
 
@@ -165,10 +178,10 @@ The wire alert stays generic, so a prober that guesses pins learns nothing.
 
 #### Protocol-level (planned for future releases)
 
-1. **Partial endpoint authentication** (static-key server pinning since v0.0.12; mutual auth planned: v0.0.13):
-   - Opt-in static-key pinning authenticates the **server** to a client that pins its public key (see [Authentication modes](#authentication-modes)). Unconfigured, the protocol provides encryption only.
-   - There is **no client authentication and no PSK mutual-auth yet**: a server cannot require or verify a client identity.
-   - For mutual authentication today, layer it externally (mTLS-style certificates, application PSK).
+1. **Partial endpoint authentication** (static-key server pinning and PSK mutual auth; per-client asymmetric identity still external):
+   - Opt-in static-key pinning authenticates the **server** to a pinning client; opt-in PSK authenticates **both** peers under a shared secret (see [Authentication modes](#authentication-modes)). Unconfigured, the protocol provides encryption only.
+   - There is **no certificate- or token-based client identity**: PSK proves shared-secret possession, not a per-client asymmetric credential.
+   - For per-client asymmetric identity today, layer it externally (mTLS-style certificates).
 
 2. **AEAD nonce prefix is zero** (planned: a later stream-hardening release):
    - Nonce format is `[0000 || counter(8B)]` -- the upper 4 bytes are not session-bound

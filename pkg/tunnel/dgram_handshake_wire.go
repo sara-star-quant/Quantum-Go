@@ -100,6 +100,8 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, ds *datagramSession, fir
 	}
 	session.StaticKeyPair = e.staticIdentity
 	session.RequireStaticAuth = e.requireStaticAuth
+	session.PSK = e.psk
+	session.PSKIdentity = e.pskIdentity
 	idx, err := e.registry.add(ds)
 	if err != nil {
 		e.registry.removeSource(src.String())
@@ -128,6 +130,8 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
 		return nil, err
 	}
 	session.PinnedServerKey = ep.pinnedServerKey
+	session.PSK = ep.psk
+	session.PSKIdentity = ep.pskIdentity
 	ds := &datagramSession{
 		inbox:      make(chan inboundMsg, inboxCap),
 		recvCh:     make(chan []byte, dataInboxCap),

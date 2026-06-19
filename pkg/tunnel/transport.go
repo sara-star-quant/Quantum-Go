@@ -81,6 +81,27 @@ type TransportConfig struct {
 	// StaticKeyPair to be set. Default false admits unpinned clients alongside
 	// pinned ones.
 	RequireStaticAuth bool
+
+	// PSK is a pre-shared key (constants.PSKSize bytes) folded into the master
+	// secret for mutual authentication. Set the same PSK and PSKIdentity on both
+	// the client (Dial) and server (Listen). Nil means no PSK (default).
+	PSK []byte
+
+	// PSKIdentity is the label that selects the PSK; the client advertises it and
+	// the server matches it. Required and non-empty when PSK is set.
+	PSKIdentity []byte
+}
+
+// validatePSK checks a PSK/identity pair: either both unset, or a PSKSize key
+// with a non-empty identity within bounds.
+func validatePSK(psk, identity []byte) error {
+	if psk == nil && identity == nil {
+		return nil
+	}
+	if len(psk) != constants.PSKSize || len(identity) == 0 || len(identity) > constants.MaxPSKIdentitySize {
+		return qerrors.ErrInvalidPSK
+	}
+	return nil
 }
 
 // RateLimitConfig holds configuration for rate limiting.
@@ -599,6 +620,10 @@ func Dial(network, address string) (*Tunnel, error) {
 
 // DialWithConfig establishes a new tunnel with custom configuration.
 func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, error) {
+	if err := validatePSK(config.PSK, config.PSKIdentity); err != nil {
+		return nil, err
+	}
+
 	// Connect
 	conn, err := net.Dial(network, address)
 	if err != nil {
@@ -616,6 +641,8 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 		observer.OnSessionStart()
 	}
 	session.PinnedServerKey = config.PinnedServerKey
+	session.PSK = config.PSK
+	session.PSKIdentity = config.PSKIdentity
 
 	// Perform handshake
 	if err := InitiatorHandshake(session, conn); err != nil {
@@ -741,6 +768,9 @@ func (l *Listener) createSession() (*Session, error) {
 	if l.config.RequireStaticAuth && l.config.StaticKeyPair == nil {
 		return nil, qerrors.ErrStaticAuthMisconfigured
 	}
+	if err := validatePSK(l.config.PSK, l.config.PSKIdentity); err != nil {
+		return nil, err
+	}
 	session, err := NewSession(RoleResponder)
 	if err != nil {
 		return nil, err
@@ -751,6 +781,8 @@ func (l *Listener) createSession() (*Session, error) {
 	}
 	session.StaticKeyPair = l.config.StaticKeyPair
 	session.RequireStaticAuth = l.config.RequireStaticAuth
+	session.PSK = l.config.PSK
+	session.PSKIdentity = l.config.PSKIdentity
 	return session, nil
 }
 

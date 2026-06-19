@@ -134,6 +134,11 @@ type ClientHello struct {
 	// CH-KEM ciphertext the client encapsulated to the server's pinned static
 	// public key for endpoint authentication. Empty in unauthenticated mode.
 	CHKEMStaticCiphertext []byte
+
+	// PSKIdentity, when non-empty (<= MaxPSKIdentitySize bytes), is the label the
+	// client uses to select a pre-shared key for mutual authentication. The server
+	// folds the matching PSK into the master secret. Empty when no PSK is in use.
+	PSKIdentity []byte
 }
 
 // ServerHello is sent by the responder in response to ClientHello.
@@ -244,6 +249,9 @@ func (m *ClientHello) Validate() error {
 	}
 	if len(m.CHKEMStaticCiphertext) != 0 && len(m.CHKEMStaticCiphertext) != constants.CHKEMCiphertextSize {
 		return qerrors.ErrInvalidCiphertext
+	}
+	if len(m.PSKIdentity) > constants.MaxPSKIdentitySize {
+		return qerrors.ErrInvalidMessage
 	}
 	return nil
 }

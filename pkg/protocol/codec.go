@@ -54,7 +54,8 @@ func (c *Codec) EncodeClientHello(m *ClientHello) ([]byte, error) {
 		1 + len(m.SessionID) + // session ID length + data
 		constants.CHKEMPublicKeySize + // public key
 		2 + 2*len(m.CipherSuites) + // cipher suites count + data
-		1 + len(m.CHKEMStaticCiphertext) // static-ct presence flag + data
+		1 + len(m.CHKEMStaticCiphertext) + // static-ct presence flag + data
+		1 + pskIdentityFieldLen(m.PSKIdentity) // psk-identity presence flag + (len + data)
 
 	buf := make([]byte, HeaderSize+payloadSize)
 	offset := 0
@@ -97,12 +98,36 @@ func (c *Codec) EncodeClientHello(m *ClientHello) ([]byte, error) {
 	// self-describing; older peers that stop after cipher suites ignore it.
 	if len(m.CHKEMStaticCiphertext) > 0 {
 		buf[offset] = 1
-		copy(buf[offset+1:], m.CHKEMStaticCiphertext)
+		offset++
+		copy(buf[offset:], m.CHKEMStaticCiphertext)
+		offset += constants.CHKEMCiphertextSize
+	} else {
+		buf[offset] = 0
+		offset++
+	}
+
+	// PSK identity (presence-flagged: 1 byte, then a 1-byte length and the label
+	// when present). Like the static field, additive and ignored by older peers.
+	if len(m.PSKIdentity) > 0 {
+		buf[offset] = 1
+		offset++
+		buf[offset] = byte(len(m.PSKIdentity))
+		offset++
+		copy(buf[offset:], m.PSKIdentity)
 	} else {
 		buf[offset] = 0
 	}
 
 	return buf, nil
+}
+
+// pskIdentityFieldLen returns the extra payload bytes a PSK identity contributes
+// beyond its presence flag: a 1-byte length prefix plus the label when present.
+func pskIdentityFieldLen(identity []byte) int {
+	if len(identity) == 0 {
+		return 0
+	}
+	return 1 + len(identity)
 }
 
 // DecodeClientHello deserializes a ClientHello message.
@@ -178,6 +203,26 @@ func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 			}
 			m.CHKEMStaticCiphertext = make([]byte, constants.CHKEMCiphertextSize)
 			copy(m.CHKEMStaticCiphertext, data[offset:offset+constants.CHKEMCiphertextSize])
+			offset += constants.CHKEMCiphertextSize
+		}
+	}
+
+	// PSK identity (presence-flagged, length-prefixed). Additive after the static
+	// field; older peers omit it, so only read it if a byte remains.
+	if offset < payloadEnd {
+		present := data[offset]
+		offset++
+		if present == 1 {
+			if offset+1 > payloadEnd {
+				return nil, qerrors.ErrInvalidMessage
+			}
+			idLen := int(data[offset])
+			offset++
+			if idLen == 0 || offset+idLen > payloadEnd {
+				return nil, qerrors.ErrInvalidMessage
+			}
+			m.PSKIdentity = make([]byte, idLen)
+			copy(m.PSKIdentity, data[offset:offset+idLen])
 		}
 	}
 

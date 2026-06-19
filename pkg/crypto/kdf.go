@@ -444,3 +444,30 @@ func DeriveAuthenticatedSecret(ephemeralSecret, staticSecret []byte) ([]byte, er
 		constants.CHKEMSharedSecretSize,
 	)
 }
+
+// DerivePSKSecret folds a pre-shared key into the master secret for mutual
+// authentication. Only peers that hold the same PSK derive a matching secret, so
+// a wrong or absent PSK surfaces as a Finished MAC failure. The ephemeral secret
+// stays a mandatory input, so forward secrecy holds even if the PSK later leaks.
+//
+// Parameters:
+//   - masterSecret: The current master secret (32 bytes)
+//   - psk: The pre-shared key (PSKSize bytes)
+//
+// Returns:
+//   - newSecret: New 32-byte master secret
+//   - error: Non-nil if either input is the wrong size
+func DerivePSKSecret(masterSecret, psk []byte) ([]byte, error) {
+	if len(masterSecret) != constants.CHKEMSharedSecretSize {
+		return nil, qerrors.NewCryptoError("DerivePSKSecret", qerrors.ErrInvalidKeySize)
+	}
+	if len(psk) != constants.PSKSize {
+		return nil, qerrors.NewCryptoError("DerivePSKSecret", qerrors.ErrInvalidKeySize)
+	}
+
+	return DeriveKeyMultiple(
+		constants.DomainSeparatorPSK,
+		[][]byte{masterSecret, psk},
+		constants.CHKEMSharedSecretSize,
+	)
+}
