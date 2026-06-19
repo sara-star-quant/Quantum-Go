@@ -107,7 +107,10 @@ func protocolVersionBytes() []byte {
 	return b
 }
 
-// KeyPair represents a CH-KEM key pair combining X25519 and ML-KEM-1024.
+// KeyPair represents a KEM key pair. For CH-KEM-v1 it holds the X25519 and
+// ML-KEM-1024 components directly. For other suites (suite != 0) the typed v1
+// fields stay nil and impl carries the suite's live key handle; the generic methods
+// dispatch on suite.
 type KeyPair struct {
 	// X25519 key pair (classical)
 	x25519Public  *ecdh.PublicKey
@@ -116,21 +119,34 @@ type KeyPair struct {
 	// ML-KEM-1024 key pair (post-quantum)
 	mlkemPublic  *crypto.MLKEMPublicKey
 	mlkemPrivate *crypto.MLKEMPrivateKey
+
+	// suite is zero for CH-KEM-v1 and the suite id otherwise; impl is the non-v1
+	// suite's live key handle.
+	suite SuiteID
+	impl  any
 }
 
-// PublicKey represents a CH-KEM public key for encapsulation.
+// PublicKey represents a KEM public key for encapsulation. For non-v1 suites raw
+// holds the serialized key and the typed fields stay nil.
 type PublicKey struct {
 	x25519 *ecdh.PublicKey
 	mlkem  *crypto.MLKEMPublicKey
+
+	suite SuiteID
+	raw   []byte
 }
 
-// Ciphertext represents a CH-KEM ciphertext.
+// Ciphertext represents a KEM ciphertext. For non-v1 suites raw holds the
+// serialized ciphertext and the typed fields stay nil.
 type Ciphertext struct {
 	// X25519 ephemeral public key (32 bytes)
 	x25519Ephemeral []byte
 
 	// ML-KEM-1024 ciphertext (1568 bytes)
 	mlkemCiphertext []byte
+
+	suite SuiteID
+	raw   []byte
 }
 
 // GenerateKeyPair generates a new CH-KEM key pair.
@@ -209,8 +225,21 @@ func ParseKeyPair(seed []byte) (*KeyPair, error) {
 	}, nil
 }
 
+// suiteKeyHandle is the live private-key handle a non-v1 suite stores in
+// KeyPair.impl. The crypto wrappers (e.g. *crypto.XWingKeyPair) satisfy it.
+type suiteKeyHandle interface {
+	PublicKeyBytes() []byte
+	Zeroize()
+}
+
 // PublicKey returns the public component of the key pair.
 func (kp *KeyPair) PublicKey() *PublicKey {
+	if kp.suite != 0 {
+		if h, ok := kp.impl.(suiteKeyHandle); ok {
+			return &PublicKey{suite: kp.suite, raw: h.PublicKeyBytes()}
+		}
+		return &PublicKey{suite: kp.suite}
+	}
 	return &PublicKey{
 		x25519: kp.x25519Public,
 		mlkem:  kp.mlkemPublic,
@@ -363,6 +392,9 @@ func Decapsulate(ct *Ciphertext, kp *KeyPair, role Role) ([]byte, error) {
 // Format: x25519_public (32 bytes) || mlkem_public (1568 bytes)
 // Total: 1600 bytes
 func (pk *PublicKey) Bytes() []byte {
+	if pk.suite != 0 {
+		return cloneBytes(pk.raw)
+	}
 	result := make([]byte, constants.CHKEMPublicKeySize)
 	copy(result[:constants.X25519PublicKeySize], pk.x25519.Bytes())
 	copy(result[constants.X25519PublicKeySize:], pk.mlkem.Bytes())
@@ -396,10 +428,20 @@ func ParsePublicKey(data []byte) (*PublicKey, error) {
 // Format: x25519_ephemeral (32 bytes) || mlkem_ciphertext (1568 bytes)
 // Total: 1600 bytes
 func (ct *Ciphertext) Bytes() []byte {
+	if ct.suite != 0 {
+		return cloneBytes(ct.raw)
+	}
 	result := make([]byte, constants.CHKEMCiphertextSize)
 	copy(result[:constants.X25519PublicKeySize], ct.x25519Ephemeral)
 	copy(result[constants.X25519PublicKeySize:], ct.mlkemCiphertext)
 	return result
+}
+
+// cloneBytes returns an independent copy of b.
+func cloneBytes(b []byte) []byte {
+	out := make([]byte, len(b))
+	copy(out, b)
+	return out
 }
 
 // ParseCiphertext parses a CH-KEM ciphertext from bytes.
@@ -416,6 +458,13 @@ func ParseCiphertext(data []byte) (*Ciphertext, error) {
 
 // Zeroize securely erases the private key material.
 func (kp *KeyPair) Zeroize() {
+	if kp.suite != 0 {
+		if h, ok := kp.impl.(suiteKeyHandle); ok {
+			h.Zeroize()
+		}
+		kp.impl = nil
+		return
+	}
 	kp.x25519Private = nil
 	kp.x25519Public = nil
 	kp.mlkemPrivate = nil
@@ -424,6 +473,9 @@ func (kp *KeyPair) Zeroize() {
 
 // Clone creates a deep copy of the public key.
 func (pk *PublicKey) Clone() *PublicKey {
+	if pk.suite != 0 {
+		return &PublicKey{suite: pk.suite, raw: cloneBytes(pk.raw)}
+	}
 	return &PublicKey{
 		x25519: pk.x25519,
 		mlkem:  pk.mlkem,
