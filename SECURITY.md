@@ -91,9 +91,54 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 | Post-Quantum Resistance   | Provided            | ML-KEM-1024 (NIST Category 5)          |
 | Forward Secrecy           | Provided            | Ephemeral keys per session             |
 | Replay Protection         | Provided            | Sliding window (64-bit sequence)       |
+| Endpoint Authentication   | Partial/Opt-in      | Static-key server pinning (CH-KEM)     |
 | Nonce-Misuse Resistance   | Partial/Conditional | Sequence-based nonces (must not reuse) |
 | Side-Channel Resistance   | Partial/Conditional | Relies on Go stdlib (audited)          |
 | Key Compromise Impersonation | Not provided     | Not designed for (ephemeral keys)      |
+
+### Authentication modes
+
+By default the handshake is **unauthenticated**: it provides encryption and forward secrecy but does not prove peer identity, so it will establish a session with any peer. Endpoint authentication is opt-in.
+
+**Static-key server authentication** (opt-in, since v0.0.12) lets a client cryptographically pin a server's long-term identity, stopping an active relaying machine-in-the-middle for the pinned-server case.
+
+1. Generate a long-term server identity:
+
+   ```
+   quantum-tunnel keygen --out server
+   ```
+
+   This writes `server.key` (secret seed, base64, mode 0600) and `server.pub` (public pin, base64), and prints an `SHA256:` fingerprint. Keep `server.key` secret and persistent (the identity must survive restarts); distribute `server.pub` to clients and verify its fingerprint out-of-band.
+
+2. Server (Listen): load the secret seed and prove possession.
+
+   ```go
+   seed, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(string(keyFile)))
+   kp, _ := chkem.ParseKeyPair(seed)
+   cfg := tunnel.TransportConfig{StaticKeyPair: kp}
+   ```
+
+   Datagram transport: `tunnel.WithStaticIdentity(kp)`.
+
+3. Client (Dial): pin the public key and require proof.
+
+   ```go
+   pin, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(string(pubFile)))
+   pub, _ := chkem.ParsePublicKey(pin)
+   cfg := tunnel.TransportConfig{PinnedServerKey: pub}
+   ```
+
+   Datagram transport: `tunnel.WithPinnedServerKey(pub)`.
+
+The client encapsulates a second CH-KEM leg to the pinned key and folds the secret into the master secret, so only the holder of the static private key derives matching handshake keys. The ephemeral leg stays a mandatory input, so **forward secrecy is preserved** even if the static key later leaks.
+
+**Failure behavior**: a wrong, absent, or stripped pin fails closed.
+- Stream path: fails fast with `ErrServerKeyMismatch`.
+- Datagram path: fails closed as a retry-ceiling timeout (the server drops the undecryptable ClientFinished as if lost), so `DialDatagram` returns `ErrServerKeyMismatch` only after the handshake times out.
+
+The wire alert stays generic, so a prober that guesses pins learns nothing.
+
+**Not yet provided**: client authentication and PSK-based mutual authentication (planned: v0.0.13). Static-key pinning authenticates the server to the client only; it does not let a server verify a client. For mutual authentication today, layer it externally.
 
 ---
 
@@ -110,7 +155,7 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 **Out of scope**:
 - Physical attacks on runtime memory
 - Side-channel attacks on non-constant-time operations
-- Malicious participants (requires authentication layer)
+- Malicious participants beyond a pinned server (static-key pinning defends the pinned-server case; client and mutual authentication remain external)
 - Post-compromise security (PCS) after long-term key compromise
 - Traffic analysis / metadata leakage
 
@@ -118,32 +163,25 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 
 #### Protocol-level (planned for future releases)
 
-1. **No endpoint authentication** (planned: v0.1.0):
-   - The protocol provides **encryption only** -- no built-in peer authentication
-   - Any party can initiate or accept a handshake without proving identity
-   - **You must implement** authentication externally (certificates, PSK, static key pinning)
-   - Identity binding to CH-KEM public keys is the deployer's responsibility
+1. **Partial endpoint authentication** (static-key server pinning since v0.0.12; mutual auth planned: v0.0.13):
+   - Opt-in static-key pinning authenticates the **server** to a client that pins its public key (see [Authentication modes](#authentication-modes)). Unconfigured, the protocol provides encryption only.
+   - There is **no client authentication and no PSK mutual-auth yet**: a server cannot require or verify a client identity.
+   - For mutual authentication today, layer it externally (mTLS-style certificates, application PSK).
 
-2. **No role binding in CH-KEM transcript** (planned: a later stream-hardening release):
-   - The transcript hash does not include the initiator/responder role or protocol version
-   - Theoretically enables reflection attacks (initiator completes handshake with itself)
-   - Mitigated in practice by the handshake state machine (separate initiator/responder flows)
-   - Full fix requires adding role indicator to `TranscriptHash` components
-
-3. **AEAD nonce prefix is zero** (planned: a later stream-hardening release):
+2. **AEAD nonce prefix is zero** (planned: a later stream-hardening release):
    - Nonce format is `[0000 || counter(8B)]` -- the upper 4 bytes are not session-bound
    - Two sessions with the same encryption key would produce identical nonce sequences
    - Risk is low in practice because traffic keys are derived from unique shared secrets
    - The datagram transport already derives a session-bound nonce prefix; this gap is the stream path only
    - Full fix: use session ID bytes as nonce prefix
 
-4. **Replay window is 64 packets** (planned: a later stream-hardening release):
+3. **Replay window is 64 packets** (planned: a later stream-hardening release):
    - At high throughput (~83,000 pps at 1 Gbps), this gives <1ms tolerance for reordering
    - Packets arriving more than 64 positions out of order are silently dropped
    - The datagram transport already uses a 1024-bit multi-word window; this gap is the stream path only
    - Full fix: expand to 1024+ using multi-word bitmap
 
-5. **Resumption tickets not bound to server identity** (planned: a later stream-hardening release):
+4. **Resumption tickets not bound to server identity** (planned: a later stream-hardening release):
    - Session tickets contain only master secret and cipher suite
    - A captured ticket could theoretically be replayed against a different server
    - Risk is low: requires the attacker to know the ticket encryption key
@@ -151,25 +189,25 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 
 #### Implementation-level
 
-6. **Nonce management**:
+5. **Nonce management**:
    - Sequence-based nonces are safe for single-threaded or properly synchronized use
    - **DO NOT** use same session keys from multiple goroutines without external locking
    - Nonce exhaustion triggers automatic rekey
 
-7. **Timing side-channels**:
+6. **Timing side-channels**:
    - ML-KEM implementation (cloudflare/circl) uses constant-time operations
    - X25519 from Go stdlib is constant-time
    - **AES-GCM requires hardware AES-NI** for constant-time (CPU flags checked)
    - ChaCha20-Poly1305 is software-constant-time
 
-8. **Memory safety**:
+7. **Memory safety**:
    - Go runtime does not guarantee memory zeroization
    - Garbage collector may copy secrets to new locations
    - Swapping to disk may leak key material
    - Mitigation: Use HSM/TPM for long-term keys
    - v0.0.9 added `runtime.KeepAlive` to prevent dead store elimination of `Zeroize`
 
-9. **Random number generation**:
+8. **Random number generation**:
    - Uses `crypto/rand` (Linux: getrandom syscall)
    - Ensure `/dev/urandom` is properly seeded on older systems
    - In virtualized environments, verify entropy availability

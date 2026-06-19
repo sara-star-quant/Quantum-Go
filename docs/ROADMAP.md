@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: v0.0.11
+## Current Status: v0.0.12
 
 > **Direction.** Next is **stream security parity**: bring the TCP/stream path up to the
 > datagram path and clear the hardening backlog (role binding, ticket server binding,
