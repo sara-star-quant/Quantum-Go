@@ -35,6 +35,9 @@ const (
 	MessageTypeClientFinished MessageType = 0x03
 	// MessageTypeServerFinished confirms handshake completion from server.
 	MessageTypeServerFinished MessageType = 0x04
+	// MessageTypeHelloRetryRequest asks the client to retry the ClientHello with a
+	// server-selected KEM suite (sent instead of ServerHello on a suite mismatch).
+	MessageTypeHelloRetryRequest MessageType = 0x05
 
 	// MessageTypeData carries encrypted application data.
 	MessageTypeData MessageType = 0x10
@@ -167,6 +170,18 @@ type ServerHello struct {
 
 	// Selected cipher suite
 	CipherSuite constants.CipherSuite
+}
+
+// HelloRetryRequest is sent by the responder instead of ServerHello when it does
+// not support the KEM suite the client's key share used. It names a mutually
+// supported suite the client should retry with. It is unencrypted (pre-key) and is
+// bound into the handshake transcript via the RFC 8446 4.4.1 synthetic message hash.
+type HelloRetryRequest struct {
+	// Protocol version selected by the server
+	Version Version
+
+	// KEMSuite is the suite the client should use for its retried key share.
+	KEMSuite uint16
 }
 
 // ClientFinished confirms the handshake from the client side.
