@@ -134,11 +134,14 @@ func (w *DatagramReplayWindow) advance(delta uint64) {
 	wordShift := delta / replayWordBits
 	bitShift := delta % replayWordBits
 	for i := len(w.bitmap) - 1; i >= 0; i-- {
-		src := uint64(i) - wordShift
 		var v uint64
-		if int64(src) >= 0 {
+		// Guard against unsigned underflow of src directly, rather than casting to
+		// int64. When wordShift > i the subtraction would wrap, so skip the word.
+		ui := uint64(i) // #nosec G115 -- loop index i is always >= 0
+		if ui >= wordShift {
+			src := ui - wordShift
 			v = w.bitmap[src] << bitShift
-			if bitShift != 0 && int64(src)-1 >= 0 {
+			if bitShift != 0 && src >= 1 {
 				v |= w.bitmap[src-1] >> (replayWordBits - bitShift)
 			}
 		}

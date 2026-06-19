@@ -55,7 +55,7 @@ func newCookieSigner(now func() time.Time) (*cookieSigner, error) {
 // issue returns a fresh cookie bound to addr at the current time.
 func (cs *cookieSigner) issue(addr net.Addr) []byte {
 	cookie := make([]byte, cookieSize)
-	binary.BigEndian.PutUint64(cookie[:cookieTimestampSize], uint64(cs.now().UnixNano()))
+	binary.BigEndian.PutUint64(cookie[:cookieTimestampSize], uint64(cs.now().UnixNano())) // #nosec G115 -- UnixNano is positive through year 2262, fits uint64
 	copy(cookie[cookieTimestampSize:], cs.mac(addr, cookie[:cookieTimestampSize]))
 	return cookie
 }
@@ -69,7 +69,7 @@ func (cs *cookieSigner) verify(addr net.Addr, cookie []byte) bool {
 	if !hmac.Equal(cookie[cookieTimestampSize:], cs.mac(addr, cookie[:cookieTimestampSize])) {
 		return false
 	}
-	issued := time.Unix(0, int64(binary.BigEndian.Uint64(cookie[:cookieTimestampSize])))
+	issued := time.Unix(0, int64(binary.BigEndian.Uint64(cookie[:cookieTimestampSize]))) // #nosec G115 -- timestamp we issued is positive through year 2262, fits int64
 	age := cs.now().Sub(issued)
 	return age >= 0 && age <= cookieLifetime
 }

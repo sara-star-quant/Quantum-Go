@@ -61,7 +61,7 @@ func (c *Codec) EncodeClientHello(m *ClientHello) ([]byte, error) {
 	// Header
 	buf[offset] = byte(MessageTypeClientHello)
 	offset++
-	binary.BigEndian.PutUint32(buf[offset:], uint32(payloadSize))
+	binary.BigEndian.PutUint32(buf[offset:], uint32(payloadSize)) // #nosec G115 -- payloadSize bounded by MaxMessageSize (65536), fits uint32
 	offset += 4
 
 	// Version
@@ -84,7 +84,7 @@ func (c *Codec) EncodeClientHello(m *ClientHello) ([]byte, error) {
 	offset += constants.CHKEMPublicKeySize
 
 	// Cipher suites
-	binary.BigEndian.PutUint16(buf[offset:], uint16(len(m.CipherSuites)))
+	binary.BigEndian.PutUint16(buf[offset:], uint16(len(m.CipherSuites))) // #nosec G115 -- cipher suite count is single digits, fits uint16
 	offset += 2
 	for _, cs := range m.CipherSuites {
 		binary.BigEndian.PutUint16(buf[offset:], uint16(cs))
@@ -175,7 +175,7 @@ func (c *Codec) EncodeServerHello(m *ServerHello) ([]byte, error) {
 	// Header
 	buf[offset] = byte(MessageTypeServerHello)
 	offset++
-	binary.BigEndian.PutUint32(buf[offset:], uint32(payloadSize))
+	binary.BigEndian.PutUint32(buf[offset:], uint32(payloadSize)) // #nosec G115 -- payloadSize bounded by MaxMessageSize (65536), fits uint32
 	offset += 4
 
 	// Version
@@ -301,7 +301,7 @@ func (c *Codec) EncodeData(seq uint64, payload []byte) ([]byte, error) {
 	buf := make([]byte, HeaderSize+payloadSize)
 
 	buf[0] = byte(MessageTypeData)
-	binary.BigEndian.PutUint32(buf[1:], uint32(payloadSize))
+	binary.BigEndian.PutUint32(buf[1:], uint32(payloadSize)) // #nosec G115 -- payload guarded by MaxPayloadSize check above, fits uint32
 	binary.BigEndian.PutUint64(buf[HeaderSize:], seq)
 	copy(buf[HeaderSize+8:], payload)
 
@@ -335,9 +335,7 @@ func (c *Codec) EncodeAlert(level AlertLevel, code AlertCode, description string
 	buf := make([]byte, HeaderSize+payloadSize)
 
 	buf[0] = byte(MessageTypeAlert)
-	// payloadSize is max 258 bytes, so safe to cast
-	//nolint:gosec // G115: payloadSize is bounded < 300
-	binary.BigEndian.PutUint32(buf[1:], uint32(payloadSize))
+	binary.BigEndian.PutUint32(buf[1:], uint32(payloadSize)) // #nosec G115 -- alert payloadSize is bounded < 300, fits uint32
 	buf[HeaderSize] = byte(level)
 	buf[HeaderSize+1] = byte(code)
 	buf[HeaderSize+2] = byte(len(description))
@@ -405,7 +403,7 @@ func (c *Codec) EncodeRekey(seq uint64, ciphertext []byte) ([]byte, error) {
 	buf := make([]byte, HeaderSize+payloadSize)
 
 	buf[0] = byte(MessageTypeRekey)
-	binary.BigEndian.PutUint32(buf[1:], uint32(payloadSize))
+	binary.BigEndian.PutUint32(buf[1:], uint32(payloadSize)) // #nosec G115 -- rekey payloadSize bounded by MaxMessageSize, fits uint32
 	binary.BigEndian.PutUint64(buf[HeaderSize:], seq)
 	copy(buf[HeaderSize+8:], ciphertext)
 

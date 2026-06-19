@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Threat model**: the former `docs/compliance/RISK_ASSESSMENT.md` is reframed as `docs/technical/THREAT_MODEL.md`, an honest self-authored analysis (NIST SP 800-30 methodology), with the governance scaffolding that implied a team or audit process removed.
+- **CI security hardening**: gosec now fails CI on findings (dropped `-no-fail`); all current findings are triaged with justified `#nosec` annotations (bounded integer conversions, KAT nonce) and one replay cast rewritten to drop the conversion. Added a FIPS build/test job (`go test -tags fips -race ./...`) and a `go vet` step.
 
 ## [0.0.11][] - 2026-06-01
 

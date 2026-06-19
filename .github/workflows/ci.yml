@@ -63,6 +63,30 @@ jobs:
         with:
           args: --timeout=5m
 
+  fips:
+    name: FIPS Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: go vet
+        run: |
+          go vet ./...
+          go vet -tags fips ./...
+
+      - name: FIPS build
+        run: go build -tags fips ./...
+
+      - name: FIPS tests (race)
+        run: go test -tags fips ./... -race
+
   build:
     name: Build
     runs-on: ${{ matrix.os }}
@@ -116,17 +140,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Run Gosec Security Scanner
-        uses: securego/gosec@v2.22.11
+      # Run gosec under a pinned Go 1.26 toolchain rather than the securego/gosec
+      # Docker image, whose bundled Go is too old to load a `go 1.26` module
+      # (it errors on package load and exits non-zero, which -no-fail used to hide).
+      - name: Set up Go
+        uses: actions/setup-go@v6
         with:
-          args: "-no-fail -fmt sarif -out gosec.sarif ./..."
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.11
+
+      - name: Run Gosec Security Scanner
+        run: gosec -fmt sarif -out gosec.sarif ./...
 
       - name: Upload SARIF file
+        if: always()
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gosec.sarif
 
       - name: Upload Security Report
+        if: always()
         uses: actions/upload-artifact@v6
         with:
           name: security-report
