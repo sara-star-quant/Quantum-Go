@@ -90,7 +90,7 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 | IND-CCA2 Security         | Provided            | ML-KEM-1024 + X25519                   |
 | Post-Quantum Resistance   | Provided            | ML-KEM-1024 (NIST Category 5)          |
 | Forward Secrecy           | Provided            | Ephemeral keys per session             |
-| Replay Protection         | Provided            | Sliding window (64-bit sequence)       |
+| Replay Protection         | Provided            | Sliding window (1024, multi-word)      |
 | Endpoint Authentication   | Partial/Opt-in      | Static-key pinning (server) + PSK (mutual) |
 | Nonce-Misuse Resistance   | Partial/Conditional | Sequence-based nonces (must not reuse) |
 | Side-Channel Resistance   | Partial/Conditional | Relies on Go stdlib (audited)          |
@@ -190,13 +190,7 @@ The client advertises the identity label so the server selects the matching key,
    - The datagram transport already derives a session-bound nonce prefix; this gap is the stream path only
    - Full fix: use session ID bytes as nonce prefix
 
-3. **Replay window is 64 packets** (planned: a later stream-hardening release):
-   - At high throughput (~83,000 pps at 1 Gbps), this gives <1ms tolerance for reordering
-   - Packets arriving more than 64 positions out of order are silently dropped
-   - The datagram transport already uses a 1024-bit multi-word window; this gap is the stream path only
-   - Full fix: expand to 1024+ using multi-word bitmap
-
-4. **Resumption tickets not bound to server identity** (planned: a later stream-hardening release):
+3. **Resumption tickets not bound to server identity** (planned: a later stream-hardening release):
    - Session tickets contain only master secret and cipher suite
    - A captured ticket could theoretically be replayed against a different server
    - Risk is low: requires the attacker to know the ticket encryption key
@@ -204,25 +198,25 @@ The client advertises the identity label so the server selects the matching key,
 
 #### Implementation-level
 
-5. **Nonce management**:
+4. **Nonce management**:
    - Sequence-based nonces are safe for single-threaded or properly synchronized use
    - **DO NOT** use same session keys from multiple goroutines without external locking
    - Nonce exhaustion triggers automatic rekey
 
-6. **Timing side-channels**:
+5. **Timing side-channels**:
    - ML-KEM implementation (cloudflare/circl) uses constant-time operations
    - X25519 from Go stdlib is constant-time
    - **AES-GCM requires hardware AES-NI** for constant-time (CPU flags checked)
    - ChaCha20-Poly1305 is software-constant-time
 
-7. **Memory safety**:
+6. **Memory safety**:
    - Go runtime does not guarantee memory zeroization
    - Garbage collector may copy secrets to new locations
    - Swapping to disk may leak key material
    - Mitigation: Use HSM/TPM for long-term keys
    - v0.0.9 added `runtime.KeepAlive` to prevent dead store elimination of `Zeroize`
 
-8. **Random number generation**:
+7. **Random number generation**:
    - Uses `crypto/rand` (Linux: getrandom syscall)
    - Ensure `/dev/urandom` is properly seeded on older systems
    - In virtualized environments, verify entropy availability

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Changed
+- **Stream replay window widened from 64 to 1024 sequence numbers**: the stream `ReplayWindow` now reuses the same multi-word sliding bitmap as the datagram path, so it tolerates much deeper out-of-order delivery before dropping a packet as too old (at ~83,000 pps the old 64-packet window gave under 1 ms of reordering tolerance). The live receive path keeps the window across a rekey (the trial-decrypt cipher promotion does not reset it), so the rekey-boundary replay guard is unchanged. The check stays O(1) (~37 ns in-order at the new width, negligible against the per-record AEAD).
+
 ## [0.0.13][] - 2026-06-19
 
 **Theme:** Mutual authentication. PSK-based mutual auth and a server-side require-auth switch complete the endpoint-authentication arc started in v0.0.12. The data plane and the default (unconfigured) handshake are unchanged; authenticated handshakes add bounded cost (static-key roughly one extra CH-KEM leg, PSK a single negligible KDF fold).

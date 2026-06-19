@@ -169,59 +169,32 @@ type Session struct {
 	mu sync.RWMutex
 }
 
-// ReplayWindow implements a sliding window for replay attack protection.
+// StreamReplayWindowSize is the stream replay window width in bits. It is widened
+// from the original 64 so the filter tolerates deeper reordering before dropping
+// packets as too old. Must be a multiple of 64.
+const StreamReplayWindowSize = 1024
+
+// ReplayWindow is the stream path's sliding-window replay filter. It reuses the
+// same multi-word bitmap as the datagram path (see replay.go) so it tracks
+// StreamReplayWindowSize sequence numbers instead of 64. Stream sequence numbers
+// stay global and monotonic across a rekey, so the live receive path keeps this
+// window across the trial-decrypt cipher promotion (promotePendingRecvCipher does
+// not reset it). That persistence is what rejects a replay of the rekey-boundary
+// packet, whose sequence the window already recorded.
 type ReplayWindow struct {
-	mu         sync.Mutex
-	highSeq    uint64
-	bitmap     uint64 // Bitmap for last 64 sequence numbers
-	windowSize uint64
+	inner *DatagramReplayWindow
 }
 
 // NewReplayWindow creates a new replay protection window.
 func NewReplayWindow() *ReplayWindow {
-	return &ReplayWindow{
-		highSeq:    0,
-		bitmap:     0,
-		windowSize: 64,
-	}
+	return &ReplayWindow{inner: NewDatagramReplayWindowSize(StreamReplayWindowSize)}
 }
 
-// Check validates a sequence number against the replay window.
-// Returns true if the sequence number is valid (not a replay).
+// Check validates a sequence number against the replay window. It returns true if
+// the sequence is fresh (not a replay and not older than the window) and records
+// it, false otherwise.
 func (rw *ReplayWindow) Check(seq uint64) bool {
-	rw.mu.Lock()
-	defer rw.mu.Unlock()
-
-	// Sequence number is too old
-	if seq+rw.windowSize <= rw.highSeq {
-		return false
-	}
-
-	// Sequence number is within the window
-	if seq <= rw.highSeq {
-		diff := rw.highSeq - seq
-		var bit uint64 = 1
-		bit <<= diff
-		if rw.bitmap&bit != 0 {
-			return false // Already received
-		}
-		rw.bitmap |= bit
-		return true
-	}
-
-	// New highest sequence number
-	if seq > rw.highSeq {
-		diff := seq - rw.highSeq
-		if diff >= rw.windowSize {
-			rw.bitmap = 0
-		} else {
-			rw.bitmap <<= diff
-		}
-		rw.bitmap |= 1
-		rw.highSeq = seq
-	}
-
-	return true
+	return rw.inner.Check(seq)
 }
 
 // NewSession creates a new session with the given role.
