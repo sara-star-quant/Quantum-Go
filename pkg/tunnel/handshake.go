@@ -76,6 +76,12 @@ type Handshake struct {
 	// CH-KEM encapsulation result
 	sharedSecret []byte
 
+	// staticSecret holds the static-key authentication secret between the static
+	// CH-KEM leg (set in CreateClientHello on the client, ProcessClientHello on
+	// the server) and the fold into sharedSecret before key derivation. Nil in
+	// unauthenticated mode.
+	staticSecret []byte
+
 	// Handshake ciphers (derived from shared secret)
 	sendCipher *crypto.AEAD
 	recvCipher *crypto.AEAD
@@ -150,6 +156,17 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 		CipherSuites:   protocol.SupportedCipherSuites(),
 	}
 
+	// Static-key authentication: encapsulate to the pinned server static key so
+	// only the holder of the matching private key can derive the same secret.
+	if h.session.PinnedServerKey != nil {
+		staticCT, staticSecret, err := chkem.Encapsulate(h.session.PinnedServerKey, chkem.RoleInitiator)
+		if err != nil {
+			return nil, err
+		}
+		h.staticSecret = staticSecret
+		msg.CHKEMStaticCiphertext = staticCT.Bytes()
+	}
+
 	data, err := h.codec.EncodeClientHello(msg)
 	if err != nil {
 		return nil, err
@@ -217,6 +234,12 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 	h.session.ID = msg.SessionID
 	h.session.Version = msg.Version
 	h.session.CipherSuite = msg.CipherSuite
+
+	// Fold the static-key authentication secret into the master secret. The
+	// ephemeral secret stays a mandatory input, so forward secrecy holds.
+	if err := h.foldStaticSecret(); err != nil {
+		return err
+	}
 
 	// Derive handshake keys
 	return h.deriveHandshakeKeys()
@@ -343,6 +366,23 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	}
 	h.session.RemotePublicKey = clientPublicKey
 
+	// Static-key authentication: if we hold a static identity and the client sent
+	// a static ciphertext, decapsulate it. Only our static private key recovers
+	// the secret the client encapsulated to our pinned public key. ML-KEM implicit
+	// rejection means a wrong key yields a pseudo-random secret (no error/oracle);
+	// the mismatch surfaces later as a Finished MAC failure.
+	if h.session.StaticKeyPair != nil && len(msg.CHKEMStaticCiphertext) > 0 {
+		staticCT, err := chkem.ParseCiphertext(msg.CHKEMStaticCiphertext)
+		if err != nil {
+			return err
+		}
+		staticSecret, err := chkem.Decapsulate(staticCT, h.session.StaticKeyPair, chkem.RoleResponder)
+		if err != nil {
+			return err
+		}
+		h.staticSecret = staticSecret
+	}
+
 	// Select cipher suite (first mutually supported)
 	h.session.CipherSuite = selectCipherSuite(msg.CipherSuites)
 	if !h.session.CipherSuite.IsSupported() {
@@ -400,6 +440,12 @@ func (h *Handshake) CreateServerHello() ([]byte, error) {
 
 	// Add to transcript
 	h.transcript.Write(data)
+
+	// Fold the static-key authentication secret (set in ProcessClientHello) into
+	// the master secret before deriving keys, matching the client.
+	if err := h.foldStaticSecret(); err != nil {
+		return nil, err
+	}
 
 	// Derive handshake keys
 	if err := h.deriveHandshakeKeys(); err != nil {
@@ -492,6 +538,23 @@ func (h *Handshake) CreateServerFinished() ([]byte, error) {
 }
 
 // --- Helper Functions ---
+
+// foldStaticSecret mixes the static-key authentication secret into the master
+// secret before handshake keys are derived. A no-op in unauthenticated mode.
+// The ephemeral secret remains a mandatory input, preserving forward secrecy.
+func (h *Handshake) foldStaticSecret() error {
+	if h.staticSecret == nil {
+		return nil
+	}
+	mixed, err := crypto.DeriveAuthenticatedSecret(h.sharedSecret, h.staticSecret)
+	if err != nil {
+		return err
+	}
+	h.sharedSecret = mixed
+	crypto.Zeroize(h.staticSecret)
+	h.staticSecret = nil
+	return nil
+}
 
 // deriveHandshakeKeys derives encryption keys for the handshake phase.
 func (h *Handshake) deriveHandshakeKeys() error {
@@ -647,13 +710,24 @@ func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
 			return err
 		}
 
-		// Receive ServerFinished (encrypted, with length framing)
+		// Receive ServerFinished (encrypted, with length framing). Past this point
+		// a pinned client that fails has almost certainly hit a static-key
+		// mismatch: the server could not derive matching handshake keys, so it
+		// rejected our ClientFinished and we see an alert or a Finished mismatch.
+		// Surface that as ErrServerKeyMismatch locally; the wire alert stays
+		// generic so a prober learns nothing about the pin.
 		serverFinished, err := readEncryptedRecord(rw)
 		if err != nil {
+			if h.session.PinnedServerKey != nil {
+				return qerrors.ErrServerKeyMismatch
+			}
 			return err
 		}
 		if err := h.ProcessServerFinished(serverFinished); err != nil {
 			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+			if h.session.PinnedServerKey != nil {
+				return qerrors.ErrServerKeyMismatch
+			}
 			return err
 		}
 
@@ -782,13 +856,24 @@ func InitiatorResumptionHandshake(session *Session, rw io.ReadWriter, ticket, se
 			return err
 		}
 
-		// Receive ServerFinished (encrypted, with length framing)
+		// Receive ServerFinished (encrypted, with length framing). Past this point
+		// a pinned client that fails has almost certainly hit a static-key
+		// mismatch: the server could not derive matching handshake keys, so it
+		// rejected our ClientFinished and we see an alert or a Finished mismatch.
+		// Surface that as ErrServerKeyMismatch locally; the wire alert stays
+		// generic so a prober learns nothing about the pin.
 		serverFinished, err := readEncryptedRecord(rw)
 		if err != nil {
+			if h.session.PinnedServerKey != nil {
+				return qerrors.ErrServerKeyMismatch
+			}
 			return err
 		}
 		if err := h.ProcessServerFinished(serverFinished); err != nil {
 			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+			if h.session.PinnedServerKey != nil {
+				return qerrors.ErrServerKeyMismatch
+			}
 			return err
 		}
 

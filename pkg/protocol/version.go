@@ -17,10 +17,11 @@ type Version struct {
 	Minor uint8
 }
 
-// Current is the current protocol version. Major bumped to 2 with CH-KEM role +
-// version binding: the derived secret changed, so a v1 peer is incompatible and
-// IsCompatible rejects it cleanly instead of failing later at the Finished MAC.
-var Current = Version{Major: 2, Minor: 0}
+// Current is the current protocol version. Major 2 came with CH-KEM role +
+// version binding (a v1 peer is incompatible). Minor 1 adds the optional
+// static-key authentication field in ClientHello; it is additive and
+// major-compatible, so 2.0 and 2.1 peers still interoperate (unauthenticated).
+var Current = Version{Major: 2, Minor: 1}
 
 // Bytes returns the version as a 2-byte value.
 func (v Version) Bytes() []byte {

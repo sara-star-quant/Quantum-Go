@@ -129,6 +129,11 @@ type ClientHello struct {
 
 	// Supported cipher suites in preference order
 	CipherSuites []constants.CipherSuite
+
+	// CHKEMStaticCiphertext, when non-empty (CHKEMCiphertextSize bytes), is a
+	// CH-KEM ciphertext the client encapsulated to the server's pinned static
+	// public key for endpoint authentication. Empty in unauthenticated mode.
+	CHKEMStaticCiphertext []byte
 }
 
 // ServerHello is sent by the responder in response to ClientHello.
@@ -236,6 +241,9 @@ func (m *ClientHello) Validate() error {
 		if !cs.IsSupported() {
 			return qerrors.ErrUnsupportedCipherSuite
 		}
+	}
+	if len(m.CHKEMStaticCiphertext) != 0 && len(m.CHKEMStaticCiphertext) != constants.CHKEMCiphertextSize {
+		return qerrors.ErrInvalidCiphertext
 	}
 	return nil
 }

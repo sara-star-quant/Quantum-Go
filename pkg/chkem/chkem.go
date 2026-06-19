@@ -162,6 +162,53 @@ func GenerateKeyPair() (*KeyPair, error) {
 	}, nil
 }
 
+// mlkemSeedSize is the ML-KEM-1024 key-generation seed length in bytes.
+const mlkemSeedSize = 64
+
+// StaticKeySeedSize is the byte length of a serialized static CH-KEM identity:
+// a 32-byte X25519 private key followed by a 64-byte ML-KEM seed.
+const StaticKeySeedSize = constants.X25519PrivateKeySize + mlkemSeedSize
+
+// GenerateStaticKeyPair generates a long-term CH-KEM key pair for endpoint
+// authentication and returns the seed needed to reconstruct it. A server must
+// persist this seed (it is secret) so its identity survives restarts; clients
+// pin the matching public key via PublicKey().Bytes().
+func GenerateStaticKeyPair() (*KeyPair, []byte, error) {
+	seed, err := crypto.SecureRandomBytes(StaticKeySeedSize)
+	if err != nil {
+		return nil, nil, qerrors.NewCryptoError("CHKEM.GenerateStaticKeyPair", err)
+	}
+	kp, err := ParseKeyPair(seed)
+	if err != nil {
+		crypto.Zeroize(seed)
+		return nil, nil, err
+	}
+	return kp, seed, nil
+}
+
+// ParseKeyPair reconstructs a CH-KEM key pair from a StaticKeySeedSize-byte seed
+// produced by GenerateStaticKeyPair. It is deterministic: the same seed always
+// yields the same key pair and the same public pin.
+func ParseKeyPair(seed []byte) (*KeyPair, error) {
+	if len(seed) != StaticKeySeedSize {
+		return nil, qerrors.ErrInvalidKeySize
+	}
+	x25519KP, err := crypto.NewX25519KeyPairFromBytes(seed[:constants.X25519PrivateKeySize])
+	if err != nil {
+		return nil, qerrors.NewCryptoError("CHKEM.ParseKeyPair", err)
+	}
+	mlkemKP, err := crypto.NewMLKEMKeyPairFromSeed(seed[constants.X25519PrivateKeySize:])
+	if err != nil {
+		return nil, qerrors.NewCryptoError("CHKEM.ParseKeyPair", err)
+	}
+	return &KeyPair{
+		x25519Public:  x25519KP.PublicKey,
+		x25519Private: x25519KP.PrivateKey,
+		mlkemPublic:   mlkemKP.EncapsulationKey,
+		mlkemPrivate:  mlkemKP.DecapsulationKey,
+	}, nil
+}
+
 // PublicKey returns the public component of the key pair.
 func (kp *KeyPair) PublicKey() *PublicKey {
 	return &PublicKey{
