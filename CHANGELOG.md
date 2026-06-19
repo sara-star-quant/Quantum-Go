@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Threat model**: the former `docs/compliance/RISK_ASSESSMENT.md` is reframed as `docs/technical/THREAT_MODEL.md`, an honest self-authored analysis (NIST SP 800-30 methodology), with the governance scaffolding that implied a team or audit process removed.
 - **CI security hardening**: gosec now fails CI on findings (dropped `-no-fail`); all current findings are triaged with justified `#nosec` annotations (bounded integer conversions, KAT nonce) and one replay cast rewritten to drop the conversion. Added a FIPS build/test job (`go test -tags fips -race ./...`) and a `go vet` step.
 
-## [0.0.11][] - 2026-06-01
+## 0.0.11 - 2026-06-01
 
 **Theme:** Connectionless UDP/datagram transport (reliable handshake, encrypted data plane, reliable rekey, anti-DoS, Linux receive scaling and offload) and datagram performance, plus two stream-path hardening fixes.
 
@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Real binary/`.text` module integrity (the KAT-vector check landed; full module integrity is future FIPS work).
 - CI security: drop the Gosec `-no-fail`, add a FIPS build/test job.
 
-## [0.0.10][] - 2026-05-30
+## 0.0.10 - 2026-05-30
 
 **Theme:** Data-plane rekey reliability and sustained high-throughput.
 
@@ -322,9 +322,7 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Unit tests for crypto primitives
 
 [Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.12...HEAD
-[0.0.12]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.11...v0.0.12
-[0.0.11]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.10...v0.0.11
-[0.0.10]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.9...v0.0.10
+[0.0.12]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.9...v0.0.12
 [0.0.9]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.8...v0.0.9
 [0.0.8]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.7...v0.0.8
 [0.0.7]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.6...v0.0.7
