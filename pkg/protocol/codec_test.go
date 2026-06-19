@@ -1226,3 +1226,29 @@ func TestServerHelloKEMSuiteRoundTrip(t *testing.T) {
 		t.Error("cipher suite mismatch after the inserted KEM-suite field")
 	}
 }
+
+func TestHelloRetryRequestRoundTrip(t *testing.T) {
+	codec := protocol.NewCodec()
+	original := &protocol.HelloRetryRequest{
+		Version:  protocol.Current,
+		KEMSuite: 0x0001,
+	}
+	encoded, err := codec.EncodeHelloRetryRequest(original)
+	if err != nil {
+		t.Fatalf("EncodeHelloRetryRequest: %v", err)
+	}
+	if protocol.MessageType(encoded[0]) != protocol.MessageTypeHelloRetryRequest {
+		t.Errorf("message type = %#x, want HelloRetryRequest", encoded[0])
+	}
+	decoded, err := codec.DecodeHelloRetryRequest(encoded)
+	if err != nil {
+		t.Fatalf("DecodeHelloRetryRequest: %v", err)
+	}
+	if decoded.Version != original.Version || decoded.KEMSuite != original.KEMSuite {
+		t.Errorf("round-trip mismatch: got %+v, want %+v", decoded, original)
+	}
+	// A truncated payload is rejected.
+	if _, err := codec.DecodeHelloRetryRequest(encoded[:protocol.HeaderSize+2]); err == nil {
+		t.Error("expected error for a truncated HelloRetryRequest")
+	}
+}

@@ -386,6 +386,32 @@ func (c *Codec) DecodeServerHello(data []byte) (*ServerHello, error) {
 }
 
 // EncodeFinished serializes a Finished message (client or server).
+// EncodeHelloRetryRequest serializes a HelloRetryRequest (version + KEM suite).
+func (c *Codec) EncodeHelloRetryRequest(m *HelloRetryRequest) ([]byte, error) {
+	const payloadSize = 2 + 2 // version + kem suite
+	buf := make([]byte, HeaderSize+payloadSize)
+	buf[0] = byte(MessageTypeHelloRetryRequest)
+	binary.BigEndian.PutUint32(buf[1:], payloadSize)
+	buf[HeaderSize] = m.Version.Major
+	buf[HeaderSize+1] = m.Version.Minor
+	binary.BigEndian.PutUint16(buf[HeaderSize+2:], m.KEMSuite)
+	return buf, nil
+}
+
+// DecodeHelloRetryRequest deserializes a HelloRetryRequest.
+func (c *Codec) DecodeHelloRetryRequest(data []byte) (*HelloRetryRequest, error) {
+	if len(data) < HeaderSize+4 {
+		return nil, qerrors.ErrInvalidMessage
+	}
+	if MessageType(data[0]) != MessageTypeHelloRetryRequest {
+		return nil, qerrors.ErrInvalidMessage
+	}
+	return &HelloRetryRequest{
+		Version:  Version{Major: data[HeaderSize], Minor: data[HeaderSize+1]},
+		KEMSuite: binary.BigEndian.Uint16(data[HeaderSize+2:]),
+	}, nil
+}
+
 func (c *Codec) EncodeFinished(msgType MessageType, verifyData []byte) ([]byte, error) {
 	if len(verifyData) != 32 {
 		return nil, qerrors.ErrInvalidMessage
