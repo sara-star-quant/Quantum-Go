@@ -17,12 +17,12 @@ type Version struct {
 	Minor uint8
 }
 
-// Current is the current protocol version. Major 3 came with the session-bound
-// derived stream nonce: the stream data record no longer transmits the 12-byte
-// AEAD nonce (both peers derive it from a session nonce prefix and the sequence),
-// so a 3.0 record is wire-incompatible with a 2.x peer. IsCompatible is major-only,
-// so the handshake rejects a mismatched peer cleanly rather than corrupting data.
-var Current = Version{Major: 3, Minor: 0}
+// Current is the current protocol version. Major 4 added KEM-suite negotiation: the
+// ClientHello and ServerHello now carry the negotiated KEM suite id, so peers can
+// agree on the KEM construction (CH-KEM-v1 today; X-Wing and others later). The
+// added fields make a 4.0 hello wire-incompatible with a 3.x peer. IsCompatible is
+// major-only, so the handshake rejects a mismatched peer cleanly.
+var Current = Version{Major: 4, Minor: 0}
 
 // Bytes returns the version as a 2-byte value.
 func (v Version) Bytes() []byte {

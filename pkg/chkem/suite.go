@@ -96,3 +96,10 @@ func GetSuite(id SuiteID) (Suite, bool) {
 	s, ok := registry[id]
 	return s, ok
 }
+
+// SupportedSuites returns the registered suite ids in preference order (most
+// preferred first). CH-KEM-v1 is always present as the mandatory default, so any
+// two peers share it.
+func SupportedSuites() []SuiteID {
+	return []SuiteID{SuiteCHKEMv1}
+}
