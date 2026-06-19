@@ -8,7 +8,7 @@
 [![Go Build](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml/badge.svg)](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml)
 [![Security Level](https://img.shields.io/badge/Security-NIST%20Category%205-green)](https://csrc.nist.gov/projects/post-quantum-cryptography)
 [![FIPS Mode](https://img.shields.io/badge/FIPS%20140--3-Ready-orange)](docs/FIPS.md)
-[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
 ---
 
@@ -77,7 +77,7 @@ route operating-system network traffic.
 
 These properties belong to a VPN client built around the library, not to the library
 itself. This text describes the software, not security or legal advice; Quantum-Go ships
-under the MIT License, "as is" and without warranty (see [LICENSE](LICENSE) and the
+under the Apache License 2.0, "as is" and without warranty (see [LICENSE](LICENSE) and the
 Compliance & Liability section below).
 
 ## Quick Start
@@ -194,7 +194,7 @@ Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ## License
 
-MIT License - see [LICENSE](LICENSE).
+Apache License 2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). Apache 2.0 includes an express patent grant, relevant in the patent-heavy post-quantum cryptography space.
 
 ---
 

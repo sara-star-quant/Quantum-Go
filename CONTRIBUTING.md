@@ -253,7 +253,7 @@ If you have questions about contributing:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the MIT License, the same license as the project.
+By contributing, you agree that your contributions will be licensed under the Apache License 2.0, the same license as the project.
 
 ---
 

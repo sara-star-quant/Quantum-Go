@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Changed
+- **License changed from MIT to Apache License 2.0.** Apache 2.0 adds an express patent grant and patent-retaliation clause, which matters in the patent-heavy post-quantum cryptography space, and is the standard for cryptographic and infrastructure libraries. Added a `NOTICE` file. The library stays permissive and commercial-friendly.
+
 ## [0.0.14][] - 2026-06-19
 
 **Theme:** Stream security parity. Two stream/TCP hardening changes bring the stream path level with the datagram path: a session-bound derived AEAD nonce (no longer transmitted) and a 1024-entry replay window. The nonce change is wire-incompatible and moves the protocol version to 3.0.
