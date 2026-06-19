@@ -89,6 +89,11 @@ type Session struct {
 	// Selected cipher suite
 	CipherSuite constants.CipherSuite
 
+	// kemSuite is the KEM construction this session uses (CH-KEM-v1 by default).
+	// All ephemeral KEM operations route through it; negotiation may select another
+	// suite once wire support lands. The static-auth leg uses the pinned key's suite.
+	kemSuite chkem.Suite
+
 	// Local key pair for this session
 	LocalKeyPair *chkem.KeyPair
 
@@ -215,8 +220,9 @@ func NewSession(role Role) (*Session, error) {
 		return nil, err
 	}
 
-	// Generate local key pair
-	keyPair, err := chkem.GenerateKeyPair()
+	// Generate local key pair using the default KEM suite.
+	suite := chkem.DefaultSuite()
+	keyPair, err := suite.GenerateKeyPair()
 	if err != nil {
 		return nil, err
 	}
@@ -224,6 +230,7 @@ func NewSession(role Role) (*Session, error) {
 	s := &Session{
 		ID:           sessionID,
 		Role:         role,
+		kemSuite:     suite,
 		LocalKeyPair: keyPair,
 		replayWindow: NewReplayWindow(),
 		CreatedAt:    time.Now(),
@@ -666,7 +673,7 @@ func (s *Session) InitiateRekey() ([]byte, uint64, error) {
 	}
 
 	// Generate new keypair for rekey
-	newKeyPair, err := chkem.GenerateKeyPair()
+	newKeyPair, err := s.kemSuite.GenerateKeyPair()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -693,13 +700,13 @@ func (s *Session) PrepareRekeyResponse(newPublicKeyBytes []byte, activationSeq u
 	}
 
 	// Parse the new public key
-	newPublicKey, err := chkem.ParsePublicKey(newPublicKeyBytes)
+	newPublicKey, err := s.kemSuite.ParsePublicKey(newPublicKeyBytes)
 	if err != nil {
 		return nil, err
 	}
 
 	// Encapsulate to the new public key
-	ciphertext, freshSecret, err := chkem.Encapsulate(newPublicKey, chkem.RoleResponder)
+	ciphertext, freshSecret, err := s.kemSuite.Encapsulate(newPublicKey, chkem.RoleResponder)
 	if err != nil {
 		return nil, err
 	}
@@ -754,13 +761,13 @@ func (s *Session) ProcessRekeyResponse(ciphertextBytes []byte) error {
 	}
 
 	// Parse ciphertext
-	ciphertext, err := chkem.ParseCiphertext(ciphertextBytes)
+	ciphertext, err := s.kemSuite.ParseCiphertext(ciphertextBytes)
 	if err != nil {
 		return err
 	}
 
 	// Decapsulate using pending keypair
-	freshSecret, err := chkem.Decapsulate(ciphertext, s.pendingRekeyKeyPair, chkem.RoleInitiator)
+	freshSecret, err := s.kemSuite.Decapsulate(ciphertext, s.pendingRekeyKeyPair, chkem.RoleInitiator)
 	if err != nil {
 		return err
 	}

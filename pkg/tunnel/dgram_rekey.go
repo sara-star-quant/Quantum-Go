@@ -124,11 +124,11 @@ func (s *Session) respondToDatagramRekey(epoch uint8, initBody []byte) (respBody
 	if err != nil {
 		return nil, 0, err
 	}
-	pub, err := chkem.ParsePublicKey(pubBytes)
+	pub, err := s.kemSuite.ParsePublicKey(pubBytes)
 	if err != nil {
 		return nil, 0, err
 	}
-	ct, fresh, err := chkem.Encapsulate(pub, chkem.RoleResponder)
+	ct, fresh, err := s.kemSuite.Encapsulate(pub, chkem.RoleResponder)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -157,11 +157,11 @@ func (s *Session) completeDatagramRekey(epoch uint8, respBody []byte, kp *chkem.
 	if err != nil {
 		return err
 	}
-	ct, err := chkem.ParseCiphertext(ctBytes)
+	ct, err := s.kemSuite.ParseCiphertext(ctBytes)
 	if err != nil {
 		return err
 	}
-	fresh, err := chkem.Decapsulate(ct, kp, chkem.RoleInitiator)
+	fresh, err := s.kemSuite.Decapsulate(ct, kp, chkem.RoleInitiator)
 	if err != nil {
 		return err
 	}
@@ -211,7 +211,7 @@ func (c *DatagramConn) Rekey() error {
 	}
 	defer c.ds.endRekey()
 
-	kp, err := chkem.GenerateKeyPair()
+	kp, err := s.kemSuite.GenerateKeyPair()
 	if err != nil {
 		return err
 	}
