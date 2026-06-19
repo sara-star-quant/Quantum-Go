@@ -450,13 +450,14 @@ any server. This is the most fundamental missing security property. Static-key
 pinning (stream path) now closes it for the pinned-server case; the rest follows.
 
 - [ ] PSK-based mutual authentication mode (pre-shared symmetric key)
-- [x] Static key verification mode (pin remote public key) - stream path; client
-  encapsulates a second CH-KEM leg to the pinned server key, folds it into the
-  master secret, fails closed with `ErrServerKeyMismatch`. Datagram path pending.
+- [x] Static key verification mode (pin remote public key) - stream and datagram;
+  client encapsulates a second CH-KEM leg to the pinned server key, folds it into
+  the master secret, fails closed with `ErrServerKeyMismatch`.
 - [x] Include authentication proof in ClientHello (optional static-KEM ciphertext)
 - [x] Add test: verify unauthenticated/wrong-pin peer is rejected
 - [x] Add test: verify authenticated peer is accepted
-- [ ] Datagram path wiring (`WithStaticIdentity`/`WithPinnedServerKey`)
+- [x] Datagram path wiring (`WithStaticIdentity`/`WithPinnedServerKey`) - wrong-pin
+  fails closed as a retry-ceiling timeout (no fail-fast signal yet)
 - [ ] `quantum-tunnel keygen` CLI for static-key generation and pin distribution
 - [ ] Document authentication modes in SECURITY.md
 

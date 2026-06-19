@@ -11,6 +11,7 @@ import (
 	"net"
 	"time"
 
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
@@ -97,6 +98,7 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, ds *datagramSession, fir
 		e.registry.releaseHalfOpen(src.String())
 		return
 	}
+	session.StaticKeyPair = e.staticIdentity
 	idx, err := e.registry.add(ds)
 	if err != nil {
 		e.registry.removeSource(src.String())
@@ -124,6 +126,7 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	session.PinnedServerKey = ep.pinnedServerKey
 	ds := &datagramSession{
 		inbox:      make(chan inboundMsg, inboxCap),
 		recvCh:     make(chan []byte, dataInboxCap),
@@ -145,6 +148,15 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
 	}
 	if _, err := l.run(); err != nil {
 		ep.registry.remove(idx)
+		// When pinning a server, a failed handshake almost always means the server
+		// could not prove the pinned static key, so the keys diverged and it dropped
+		// our ClientFinished until the retry ceiling. Report that as ErrServerKeyMismatch
+		// for API parity with the stream path. The signal is coarse (a genuine network
+		// failure for a pinned client also maps to it) and slow (it waits out the retry
+		// ceiling), but it is always fail-closed.
+		if ep.pinnedServerKey != nil {
+			return nil, qerrors.ErrServerKeyMismatch
+		}
 		return nil, err
 	}
 	return newDatagramConn(ep, ds), nil
