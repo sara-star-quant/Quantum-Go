@@ -9,7 +9,7 @@ const (
 	// Minor is the minor version (new features).
 	Minor = 0
 	// Patch is the patch version (bug fixes).
-	Patch = 13
+	Patch = 14
 	// Label is the optional pre-release label.
 	Label = ""
 )

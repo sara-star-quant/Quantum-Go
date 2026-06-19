@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: v0.0.13
+## Current Status: v0.0.14
 
 > **Direction.** Endpoint authentication (static-key pinning, require-auth, PSK mutual auth),
 > role binding, CI security, the 1024-bit stream replay window, and the session-bound derived
