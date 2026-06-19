@@ -164,7 +164,7 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 	// Static-key authentication: encapsulate to the pinned server static key so
 	// only the holder of the matching private key can derive the same secret.
 	if h.session.PinnedServerKey != nil {
-		staticCT, staticSecret, err := chkem.Encapsulate(h.session.PinnedServerKey, chkem.RoleInitiator)
+		staticCT, staticSecret, err := h.session.kemSuite.Encapsulate(h.session.PinnedServerKey, chkem.RoleInitiator)
 		if err != nil {
 			return nil, err
 		}
@@ -218,12 +218,12 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 	h.serverRandom = msg.Random
 
 	// Always decapsulate (server always sends real ciphertext now)
-	ct, err := chkem.ParseCiphertext(msg.CHKEMCiphertext)
+	ct, err := h.session.kemSuite.ParseCiphertext(msg.CHKEMCiphertext)
 	if err != nil {
 		return err
 	}
 
-	freshSecret, err := chkem.Decapsulate(ct, h.session.LocalKeyPair, chkem.RoleInitiator)
+	freshSecret, err := h.session.kemSuite.Decapsulate(ct, h.session.LocalKeyPair, chkem.RoleInitiator)
 	if err != nil {
 		return err
 	}
@@ -378,7 +378,7 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	}
 
 	// Always parse client's public key (needed for fresh KEM exchange even during resumption)
-	clientPublicKey, err := chkem.ParsePublicKey(msg.CHKEMPublicKey)
+	clientPublicKey, err := h.session.kemSuite.ParsePublicKey(msg.CHKEMPublicKey)
 	if err != nil {
 		return err
 	}
@@ -396,11 +396,11 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	// rejection means a wrong key yields a pseudo-random secret (no error/oracle);
 	// the mismatch surfaces later as a Finished MAC failure.
 	if h.session.StaticKeyPair != nil && len(msg.CHKEMStaticCiphertext) > 0 {
-		staticCT, err := chkem.ParseCiphertext(msg.CHKEMStaticCiphertext)
+		staticCT, err := h.session.kemSuite.ParseCiphertext(msg.CHKEMStaticCiphertext)
 		if err != nil {
 			return err
 		}
-		staticSecret, err := chkem.Decapsulate(staticCT, h.session.StaticKeyPair, chkem.RoleResponder)
+		staticSecret, err := h.session.kemSuite.Decapsulate(staticCT, h.session.StaticKeyPair, chkem.RoleResponder)
 		if err != nil {
 			return err
 		}
@@ -440,7 +440,7 @@ func (h *Handshake) CreateServerHello() ([]byte, error) {
 	h.serverRandom = crypto.MustSecureRandomBytes(32)
 
 	// Always perform fresh KEM exchange (even during resumption for forward secrecy)
-	ct, freshSecret, err := chkem.Encapsulate(h.session.RemotePublicKey, chkem.RoleResponder)
+	ct, freshSecret, err := h.session.kemSuite.Encapsulate(h.session.RemotePublicKey, chkem.RoleResponder)
 	if err != nil {
 		return nil, err
 	}
