@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+- **KEM-suite abstraction (foundation for crypto-agility)**: `pkg/chkem` now exposes a `Suite` interface, a `SuiteID` wire identifier, and a registry, with the existing CH-KEM (ML-KEM-1024 + X25519 + SHAKE-256) registered as `SuiteCHKEMv1` (the default). The v1 suite delegates to the existing functions, so output is byte-for-byte unchanged; this is the additive first step toward negotiated, pluggable KEMs (X-Wing interop, HQC diversification). No wire or behavior change yet.
+
 ### Changed
 - **License changed from MIT to Apache License 2.0.** Apache 2.0 adds an express patent grant and patent-retaliation clause, which matters in the patent-heavy post-quantum cryptography space, and is the standard for cryptographic and infrastructure libraries. Added a `NOTICE` file. The library stays permissive and commercial-friendly.
 
