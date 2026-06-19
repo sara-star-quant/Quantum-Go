@@ -202,3 +202,33 @@ func TestStaticAuthRequiredMisconfiguredRejected(t *testing.T) {
 		t.Fatalf("misconfigured require-auth: got %v, want ErrStaticAuthMisconfigured", acceptErr)
 	}
 }
+
+// TestStaticAuthXWingPin authenticates with an X-Wing static identity while the
+// ephemeral key exchange stays on the default CH-KEM-v1 suite, exercising the
+// static leg's dispatch on the pinned key's own suite.
+func TestStaticAuthXWingPin(t *testing.T) {
+	suite, ok := chkem.GetSuite(chkem.SuiteXWing)
+	if !ok {
+		t.Fatal("X-Wing suite is not registered")
+	}
+	serverKP, _, err := suite.GenerateStaticKeyPair()
+	if err != nil {
+		t.Fatalf("X-Wing GenerateStaticKeyPair: %v", err)
+	}
+	if serverKP.Suite() != chkem.SuiteXWing {
+		t.Fatalf("static key suite = %#x, want X-Wing", serverKP.Suite())
+	}
+
+	serverCfg := tunnel.DefaultTransportConfig()
+	serverCfg.StaticKeyPair = serverKP
+	clientCfg := tunnel.DefaultTransportConfig()
+	clientCfg.PinnedServerKey = serverKP.PublicKey()
+
+	clientErr, accepted := runStaticAuthHandshake(t, serverCfg, clientCfg)
+	if clientErr != nil {
+		t.Fatalf("X-Wing-pinned handshake failed: %v", clientErr)
+	}
+	if !accepted {
+		t.Error("server did not accept the X-Wing-authenticated session")
+	}
+}
