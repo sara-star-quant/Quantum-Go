@@ -169,6 +169,21 @@ const (
 	CHKEMSharedSecretSize = 32
 )
 
+// X-Wing KEM sizes (standardized ML-KEM-768 + X25519 combiner, draft-connolly-cfrg-xwing-kem).
+const (
+	// XWingPublicKeySize is the X-Wing public key length: ML-KEM-768 (1184) + X25519 (32).
+	XWingPublicKeySize = 1216
+
+	// XWingCiphertextSize is the X-Wing ciphertext length: ML-KEM-768 ct (1088) + X25519 (32).
+	XWingCiphertextSize = 1120
+
+	// XWingSeedSize is the X-Wing private key / derivation seed length.
+	XWingSeedSize = 32
+
+	// XWingSharedSecretSize is the X-Wing shared secret length.
+	XWingSharedSecretSize = 32
+)
+
 // Datagram (UDP) Transport Parameters
 //
 // These govern the connectionless datagram transport, which has its own wire
