@@ -542,7 +542,7 @@ pinning (stream path) now closes it for the pinned-server case; the rest follows
 #### European Union (Project Origin)
 - **Dual-Use Regulation (EU 2021/821)**: Governs encryption exports from EU member states.
 - **Open Source Exemption**: Article 2(2) provides a potential exemption for software "in the public domain" (publicly available without restrictions).
-- **Status**: Quantum-Go is MIT-licensed open source on GitHub and may be eligible for this exemption. Deployers should verify applicability with legal counsel.
+- **Status**: Quantum-Go is Apache-2.0-licensed open source on GitHub and may be eligible for this exemption. Deployers should verify applicability with legal counsel.
 
 #### United States
 - **EAR (Export Administration Regulations)**: ECCN 5D002 applies to encryption software.
