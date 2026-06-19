@@ -5,13 +5,14 @@
 
 ---
 
-## Current Status: v0.0.14
+## Current Status: v0.0.15
 
-> **Direction.** Endpoint authentication (static-key pinning, require-auth, PSK mutual auth),
-> role binding, CI security, the 1024-bit stream replay window, and the session-bound derived
-> stream nonce have landed. The remaining **stream security parity** item is resumption ticket
-> server binding. After that, **crypto-agility** toward v0.1.0 (HQC code-based KEM diversification
-> for a CH-KEM v2 triple cascade).
+> **Direction.** Crypto-agility has landed: the KEM is now a negotiated, pluggable suite with a
+> HelloRetryRequest fallback, and X-Wing (ML-KEM-768 + X25519) ships as a second interop-friendly
+> suite (protocol 5.0). Earlier work (endpoint authentication, role binding, CI security, the
+> 1024-bit stream replay window, the session-bound derived stream nonce) is in. The remaining
+> **stream security parity** item is resumption ticket server binding. Next toward v0.1.0: HQC
+> code-based KEM diversification for a CH-KEM v2 triple cascade.
 
 ## Strategic Priorities (valuation-driven)
 
