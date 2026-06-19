@@ -2,6 +2,7 @@ package tunnel_test
 
 import (
 	"errors"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -135,5 +136,69 @@ func TestStaticAuthServerServesUnpinnedClient(t *testing.T) {
 	}
 	if !accepted {
 		t.Error("server did not accept an unpinned client")
+	}
+}
+
+func TestStaticAuthRequiredAcceptsPinnedClient(t *testing.T) {
+	serverKP, _, err := chkem.GenerateStaticKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateStaticKeyPair: %v", err)
+	}
+	serverCfg := tunnel.DefaultTransportConfig()
+	serverCfg.StaticKeyPair = serverKP
+	serverCfg.RequireStaticAuth = true
+	clientCfg := tunnel.DefaultTransportConfig()
+	clientCfg.PinnedServerKey = serverKP.PublicKey()
+
+	clientErr, accepted := runStaticAuthHandshake(t, serverCfg, clientCfg)
+	if clientErr != nil {
+		t.Fatalf("require-auth with a pinned client failed: %v", clientErr)
+	}
+	if !accepted {
+		t.Error("require-auth server did not accept a pinned client")
+	}
+}
+
+func TestStaticAuthRequiredRejectsUnpinnedClient(t *testing.T) {
+	serverKP, _, err := chkem.GenerateStaticKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateStaticKeyPair: %v", err)
+	}
+	serverCfg := tunnel.DefaultTransportConfig()
+	serverCfg.StaticKeyPair = serverKP
+	serverCfg.RequireStaticAuth = true
+
+	// Client sends no static ciphertext; the server must reject it.
+	clientErr, accepted := runStaticAuthHandshake(t, serverCfg, tunnel.DefaultTransportConfig())
+	if clientErr == nil {
+		t.Fatal("require-auth server accepted an unpinned client")
+	}
+	if accepted {
+		t.Error("require-auth server established a session for an unpinned client")
+	}
+}
+
+func TestStaticAuthRequiredMisconfiguredRejected(t *testing.T) {
+	// RequireStaticAuth without a StaticKeyPair is a server misconfiguration; the
+	// listener must fail closed rather than admit anyone.
+	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer func() { _ = listener.Close() }()
+	cfg := tunnel.DefaultTransportConfig()
+	cfg.RequireStaticAuth = true // no StaticKeyPair
+	listener.SetConfig(cfg)
+
+	go func() {
+		c, derr := net.Dial("tcp", listener.Addr().String())
+		if derr == nil {
+			_ = c.Close()
+		}
+	}()
+
+	_, acceptErr := listener.Accept()
+	if !errors.Is(acceptErr, qerrors.ErrStaticAuthMisconfigured) {
+		t.Fatalf("misconfigured require-auth: got %v, want ErrStaticAuthMisconfigured", acceptErr)
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
+	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 	"github.com/sara-star-quant/quantum-go/pkg/chkem"
 	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
@@ -403,6 +404,11 @@ type DatagramEndpoint struct {
 	// initiator does not authenticate the server.
 	pinnedServerKey *chkem.PublicKey
 
+	// requireStaticAuth makes the responder reject any initiator that does not
+	// authenticate it via static-key pinning, set by WithRequireStaticAuth. It
+	// requires staticIdentity to be set.
+	requireStaticAuth bool
+
 	closeOnce sync.Once
 	done      chan struct{}
 }
@@ -459,6 +465,15 @@ func WithStaticIdentity(kp *chkem.KeyPair) DatagramEndpointOption {
 	return func(e *DatagramEndpoint) { e.staticIdentity = kp }
 }
 
+// WithRequireStaticAuth makes the responder reject any initiator that does not
+// authenticate it via static-key pinning. It requires WithStaticIdentity; an
+// endpoint set to require auth without an identity fails construction with
+// ErrStaticAuthMisconfigured. Unset, the endpoint admits unpinned initiators
+// alongside pinned ones.
+func WithRequireStaticAuth() DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.requireStaticAuth = true }
+}
+
 // WithPinnedServerKey makes DialDatagram require the server to prove possession of
 // the given static public key; a wrong, absent, or stripped key fails the handshake
 // with ErrServerKeyMismatch. Unset, the initiator does not authenticate the server.
@@ -510,6 +525,9 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 	}
 	for _, opt := range opts {
 		opt(e)
+	}
+	if e.requireStaticAuth && e.staticIdentity == nil {
+		return nil, qerrors.ErrStaticAuthMisconfigured
 	}
 	// Resolve the half-open ceiling after opts: autoscale with core count unless an
 	// operator pinned it via WithMaxHalfOpen. The cookie-pressure water-mark and the

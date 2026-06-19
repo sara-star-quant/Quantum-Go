@@ -366,6 +366,12 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	}
 	h.session.RemotePublicKey = clientPublicKey
 
+	// If the server requires static-key authentication, reject any client that
+	// sent no static ciphertext (unpinned, or a MitM that stripped the field).
+	if h.session.RequireStaticAuth && len(msg.CHKEMStaticCiphertext) == 0 {
+		return qerrors.ErrStaticAuthRequired
+	}
+
 	// Static-key authentication: if we hold a static identity and the client sent
 	// a static ciphertext, decapsulate it. Only our static private key recovers
 	// the secret the client encapsulated to our pinned public key. ML-KEM implicit

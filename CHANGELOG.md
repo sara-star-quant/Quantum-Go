@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+- **Server-side require-auth (`TransportConfig.RequireStaticAuth`, datagram `WithRequireStaticAuth`)**: a server that holds a static identity can now reject any client that does not authenticate it via static-key pinning, instead of admitting unpinned clients alongside pinned ones. On the stream path an unpinned client fails closed with `ErrStaticAuthRequired`; on the datagram path the responder drops the unauthenticated ClientHello and the dial fails at the retry ceiling. Requiring auth without a `StaticKeyPair` is a misconfiguration that fails closed with `ErrStaticAuthMisconfigured` (the stream listener at `Accept`, the datagram endpoint at construction). Default is unchanged: unpinned clients are still served.
+
 ## [0.0.12][] - 2026-06-19
 
 **Theme:** Endpoint authentication. Opt-in static-key server pinning on both the stream and datagram paths, a `quantum-tunnel keygen` CLI to mint and distribute identities, role and protocol-version transcript binding, and CI security hardening.
