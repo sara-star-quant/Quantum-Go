@@ -82,6 +82,11 @@ type Handshake struct {
 	// unauthenticated mode.
 	staticSecret []byte
 
+	// foldPSK records that both peers agreed on a pre-shared key (the client always
+	// folds when configured; the server folds when the client's identity matches),
+	// so foldPSKSecret mixes session.PSK into the master secret before key derivation.
+	foldPSK bool
+
 	// Handshake ciphers (derived from shared secret)
 	sendCipher *crypto.AEAD
 	recvCipher *crypto.AEAD
@@ -167,6 +172,13 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 		msg.CHKEMStaticCiphertext = staticCT.Bytes()
 	}
 
+	// PSK mutual authentication: advertise the identity so the server selects the
+	// matching key, and fold our copy into the master secret before key derivation.
+	if h.session.PSK != nil {
+		msg.PSKIdentity = h.session.PSKIdentity
+		h.foldPSK = true
+	}
+
 	data, err := h.codec.EncodeClientHello(msg)
 	if err != nil {
 		return nil, err
@@ -238,6 +250,12 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 	// Fold the static-key authentication secret into the master secret. The
 	// ephemeral secret stays a mandatory input, so forward secrecy holds.
 	if err := h.foldStaticSecret(); err != nil {
+		return err
+	}
+
+	// Fold the PSK (mutual authentication) after any static fold, same order on
+	// both peers.
+	if err := h.foldPSKSecret(); err != nil {
 		return err
 	}
 
@@ -389,6 +407,14 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 		h.staticSecret = staticSecret
 	}
 
+	// PSK mutual authentication: fold our PSK only when the client advertised the
+	// matching identity. An unknown or absent identity means no fold, so a client
+	// that expected a PSK fails closed at the Finished MAC (no identity oracle).
+	if h.session.PSK != nil && len(msg.PSKIdentity) > 0 &&
+		bytes.Equal(msg.PSKIdentity, h.session.PSKIdentity) {
+		h.foldPSK = true
+	}
+
 	// Select cipher suite (first mutually supported)
 	h.session.CipherSuite = selectCipherSuite(msg.CipherSuites)
 	if !h.session.CipherSuite.IsSupported() {
@@ -450,6 +476,12 @@ func (h *Handshake) CreateServerHello() ([]byte, error) {
 	// Fold the static-key authentication secret (set in ProcessClientHello) into
 	// the master secret before deriving keys, matching the client.
 	if err := h.foldStaticSecret(); err != nil {
+		return nil, err
+	}
+
+	// Fold the PSK (set in ProcessClientHello on an identity match) in the same
+	// order as the client.
+	if err := h.foldPSKSecret(); err != nil {
 		return nil, err
 	}
 
@@ -559,6 +591,23 @@ func (h *Handshake) foldStaticSecret() error {
 	h.sharedSecret = mixed
 	crypto.Zeroize(h.staticSecret)
 	h.staticSecret = nil
+	return nil
+}
+
+// foldPSKSecret mixes the pre-shared key into the master secret for mutual
+// authentication, after any static fold and before key derivation. A no-op unless
+// both peers agreed on the PSK. The ephemeral secret stays a mandatory input, so
+// forward secrecy holds even if the PSK later leaks. The PSK is long-term config,
+// so it is not zeroized here.
+func (h *Handshake) foldPSKSecret() error {
+	if !h.foldPSK {
+		return nil
+	}
+	mixed, err := crypto.DerivePSKSecret(h.sharedSecret, h.session.PSK)
+	if err != nil {
+		return err
+	}
+	h.sharedSecret = mixed
 	return nil
 }
 

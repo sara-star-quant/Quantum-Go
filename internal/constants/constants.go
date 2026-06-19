@@ -102,7 +102,18 @@ const (
 	// DomainSeparatorAuthentication is used to fold a static-key authentication
 	// secret into the master secret for endpoint authentication.
 	DomainSeparatorAuthentication = "CH-KEM-Tunnel-Authentication"
+
+	// DomainSeparatorPSK is used to fold a pre-shared key into the master secret
+	// for mutual authentication.
+	DomainSeparatorPSK = "CH-KEM-Tunnel-PSK"
 )
+
+// PSKSize is the required length of a pre-shared key in bytes (256-bit).
+const PSKSize = CHKEMSharedSecretSize
+
+// MaxPSKIdentitySize is the maximum length of a PSK identity label in bytes,
+// bounded by its single-byte wire length prefix.
+const MaxPSKIdentitySize = 255
 
 // Session Parameters
 const (

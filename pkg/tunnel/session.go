@@ -107,6 +107,14 @@ type Session struct {
 	// authenticate it via static-key pinning (server side). Requires StaticKeyPair.
 	RequireStaticAuth bool
 
+	// PSK is a pre-shared key folded into the master secret for mutual
+	// authentication. Both peers set it (PSKSize bytes). Nil means no PSK.
+	PSK []byte
+
+	// PSKIdentity is the label the initiator sends so the responder selects the
+	// matching PSK. Set on both peers alongside PSK.
+	PSKIdentity []byte
+
 	// Master secret derived from CH-KEM
 	masterSecret []byte
 
