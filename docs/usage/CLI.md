@@ -101,6 +101,23 @@ quantum-tunnel bench --handshakes 100 --throughput --size 500MB
 > per-datagram socket path, so its single-flow number is a loopback artifact rather than a
 > transport limit. See the README Performance section for the platform breakdown.
 
+## Keygen Mode (v0.0.12+)
+
+Generate a long-term CH-KEM server identity for static-key endpoint authentication:
+
+```bash
+# Write server.key (secret seed, mode 0600) and server.pub (public pin)
+quantum-tunnel keygen
+
+# Custom file prefix
+quantum-tunnel keygen --out prod-edge
+
+# Re-derive the public pin from an existing secret key
+quantum-tunnel keygen --pub-from server.key --out server
+```
+
+Keep `server.key` secret and persistent (load it on the server via `chkem.ParseKeyPair`); distribute `server.pub` to clients (pin it via `chkem.ParsePublicKey`). The command prints an SSH-style `SHA256:` fingerprint so operators can verify the pin out-of-band, and refuses to overwrite an existing file without `--force`. See [CONFIGURATION.md](CONFIGURATION.md#endpoint-authentication-v0012) for wiring the keys into a tunnel.
+
 ## Example Mode
 
 View standard implementation patterns directly in your terminal:

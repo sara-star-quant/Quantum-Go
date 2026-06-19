@@ -361,12 +361,47 @@ func BenchmarkSessionDecrypt(b *testing.B) {
 // --- Handshake Benchmarks ---
 
 func BenchmarkHandshake(b *testing.B) {
+	benchHandshake(b, nil)
+}
+
+// BenchmarkHandshakeStaticAuth measures the handshake with static-key endpoint
+// authentication: the extra CH-KEM leg the client encapsulates to the pinned key.
+func BenchmarkHandshakeStaticAuth(b *testing.B) {
+	kp, _, err := chkem.GenerateStaticKeyPair()
+	if err != nil {
+		b.Fatalf("GenerateStaticKeyPair: %v", err)
+	}
+	benchHandshake(b, func(initiator, responder *tunnel.Session) {
+		initiator.PinnedServerKey = kp.PublicKey()
+		responder.StaticKeyPair = kp
+	})
+}
+
+// BenchmarkHandshakePSK measures the handshake with PSK mutual authentication:
+// one extra KDF fold over the baseline.
+func BenchmarkHandshakePSK(b *testing.B) {
+	psk := make([]byte, constants.PSKSize)
+	_ = crypto.SecureRandom(psk)
+	id := []byte("bench")
+	benchHandshake(b, func(initiator, responder *tunnel.Session) {
+		initiator.PSK, initiator.PSKIdentity = psk, id
+		responder.PSK, responder.PSKIdentity = psk, id
+	})
+}
+
+// benchHandshake runs the stream handshake b.N times, applying configure to each
+// initiator/responder pair before the handshake (nil for the unauthenticated baseline).
+func benchHandshake(b *testing.B, configure func(initiator, responder *tunnel.Session)) {
+	b.Helper()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		clientConn, serverConn := net.Pipe()
 
 		initiator, _ := tunnel.NewSession(tunnel.RoleInitiator)
 		responder, _ := tunnel.NewSession(tunnel.RoleResponder)
+		if configure != nil {
+			configure(initiator, responder)
+		}
 
 		var wg sync.WaitGroup
 		wg.Add(2)

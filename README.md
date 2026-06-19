@@ -27,7 +27,7 @@ Quantum-Go is a research-grade (pre-1.0), quantum-resistant tunnel encryption li
 | Post-Quantum Security | ML-KEM-1024 (NIST Category 5) |
 | Classical Security | X25519 (128-bit) |
 | Hybrid Guarantee | Secure if EITHER algorithm is secure |
-| Endpoint Authentication | None yet - no pre-handshake peer authentication (roadmap v0.1.0) |
+| Endpoint Authentication | Opt-in: static-key server pinning, server require-auth, and PSK mutual auth (off by default) |
 | Forward Secrecy | Ephemeral keys per session (and per rekey) |
 | Session Resumption | Encrypted tickets with secure abbreviated handshake |
 | FIPS 140-3 | Build mode with POST/CST self-tests ([docs](docs/FIPS.md)) |
@@ -136,6 +136,7 @@ receive on Linux, and optional fixed-size handshake padding.
 | ChaCha20-Poly1305 cipher (raw AEAD) | ~0.7 GB/s |
 | Handshakes/sec (stream/TCP, full CH-KEM, sequential) | ~1,450 (~670 µs each) |
 | Handshakes/sec (datagram/UDP, full CH-KEM, sequential) | ~1,300 (~760 µs each) |
+| Endpoint auth handshake cost (opt-in) | static-key ~+40% (one extra CH-KEM leg); PSK negligible (one KDF fold); data plane unaffected |
 | Single-tunnel throughput (stream/TCP, AES-GCM, end-to-end) | ~690 MB/s (5.5 Gb/s), sustained across rekeys |
 | Datagram send (seal + frame, isolated, zero-alloc steady state) | ~3.0 GB/s (~380 ns/op, 1 alloc/op) |
 | Datagram goodput (UDP, one-way single flow, full receive loop) | ~58 MB/s on macOS loopback; ~1.8 Gb/s on Linux (see below) |

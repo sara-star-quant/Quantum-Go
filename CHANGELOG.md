@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.13][] - 2026-06-19
+
+**Theme:** Mutual authentication. PSK-based mutual auth and a server-side require-auth switch complete the endpoint-authentication arc started in v0.0.12. The data plane and the default (unconfigured) handshake are unchanged; authenticated handshakes add bounded cost (static-key roughly one extra CH-KEM leg, PSK a single negligible KDF fold).
+
 ### Added
 - **PSK mutual authentication (`TransportConfig.PSK`/`PSKIdentity`, datagram `WithPSK`)**: both peers can share a 32-byte pre-shared key that folds into the master secret, so only holders of the same PSK derive matching handshake keys (mutual, unlike server-only static-key pinning). The client advertises an opaque identity label in a new optional `ClientHello` field so the server selects the matching key; a wrong, mismatched, or stripped PSK fails closed at the Finished MAC, and an unknown identity simply skips the fold (no identity oracle). The PSK leg composes with static-key pinning (both fold). Forward secrecy holds (the ephemeral leg stays mandatory). The wire field is additive and presence-flagged; the protocol version moves to 2.2 (major-compatible, so 2.0, 2.1, and 2.2 peers interoperate, folding only the auth legs they share). Unconfigured, the handshake is byte-for-byte unchanged.
 - **Server-side require-auth (`TransportConfig.RequireStaticAuth`, datagram `WithRequireStaticAuth`)**: a server that holds a static identity can now reject any client that does not authenticate it via static-key pinning, instead of admitting unpinned clients alongside pinned ones. On the stream path an unpinned client fails closed with `ErrStaticAuthRequired`; on the datagram path the responder drops the unauthenticated ClientHello and the dial fails at the retry ceiling. Requiring auth without a `StaticKeyPair` is a misconfiguration that fails closed with `ErrStaticAuthMisconfigured` (the stream listener at `Accept`, the datagram endpoint at construction). Default is unchanged: unpinned clients are still served.
@@ -325,7 +329,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.12...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.13...HEAD
+[0.0.13]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.11...v0.0.12
 [0.0.11]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.10...v0.0.11
 [0.0.10]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.9...v0.0.10
