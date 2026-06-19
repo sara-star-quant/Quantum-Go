@@ -94,6 +94,16 @@ type Handshake struct {
 	// Transcript for verify_data computation
 	transcript bytes.Buffer
 
+	// HelloRetryRequest state. firstClientHello is the framed bytes of the first
+	// ClientHello, kept so the RFC 8446 4.4.1 synthetic message hash can replace it
+	// in the transcript on a retry. sendHRR (server) signals the driver to answer
+	// the current ClientHello with a HelloRetryRequest for hrrSuite instead of a
+	// ServerHello. hrrDone bounds the exchange to a single retry on both peers.
+	firstClientHello []byte
+	sendHRR          bool
+	hrrSuite         chkem.SuiteID
+	hrrDone          bool
+
 	// Resumption state
 	ticket        []byte         // Client ticket to send
 	ticketSecret  []byte         // Initiator's secret for the ticket
@@ -150,8 +160,11 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 		return nil, qerrors.ErrInvalidState
 	}
 
-	// Generate client random
-	h.clientRandom = crypto.MustSecureRandomBytes(32)
+	// Generate client random. Keep it stable across a HelloRetryRequest retry so the
+	// only difference between ClientHello1 and ClientHello2 is the KEM suite + share.
+	if h.clientRandom == nil {
+		h.clientRandom = crypto.MustSecureRandomBytes(32)
+	}
 
 	msg := &protocol.ClientHello{
 		Version:        protocol.Current,
@@ -186,13 +199,79 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 		return nil, err
 	}
 
-	// Add to transcript
+	// Add to transcript, and remember the first ClientHello frame for the synthetic
+	// message hash if a HelloRetryRequest follows.
 	h.transcript.Write(data)
+	if h.firstClientHello == nil {
+		h.firstClientHello = data
+	}
 
 	h.state = HandshakeStateClientHelloSent
 	h.session.SetState(SessionStateHandshaking)
 
 	return data, nil
+}
+
+// ProcessHelloRetryRequest handles a HelloRetryRequest (initiator): adopt the KEM
+// suite the server chose, regenerate the ephemeral key share in it, rewrite the
+// transcript with the RFC 8446 4.4.1 synthetic message hash, and re-arm so the
+// driver re-sends a ClientHello. Bounded to one retry.
+func (h *Handshake) ProcessHelloRetryRequest(data []byte) error {
+	if h.state != HandshakeStateClientHelloSent {
+		return qerrors.ErrInvalidState
+	}
+	if h.hrrDone {
+		return qerrors.ErrUnsupportedKEMSuite // a second HelloRetryRequest is not allowed
+	}
+	msg, err := h.codec.DecodeHelloRetryRequest(data)
+	if err != nil {
+		return err
+	}
+	if !msg.Version.IsCompatible(protocol.Current) {
+		return qerrors.ErrUnsupportedVersion
+	}
+	suite, err := resolveKEMSuite(msg.KEMSuite)
+	if err != nil {
+		return err
+	}
+	// The retried suite must be one we offered, or the server is steering us off-list.
+	if !offeredKEMSuite(msg.KEMSuite) {
+		return qerrors.ErrUnsupportedKEMSuite
+	}
+
+	// Adopt the suite and regenerate the ephemeral key share in it.
+	newKeyPair, err := suite.GenerateKeyPair()
+	if err != nil {
+		return err
+	}
+	if h.session.LocalKeyPair != nil {
+		h.session.LocalKeyPair.Zeroize()
+	}
+	h.session.kemSuite = suite
+	h.session.LocalKeyPair = newKeyPair
+
+	// Synthetic transcript: SHA3-256(ClientHello1) || HelloRetryRequest, replacing the
+	// raw ClientHello1, so the original advertisement is bound even across the retry.
+	if err := h.replaceFirstHelloWithHash(data); err != nil {
+		return err
+	}
+	h.hrrDone = true
+	h.state = HandshakeStateInitial // re-arm CreateClientHello for the retried hello
+	return nil
+}
+
+// replaceFirstHelloWithHash rewrites the transcript per RFC 8446 4.4.1: it resets
+// it to SHA3-256(firstClientHello) followed by the HelloRetryRequest frame. The
+// caller has already accumulated only ClientHello1 in the transcript.
+func (h *Handshake) replaceFirstHelloWithHash(hrrFrame []byte) error {
+	ch1Hash, err := crypto.TranscriptHash(h.firstClientHello)
+	if err != nil {
+		return err
+	}
+	h.transcript.Reset()
+	h.transcript.Write(ch1Hash)
+	h.transcript.Write(hrrFrame)
+	return nil
 }
 
 // ProcessServerHello processes the ServerHello message (initiator).
@@ -373,12 +452,24 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 		return qerrors.ErrUnsupportedVersion
 	}
 
-	// Negotiate the KEM suite: adopt the suite the client's key share uses. With only
-	// CH-KEM-v1 registered this always resolves; an unsupported suite fails closed for
-	// now (HelloRetryRequest steers the client to a mutual suite in a later change).
+	// Negotiate the KEM suite before any heavy crypto. If we do not support the suite
+	// the client's key share uses, steer it with a HelloRetryRequest to a mutually
+	// supported suite (once). If there is no overlap, or we already retried, fail closed.
 	suite, err := resolveKEMSuite(msg.KEMSuite)
 	if err != nil {
-		return err
+		if h.hrrDone {
+			return err
+		}
+		mutual, ok := selectMutualKEMSuite(msg.KEMSuites)
+		if !ok {
+			return qerrors.ErrUnsupportedKEMSuite
+		}
+		// Short-circuit: do not process this hello's key share. Remember it for the
+		// synthetic transcript hash and signal the driver to send a HelloRetryRequest.
+		h.firstClientHello = data
+		h.hrrSuite = mutual
+		h.sendHRR = true
+		return nil
 	}
 	h.session.kemSuite = suite
 
@@ -446,6 +537,30 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	h.session.SetState(SessionStateHandshaking)
 
 	return nil
+}
+
+// CreateHelloRetryRequest builds the HelloRetryRequest the driver sends instead of
+// ServerHello when ProcessClientHello signaled a KEM-suite mismatch. It applies the
+// RFC 8446 4.4.1 synthetic transcript (hash of ClientHello1 + this HRR), so the
+// retried exchange stays downgrade-bound. Valid only right after ProcessClientHello
+// set sendHRR.
+func (h *Handshake) CreateHelloRetryRequest() ([]byte, error) {
+	if !h.sendHRR {
+		return nil, qerrors.ErrInvalidState
+	}
+	data, err := h.codec.EncodeHelloRetryRequest(&protocol.HelloRetryRequest{
+		Version:  protocol.Current,
+		KEMSuite: uint16(h.hrrSuite),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := h.replaceFirstHelloWithHash(data); err != nil {
+		return nil, err
+	}
+	h.sendHRR = false
+	h.hrrDone = true
+	return data, nil
 }
 
 // CreateServerHello generates the ServerHello message.
@@ -690,14 +805,39 @@ func supportedKEMSuiteIDs() []uint16 {
 }
 
 // resolveKEMSuite returns the registered suite for a wire id, or an error if this
-// peer does not support it. The HelloRetryRequest path (a later change) will let a
-// server steer an unsupported initiator to a mutual suite instead of failing.
+// peer does not support it.
 func resolveKEMSuite(wireID uint16) (chkem.Suite, error) {
 	suite, ok := chkem.GetSuite(chkem.SuiteID(wireID))
 	if !ok {
 		return nil, qerrors.ErrUnsupportedKEMSuite
 	}
 	return suite, nil
+}
+
+// offeredKEMSuite reports whether wireID is one of the suites this peer supports
+// (and therefore would have advertised), so a HelloRetryRequest cannot steer the
+// client to a suite it never offered.
+func offeredKEMSuite(wireID uint16) bool {
+	for _, id := range chkem.SupportedSuites() {
+		if uint16(id) == wireID {
+			return true
+		}
+	}
+	return false
+}
+
+// selectMutualKEMSuite picks the locally-supported suite (in this peer's preference
+// order) that also appears in the client's advertised list, or false if there is no
+// overlap. The server uses it to steer an unsupported client via HelloRetryRequest.
+func selectMutualKEMSuite(clientSuites []uint16) (chkem.SuiteID, bool) {
+	for _, local := range chkem.SupportedSuites() {
+		for _, offered := range clientSuites {
+			if uint16(local) == offered {
+				return local, true
+			}
+		}
+	}
+	return 0, false
 }
 
 // cleanup zeroizes sensitive handshake data.
@@ -768,6 +908,84 @@ func readEncryptedRecord(r io.Reader) ([]byte, error) {
 // --- High-Level API ---
 
 // InitiatorHandshake performs the complete handshake as initiator.
+// initiatorExchangeHellos sends the ClientHello, handles an optional
+// HelloRetryRequest (one retry, resending the ClientHello in the server's suite),
+// and processes the ServerHello. Shared by the fresh and resumption initiator drivers.
+func initiatorExchangeHellos(h *Handshake, rw io.ReadWriter) error {
+	clientHello, err := h.CreateClientHello()
+	if err != nil {
+		return err
+	}
+	if _, err := rw.Write(clientHello); err != nil {
+		return err
+	}
+
+	msg, err := h.codec.ReadMessage(rw)
+	if err != nil {
+		return err
+	}
+	if protocol.MessageType(msg[0]) == protocol.MessageTypeHelloRetryRequest {
+		if err := h.ProcessHelloRetryRequest(msg); err != nil {
+			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+			return err
+		}
+		retry, err := h.CreateClientHello()
+		if err != nil {
+			return err
+		}
+		if _, err := rw.Write(retry); err != nil {
+			return err
+		}
+		if msg, err = h.codec.ReadMessage(rw); err != nil {
+			return err
+		}
+	}
+
+	if err := h.ProcessServerHello(msg); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+		return err
+	}
+	return nil
+}
+
+// responderExchangeHellos reads the ClientHello, sends a HelloRetryRequest if the
+// client's KEM suite is unsupported (one retry), processes the resulting ClientHello,
+// and sends the ServerHello. Shared by the fresh and resumption responder drivers.
+func responderExchangeHellos(h *Handshake, rw io.ReadWriter) error {
+	clientHello, err := h.codec.ReadMessage(rw)
+	if err != nil {
+		return err
+	}
+	if err := h.ProcessClientHello(clientHello); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+		return err
+	}
+	if h.sendHRR {
+		hrr, err := h.CreateHelloRetryRequest()
+		if err != nil {
+			return err
+		}
+		if _, err := rw.Write(hrr); err != nil {
+			return err
+		}
+		retry, err := h.codec.ReadMessage(rw)
+		if err != nil {
+			return err
+		}
+		if err := h.ProcessClientHello(retry); err != nil {
+			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+			return err
+		}
+	}
+
+	serverHello, err := h.CreateServerHello()
+	if err != nil {
+		return err
+	}
+	_, err = rw.Write(serverHello)
+	return err
+}
+
 func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
 	observer := session.observer
 	var done func(error)
@@ -778,22 +996,8 @@ func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
 	err := func() error {
 		h := NewHandshake(session)
 
-		// Send ClientHello
-		clientHello, err := h.CreateClientHello()
-		if err != nil {
-			return err
-		}
-		if _, err := rw.Write(clientHello); err != nil {
-			return err
-		}
-
-		// Receive ServerHello
-		serverHello, err := h.codec.ReadMessage(rw)
-		if err != nil {
-			return err
-		}
-		if err := h.ProcessServerHello(serverHello); err != nil {
-			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+		// Exchange hellos (with an optional HelloRetryRequest) and process ServerHello.
+		if err := initiatorExchangeHellos(h, rw); err != nil {
 			return err
 		}
 
@@ -858,22 +1062,8 @@ func ResponderHandshake(session *Session, rw io.ReadWriter) error {
 	err := func() error {
 		h := NewHandshake(session)
 
-		// Receive ClientHello
-		clientHello, err := h.codec.ReadMessage(rw)
-		if err != nil {
-			return err
-		}
-		if err := h.ProcessClientHello(clientHello); err != nil {
-			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
-			return err
-		}
-
-		// Send ServerHello
-		serverHello, err := h.CreateServerHello()
-		if err != nil {
-			return err
-		}
-		if _, err := rw.Write(serverHello); err != nil {
+		// Receive ClientHello (with an optional HelloRetryRequest) and send ServerHello.
+		if err := responderExchangeHellos(h, rw); err != nil {
 			return err
 		}
 
@@ -924,22 +1114,8 @@ func InitiatorResumptionHandshake(session *Session, rw io.ReadWriter, ticket, se
 		h := NewHandshake(session)
 		h.SetTicket(ticket, secret)
 
-		// Send ClientHello
-		clientHello, err := h.CreateClientHello()
-		if err != nil {
-			return err
-		}
-		if _, err := rw.Write(clientHello); err != nil {
-			return err
-		}
-
-		// Receive ServerHello
-		serverHello, err := h.codec.ReadMessage(rw)
-		if err != nil {
-			return err
-		}
-		if err := h.ProcessServerHello(serverHello); err != nil {
-			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+		// Exchange hellos (with an optional HelloRetryRequest) and process ServerHello.
+		if err := initiatorExchangeHellos(h, rw); err != nil {
 			return err
 		}
 
@@ -998,22 +1174,8 @@ func ResponderResumptionHandshake(session *Session, rw io.ReadWriter, tm *Ticket
 	h := NewHandshake(session)
 	h.SetTicketManager(tm)
 
-	// Receive ClientHello
-	clientHello, err := h.codec.ReadMessage(rw)
-	if err != nil {
-		return err
-	}
-	if err := h.ProcessClientHello(clientHello); err != nil {
-		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
-		return err
-	}
-
-	// Send ServerHello
-	serverHello, err := h.CreateServerHello()
-	if err != nil {
-		return err
-	}
-	if _, err := rw.Write(serverHello); err != nil {
+	// Receive ClientHello (with an optional HelloRetryRequest) and send ServerHello.
+	if err := responderExchangeHellos(h, rw); err != nil {
 		return err
 	}
 
