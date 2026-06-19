@@ -14,7 +14,7 @@
 
 ## Overview
 
-Quantum-Go is a production-ready, quantum-resistant tunnel encryption library implementing a novel **Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM)**. It provides defense-in-depth security by combining:
+Quantum-Go is a research-grade (pre-1.0), quantum-resistant tunnel encryption library implementing a novel **Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM)**. It provides defense-in-depth security by combining:
 
 - **ML-KEM-1024** (NIST FIPS 203) - Post-quantum lattice-based cryptography
 - **X25519** (RFC 7748) - Classical elliptic curve Diffie-Hellman
@@ -27,6 +27,7 @@ Quantum-Go is a production-ready, quantum-resistant tunnel encryption library im
 | Post-Quantum Security | ML-KEM-1024 (NIST Category 5) |
 | Classical Security | X25519 (128-bit) |
 | Hybrid Guarantee | Secure if EITHER algorithm is secure |
+| Endpoint Authentication | None yet - no pre-handshake peer authentication (roadmap v0.1.0) |
 | Forward Secrecy | Ephemeral keys per session (and per rekey) |
 | Session Resumption | Encrypted tickets with secure abbreviated handshake |
 | FIPS 140-3 | Build mode with POST/CST self-tests ([docs](docs/FIPS.md)) |
@@ -112,6 +113,7 @@ See [Quick Start Guide](docs/usage/QUICKSTART.md) for detailed examples.
 | [Configuration](docs/usage/CONFIGURATION.md) | Tuning timeouts, rate limiting, and sessions |
 | [CLI Reference](docs/usage/CLI.md) | Using `quantum-tunnel` for demos and benchmarks |
 | [Architecture](docs/technical/ARCHITECTURE.md) | CH-KEM protocol and security design |
+| [Threat Model](docs/technical/THREAT_MODEL.md) | Self-authored threat and risk analysis (NIST SP 800-30) |
 | [Roadmap](docs/ROADMAP.md) | Development roadmap and compliance plans |
 
 ## Performance

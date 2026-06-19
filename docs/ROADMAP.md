@@ -1,7 +1,7 @@
 # Quantum-Go Development Roadmap
 
-**Version:** 4.1
-**Last Updated:** 2026-05-30
+**Version:** 4.2
+**Last Updated:** 2026-06-19
 
 ---
 
@@ -12,6 +12,26 @@
 > 1024-bit stream replay window, session-bound stream nonce, real `.text` module integrity,
 > CI security). After that, **crypto-agility and endpoint authentication** toward v0.1.0
 > (HQC code-based KEM diversification for a CH-KEM v2 triple cascade; peer authentication).
+
+## Strategic Priorities (valuation-driven)
+
+For a cryptographic library, market evaluation is gated by reduction of trust-uncertainty, not
+feature count. Stream-security parity (above) remains the immediate near-term cleanup. Beyond it,
+the next major arc is sequenced by credibility impact, not by version-tag order:
+
+1. **Endpoint authentication** (v0.1.0 #1). Today there is none: any party can impersonate any
+   server, so an unauthenticated tunnel is a demo, not a deployable product. This is the single
+   biggest blocker and is pulled to the front of the arc.
+2. **Formal verification** (v0.1.0; Lafourcade influence, see [Design Influences](DESIGN_INFLUENCES.md)).
+   Labor, not capital. A machine-checked proof of the CH-KEM composition is the highest credibility
+   gain per dollar and the clearest differentiator versus other Go PQ libraries.
+3. **Standards-conformant hybrid combiner interop** (v1.0.0; see Design Influences 2.8). Removes the
+   bespoke-island liability by mapping the combiner to a published proof and enabling an interop profile.
+4. **Third-party audit + real FIPS 140-3 validation** (v1.0.0 prerequisites). The capital-gated
+   commercialization gate; sequenced after auth and formal verification make it worth paying for.
+
+These sit explicitly *ahead of* the enterprise tooling tier (config management, HSM glue, Helm/Terraform),
+which is table-stakes packaging rather than a valuation multiplier.
 
 ### Completed Features
 - [x] CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)
@@ -121,8 +141,6 @@ Required for FIPS 140-3 validation.
 - [x] Clarify restrictions in highly regulated zones (must not bypass telecom regulations)
 
 ---
-
-## Completed Releases
 
 ### v0.0.9 - Security Hardening Phase 1 (Completed)
 
@@ -234,14 +252,20 @@ composition needs strengthening.
 #### 1. Role Binding in CH-KEM Transcript
 **Priority:** Critical | **Effort:** Small
 
-The CH-KEM transcript hash includes public keys and ciphertext but NOT the role
-(initiator/responder) or protocol version. This enables reflection attacks where
-an initiator can be tricked into completing a handshake with itself.
+The CH-KEM transcript hash included public keys and ciphertext but NOT the role
+(initiator/responder) or protocol version. This enabled role-confusion/reflection
+where an initiator could be tricked into completing a handshake with itself.
 
-- [ ] Add role indicator byte to `TranscriptHash` components in `Encapsulate`/`Decapsulate`
-- [ ] Add protocol version to transcript hash
-- [ ] Add test: verify Encapsulate(role=initiator) and Decapsulate(role=responder) produce matching secrets
-- [ ] Add test: verify same role on both sides produces mismatched secrets (reflection resistance)
+- [x] Add role indicator byte to `TranscriptHash` components in `Encapsulate`/`Decapsulate`
+- [x] Add protocol version to transcript hash
+- [x] Add test: legit (responder encapsulate / initiator decapsulate) produces matching secrets
+- [x] Add test: same role on both sides produces mismatched secrets (reflection resistance)
+
+> **Done (Unreleased).** Both `Encapsulate`/`Decapsulate` bind the protocol version and the
+> encapsulating (responder) role into the transcript. `ProtocolVersion` bumped to `0x0002` and the
+> wire version to `2.0` (wire-incompatible with prior builds; mismatched peers rejected cleanly). This
+> is composition hardening, not authentication, and does not stop an active relaying MitM. Measured
+> cost about +1% per KEM operation, no allocation change, no data-plane impact.
 
 **Reference:** NIST SP 800-56C Rev. 2 (context/role in KDF)
 
@@ -381,10 +405,11 @@ items #2 (nonce session binding) and #5 (replay window expansion) natively for U
 
 ---
 
-### v0.0.11 - Enterprise Features
+### Enterprise Features (post stream-parity)
 
-**Theme:** Enterprise deployment readiness.
-**Target:** Q3 2026
+**Theme:** Enterprise deployment readiness. Table-stakes packaging, sequenced after the credibility
+work in Strategic Priorities (authentication, formal verification, audit), not before it.
+**Target:** unscheduled (was mislabeled v0.0.11, which shipped as the datagram transport release)
 
 #### 1. Configuration Management
 **Priority:** High | **Effort:** Medium
@@ -438,7 +463,7 @@ any server. This is the most fundamental missing security property.
 - [ ] Static analysis report (golangci-lint, gosec)
 - [ ] Code documentation for all exported symbols
 - [ ] Architecture documentation
-- [ ] Threat model documentation
+- [x] Threat model documentation (self-authored, [THREAT_MODEL.md](technical/THREAT_MODEL.md); independent audit still pending)
 
 #### 3. Security Testing
 **Priority:** High | **Effort:** High
@@ -617,6 +642,7 @@ Techniques adapted from published PQ cryptography research. See [Design Influenc
 | Formal verification in ProVerif/Tamarin | v0.1.0 | Lafourcade et al. USENIX Sec '25 |
 | 3-message handshake optimization | v1.0.0+ | Schwabe et al. IEEE S&P '21 |
 | Stateless responder / DoS resilience cookie | v1.0.0+ | Rosenpass biscuit pattern |
+| Standardized hybrid KEM combiner (interop + proof reuse) | v1.0.0 | X-Wing (Barbosa et al. '24), CFRG hybrid-KEM |
 
 ---
 
@@ -632,5 +658,5 @@ When picking up a task:
 
 ---
 
-*Document Version: 4.0*
-*Last Updated: 2026-03-13*
+*Document Version: 4.2*
+*Last Updated: 2026-06-19*

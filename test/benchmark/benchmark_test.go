@@ -117,7 +117,7 @@ func BenchmarkCHKEMEncapsulation(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, err := chkem.Encapsulate(kp.PublicKey())
+		_, _, err := chkem.Encapsulate(kp.PublicKey(), chkem.RoleResponder)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -126,11 +126,11 @@ func BenchmarkCHKEMEncapsulation(b *testing.B) {
 
 func BenchmarkCHKEMDecapsulation(b *testing.B) {
 	kp, _ := chkem.GenerateKeyPair()
-	ct, _, _ := chkem.Encapsulate(kp.PublicKey())
+	ct, _, _ := chkem.Encapsulate(kp.PublicKey(), chkem.RoleResponder)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := chkem.Decapsulate(ct, kp)
+		_, err := chkem.Decapsulate(ct, kp, chkem.RoleInitiator)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -144,10 +144,10 @@ func BenchmarkCHKEMFullKeyExchange(b *testing.B) {
 		recipientKP, _ := chkem.GenerateKeyPair()
 
 		// Encapsulate
-		ct, _, _ := chkem.Encapsulate(recipientKP.PublicKey())
+		ct, _, _ := chkem.Encapsulate(recipientKP.PublicKey(), chkem.RoleResponder)
 
 		// Decapsulate
-		_, _ = chkem.Decapsulate(ct, recipientKP)
+		_, _ = chkem.Decapsulate(ct, recipientKP, chkem.RoleInitiator)
 	}
 }
 
@@ -394,7 +394,7 @@ func BenchmarkCHKEMEncapsulationParallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, _, _ = chkem.Encapsulate(kp.PublicKey())
+			_, _, _ = chkem.Encapsulate(kp.PublicKey(), chkem.RoleResponder)
 		}
 	})
 }
@@ -428,6 +428,6 @@ func BenchmarkCHKEMEncapsulationAllocs(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _, _ = chkem.Encapsulate(kp.PublicKey())
+		_, _, _ = chkem.Encapsulate(kp.PublicKey(), chkem.RoleResponder)
 	}
 }

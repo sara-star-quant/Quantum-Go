@@ -194,7 +194,7 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 		return err
 	}
 
-	freshSecret, err := chkem.Decapsulate(ct, h.session.LocalKeyPair)
+	freshSecret, err := chkem.Decapsulate(ct, h.session.LocalKeyPair, chkem.RoleInitiator)
 	if err != nil {
 		return err
 	}
@@ -368,7 +368,7 @@ func (h *Handshake) CreateServerHello() ([]byte, error) {
 	h.serverRandom = crypto.MustSecureRandomBytes(32)
 
 	// Always perform fresh KEM exchange (even during resumption for forward secrecy)
-	ct, freshSecret, err := chkem.Encapsulate(h.session.RemotePublicKey)
+	ct, freshSecret, err := chkem.Encapsulate(h.session.RemotePublicKey, chkem.RoleResponder)
 	if err != nil {
 		return nil, err
 	}

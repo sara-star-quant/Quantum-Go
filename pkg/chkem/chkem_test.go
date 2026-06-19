@@ -37,7 +37,7 @@ func TestEncapsulationDecapsulation(t *testing.T) {
 	}
 
 	// Encapsulate
-	ct, sharedSecretEnc, err := chkem.Encapsulate(recipientKP.PublicKey())
+	ct, sharedSecretEnc, err := chkem.Encapsulate(recipientKP.PublicKey(), chkem.RoleResponder)
 	if err != nil {
 		t.Fatalf("Encapsulate failed: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestEncapsulationDecapsulation(t *testing.T) {
 	}
 
 	// Decapsulate
-	sharedSecretDec, err := chkem.Decapsulate(ct, recipientKP)
+	sharedSecretDec, err := chkem.Decapsulate(ct, recipientKP, chkem.RoleInitiator)
 	if err != nil {
 		t.Fatalf("Decapsulate failed: %v", err)
 	}
@@ -77,12 +77,12 @@ func TestMultipleEncapsulations(t *testing.T) {
 
 	// Multiple encapsulations should produce different ciphertexts and secrets
 	// (due to ephemeral key generation)
-	ct1, ss1, err := chkem.Encapsulate(recipientKP.PublicKey())
+	ct1, ss1, err := chkem.Encapsulate(recipientKP.PublicKey(), chkem.RoleResponder)
 	if err != nil {
 		t.Fatalf("First Encapsulate failed: %v", err)
 	}
 
-	ct2, ss2, err := chkem.Encapsulate(recipientKP.PublicKey())
+	ct2, ss2, err := chkem.Encapsulate(recipientKP.PublicKey(), chkem.RoleResponder)
 	if err != nil {
 		t.Fatalf("Second Encapsulate failed: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestMultipleEncapsulations(t *testing.T) {
 	}
 
 	// But both should decapsulate correctly
-	ss1Dec, err := chkem.Decapsulate(ct1, recipientKP)
+	ss1Dec, err := chkem.Decapsulate(ct1, recipientKP, chkem.RoleInitiator)
 	if err != nil {
 		t.Fatalf("First Decapsulate failed: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestMultipleEncapsulations(t *testing.T) {
 		t.Error("First shared secret mismatch")
 	}
 
-	ss2Dec, err := chkem.Decapsulate(ct2, recipientKP)
+	ss2Dec, err := chkem.Decapsulate(ct2, recipientKP, chkem.RoleInitiator)
 	if err != nil {
 		t.Fatalf("Second Decapsulate failed: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestCiphertextSerialization(t *testing.T) {
 		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 
-	ct, _, err := chkem.Encapsulate(recipientKP.PublicKey())
+	ct, _, err := chkem.Encapsulate(recipientKP.PublicKey(), chkem.RoleResponder)
 	if err != nil {
 		t.Fatalf("Encapsulate failed: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestInvalidCiphertext(t *testing.T) {
 }
 
 func TestEncapsulateNilPublicKey(t *testing.T) {
-	_, _, err := chkem.Encapsulate(nil)
+	_, _, err := chkem.Encapsulate(nil, chkem.RoleResponder)
 	if err == nil {
 		t.Error("Expected error for nil public key")
 	}
@@ -193,7 +193,7 @@ func TestDecapsulateNilCiphertext(t *testing.T) {
 		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 
-	_, err = chkem.Decapsulate(nil, kp)
+	_, err = chkem.Decapsulate(nil, kp, chkem.RoleInitiator)
 	if err == nil {
 		t.Error("Expected error for nil ciphertext")
 	}
@@ -205,12 +205,12 @@ func TestDecapsulateNilKeyPair(t *testing.T) {
 		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 
-	ct, _, err := chkem.Encapsulate(recipientKP.PublicKey())
+	ct, _, err := chkem.Encapsulate(recipientKP.PublicKey(), chkem.RoleResponder)
 	if err != nil {
 		t.Fatalf("Encapsulate failed: %v", err)
 	}
 
-	_, err = chkem.Decapsulate(ct, nil)
+	_, err = chkem.Decapsulate(ct, nil, chkem.RoleInitiator)
 	if err == nil {
 		t.Error("Expected error for nil key pair")
 	}
@@ -269,14 +269,14 @@ func TestCHKEMDeterministicSharedSecret(t *testing.T) {
 		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 
-	ct, ssEnc, err := chkem.Encapsulate(recipientKP.PublicKey())
+	ct, ssEnc, err := chkem.Encapsulate(recipientKP.PublicKey(), chkem.RoleResponder)
 	if err != nil {
 		t.Fatalf("Encapsulate failed: %v", err)
 	}
 
 	// Decapsulate the same ciphertext multiple times
 	for i := 0; i < 5; i++ {
-		ssDec, err := chkem.Decapsulate(ct, recipientKP)
+		ssDec, err := chkem.Decapsulate(ct, recipientKP, chkem.RoleInitiator)
 		if err != nil {
 			t.Fatalf("Decapsulate %d failed: %v", i, err)
 		}
@@ -300,17 +300,58 @@ func TestDifferentKeyPairsDifferentSecrets(t *testing.T) {
 		t.Fatalf("GenerateKeyPair failed: %v", err)
 	}
 
-	_, ss1, err := chkem.Encapsulate(kp1.PublicKey())
+	_, ss1, err := chkem.Encapsulate(kp1.PublicKey(), chkem.RoleResponder)
 	if err != nil {
 		t.Fatalf("Encapsulate failed: %v", err)
 	}
 
-	_, ss2, err := chkem.Encapsulate(kp2.PublicKey())
+	_, ss2, err := chkem.Encapsulate(kp2.PublicKey(), chkem.RoleResponder)
 	if err != nil {
 		t.Fatalf("Encapsulate failed: %v", err)
 	}
 
 	if bytes.Equal(ss1, ss2) {
 		t.Error("Different recipients should produce different shared secrets")
+	}
+}
+
+// TestRoleBindingMatchAndMismatch verifies the CH-KEM transcript binds the
+// initiator/responder role: a legit exchange (responder encapsulates, initiator
+// decapsulates) derives matching secrets, while a reflected/role-confused exchange
+// (both sides act with the same role) derives mismatched secrets and fails closed.
+func TestRoleBindingMatchAndMismatch(t *testing.T) {
+	tests := []struct {
+		name      string
+		encapRole chkem.Role
+		decapRole chkem.Role
+		wantMatch bool
+	}{
+		{"legit_responder_encap_initiator_decap", chkem.RoleResponder, chkem.RoleInitiator, true},
+		{"reflection_both_responder", chkem.RoleResponder, chkem.RoleResponder, false},
+		{"reflection_both_initiator", chkem.RoleInitiator, chkem.RoleInitiator, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			recipientKP, err := chkem.GenerateKeyPair()
+			if err != nil {
+				t.Fatalf("GenerateKeyPair failed: %v", err)
+			}
+
+			ct, ssEnc, err := chkem.Encapsulate(recipientKP.PublicKey(), tc.encapRole)
+			if err != nil {
+				t.Fatalf("Encapsulate failed: %v", err)
+			}
+
+			ssDec, err := chkem.Decapsulate(ct, recipientKP, tc.decapRole)
+			if err != nil {
+				t.Fatalf("Decapsulate failed: %v", err)
+			}
+
+			if got := bytes.Equal(ssEnc, ssDec); got != tc.wantMatch {
+				t.Errorf("role binding match=%v, want %v (encapRole=%d decapRole=%d)",
+					got, tc.wantMatch, tc.encapRole, tc.decapRole)
+			}
+		})
 	}
 }
