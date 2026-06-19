@@ -85,6 +85,7 @@ func (chkemV1) IsFIPSApproved() bool { return true }
 // registry maps a SuiteID to its implementation.
 var registry = map[SuiteID]Suite{
 	SuiteCHKEMv1: chkemV1{},
+	SuiteXWing:   xwingSuite{},
 }
 
 // DefaultSuite returns the default KEM suite (CH-KEM-v1). It is the suite used when
@@ -101,5 +102,5 @@ func GetSuite(id SuiteID) (Suite, bool) {
 // preferred first). CH-KEM-v1 is always present as the mandatory default, so any
 // two peers share it.
 func SupportedSuites() []SuiteID {
-	return []SuiteID{SuiteCHKEMv1}
+	return []SuiteID{SuiteCHKEMv1, SuiteXWing}
 }
