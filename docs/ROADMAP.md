@@ -8,10 +8,10 @@
 ## Current Status: v0.0.13
 
 > **Direction.** Endpoint authentication (static-key pinning, require-auth, PSK mutual auth),
-> role binding, CI security, and the 1024-bit stream replay window have landed. The remaining
-> **stream security parity** backlog is the session-bound stream nonce and resumption ticket
-> server binding. After that, **crypto-agility** toward v0.1.0 (HQC code-based KEM
-> diversification for a CH-KEM v2 triple cascade).
+> role binding, CI security, the 1024-bit stream replay window, and the session-bound derived
+> stream nonce have landed. The remaining **stream security parity** item is resumption ticket
+> server binding. After that, **crypto-agility** toward v0.1.0 (HQC code-based KEM diversification
+> for a CH-KEM v2 triple cascade).
 
 ## Strategic Priorities (valuation-driven)
 
@@ -275,10 +275,14 @@ where an initiator could be tricked into completing a handshake with itself.
 AEAD nonces use format `[0000 || counter(8B)]`. Two sessions with the same key
 produce identical nonce sequences, breaking GCM confidentiality guarantees.
 
-- [ ] Add 4-byte `noncePrefix` field to AEAD struct, populated from session ID
-- [ ] Nonce format becomes `[sessionID[0:4] || counter(8B)]`
-- [ ] Update all 10 `NewAEAD()` call sites to pass session ID prefix
-- [ ] Add test: verify two sessions with same key produce different nonces
+- [x] Derive a per-direction nonce prefix from the master secret
+  (`crypto.DeriveStreamNoncePrefixes`) and stop transmitting the nonce: the stream
+  record is now `[ciphertext || tag]` (12 bytes smaller), nonce = `prefix || seq`,
+  matching the datagram path. The nonce is no longer attacker-supplied on receive.
+- [x] Replace the AEAD-counter key-wear trigger (dormant under `SealWithNonce`) with
+  the datagram's `seq - sendEpochStartSeq` bound
+- [x] Add test: two sessions derive different nonce prefixes; record omits the nonce
+- [x] Wire break: protocol version bumped to 3.0 (no external consumers to migrate)
 
 > Scope: this item tracks the **stream/TCP** path. The datagram transport already
 > ships session-bound nonces by construction (`nonce = derived 4-byte prefix || seq`,
