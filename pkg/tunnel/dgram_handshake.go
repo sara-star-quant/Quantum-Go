@@ -53,9 +53,9 @@ func fragmentHandshake(base protocol.DatagramHandshakeHeader, msg []byte, pad bo
 		}
 		h := base
 		h.Seq = seq
-		h.FragOffset = uint16(off)
-		h.FragLength = uint16(end - off)
-		h.TotalLength = uint16(total)
+		h.FragOffset = uint16(off)       // #nosec G115 -- offset bounded by handshake flight size (< 64KiB)
+		h.FragLength = uint16(end - off) // #nosec G115 -- fragment length bounded by MTU
+		h.TotalLength = uint16(total)    // #nosec G115 -- handshake flight bounded < 64KiB by protocol
 		frame, err := protocol.EncodeDatagramHandshake(h, msg[off:end])
 		if err != nil {
 			return nil, err

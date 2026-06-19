@@ -347,13 +347,13 @@ hash, scoped in the docs as KAT-vector integrity, not binary `.text` integrity.
 - [ ] Compare actual vs expected `.text` hash at runtime
 - [ ] In FIPS mode: fail hard if the `.text` integrity check fails
 
-#### 8. CI Security Improvements
+#### 8. CI Security Improvements (DONE)
 **Priority:** Medium | **Effort:** Low
 
-- [ ] Remove `-no-fail` from Gosec scanner configuration
-- [ ] Add FIPS build/test job: `go test -tags fips -race ./...`
-- [ ] Add `go vet -race` to CI matrix
-- [ ] Fix data race in benchmark tool (`atomic.AddInt64` for counters)
+- [x] Remove `-no-fail` from Gosec scanner configuration (all current findings triaged: 14 bounded G115 conversions + the KAT-nonce G407, each with a justified `#nosec`; one replay cast rewritten to drop the conversion)
+- [x] Add FIPS build/test job: `go test -tags fips -race ./...`
+- [x] Add `go vet` to CI (`go vet` has no `-race`; race stays on the test job)
+- [x] Benchmark tool data race: already resolved (`cmd/quantum-tunnel/bench.go` uses `atomic.Int64`)
 
 ---
 
