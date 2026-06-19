@@ -660,9 +660,11 @@ func TestClientHelloValidation(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "wrong public key size",
+			// The codec accepts any nonzero suite-sized key now; the KEM suite validates
+			// the exact size. Only an absent key is a codec-level error.
+			name: "empty public key",
 			modify: func(m *protocol.ClientHello) {
-				m.CHKEMPublicKey = make([]byte, 100)
+				m.CHKEMPublicKey = nil
 			},
 			wantErr: true,
 		},
@@ -729,9 +731,11 @@ func TestServerHelloValidation(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "wrong ciphertext size",
+			// The codec accepts any nonzero suite-sized ciphertext now; the KEM suite
+			// validates the exact size. Only an absent ciphertext is a codec-level error.
+			name: "empty ciphertext",
 			modify: func(m *protocol.ServerHello) {
-				m.CHKEMCiphertext = make([]byte, 100)
+				m.CHKEMCiphertext = nil
 			},
 			wantErr: true,
 		},
@@ -1113,10 +1117,10 @@ func TestEncodeDecodeRekey(t *testing.T) {
 func TestEncodeRekeyPayloadInvalidKey(t *testing.T) {
 	codec := protocol.NewCodec()
 
-	// Try with invalid key size
-	_, err := codec.EncodeRekeyPayload([]byte("short"), 100)
-	if err == nil {
-		t.Error("expected error for invalid key size")
+	// An empty key is rejected (the size itself is now suite-dependent, so the codec
+	// no longer enforces a specific length, only that a key is present).
+	if _, err := codec.EncodeRekeyPayload(nil, 100); err == nil {
+		t.Error("expected error for an empty key")
 	}
 }
 
@@ -1128,8 +1132,9 @@ func TestDecodeRekeyPayloadInvalid(t *testing.T) {
 		data []byte
 	}{
 		{"empty", []byte{}},
-		{"too short for public key", make([]byte, 100)},
-		{"public key only no seq", make([]byte, constants.CHKEMPublicKeySize)},
+		{"length prefix only", []byte{0x06, 0x40}}, // declares 1600, no body
+		{"length exceeds data", append([]byte{0xFF, 0xFF}, make([]byte, 10)...)}, // declares 65535
+		{"no room for seq", append([]byte{0x00, 0x04}, make([]byte, 4)...)},      // 4B key, no 8B seq
 	}
 
 	for _, tc := range tests {
