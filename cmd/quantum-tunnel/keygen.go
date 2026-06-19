@@ -20,6 +20,7 @@ func keygenCommand() {
 	out := fs.String("out", "server", "Output file prefix; writes <prefix>.key (secret) and <prefix>.pub (pin)")
 	force := fs.Bool("force", false, "Overwrite output files if they already exist")
 	pubFrom := fs.String("pub-from", "", "Re-derive the public pin from an existing secret key file (no new key)")
+	suite := fs.String("suite", "chkem-v1", "KEM suite for a new identity: chkem-v1 or x-wing")
 
 	fs.Usage = func() {
 		fmt.Println(`USAGE: quantum-tunnel keygen [options]
@@ -38,22 +39,23 @@ FILES:
     <prefix>.pub   Public pin, base64. Distribute to clients.
 
 USING THE KEYS:
-    // Server (Listen): load the secret seed and prove possession.
+    // Server (Listen): load the secret seed and prove possession. The seed is
+    // suite-tagged, so ParseTaggedKeyPair selects the right KEM suite.
     seed, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(string(keyFileBytes)))
-    kp, _ := chkem.ParseKeyPair(seed)
+    kp, _ := chkem.ParseTaggedKeyPair(seed)
     cfg := tunnel.TransportConfig{StaticKeyPair: kp}
 
     // Client (Dial): pin the public key and require proof.
     pin, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(string(pubFileBytes)))
-    pub, _ := chkem.ParsePublicKey(pin)
+    pub, _ := chkem.ParseTaggedPublicKey(pin)
     cfg := tunnel.TransportConfig{PinnedServerKey: pub}
 
 EXAMPLES:
-    # Generate server.key and server.pub
+    # Generate server.key and server.pub (CH-KEM-v1)
     quantum-tunnel keygen
 
-    # Write to a custom prefix
-    quantum-tunnel keygen --out prod-edge
+    # Generate an X-Wing identity
+    quantum-tunnel keygen --suite x-wing --out edge
 
     # Recover the public pin from an existing secret key
     quantum-tunnel keygen --pub-from server.key --out server`)
@@ -61,16 +63,32 @@ EXAMPLES:
 
 	_ = fs.Parse(os.Args[2:])
 
-	if err := runKeygen(*out, *force, *pubFrom, os.Stdout); err != nil {
+	if err := runKeygen(*out, *force, *pubFrom, *suite, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "keygen: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+// suiteByName maps the --suite flag value to a KEM suite.
+func suiteByName(name string) (chkem.Suite, error) {
+	switch name {
+	case "chkem-v1":
+		return chkem.DefaultSuite(), nil
+	case "x-wing":
+		s, ok := chkem.GetSuite(chkem.SuiteXWing)
+		if !ok {
+			return nil, fmt.Errorf("x-wing suite is not registered")
+		}
+		return s, nil
+	default:
+		return nil, fmt.Errorf("unknown suite %q (want chkem-v1 or x-wing)", name)
 	}
 }
 
 // runKeygen holds the keygen logic independent of os.Args so it can be tested.
 // When pubFrom is set it only re-derives the public pin from an existing secret
 // seed; otherwise it generates a fresh identity and writes both files.
-func runKeygen(out string, force bool, pubFrom string, w io.Writer) error {
+func runKeygen(out string, force bool, pubFrom, suiteName string, w io.Writer) error {
 	keyPath := out + ".key"
 	pubPath := out + ".pub"
 	// A write to the output sink is not recoverable in a CLI, so ignore it here
@@ -83,7 +101,8 @@ func runKeygen(out string, force bool, pubFrom string, w io.Writer) error {
 			return err
 		}
 		defer kp.Zeroize()
-		pin := kp.PublicKey().Bytes()
+		// The pin is tagged with the identity's own suite, taken from the key pair.
+		pin := chkem.TagSuite(kp.Suite(), kp.PublicKey().Bytes())
 		if err := writeFile(pubPath, encodeLine(pin), 0o644, force); err != nil {
 			return err
 		}
@@ -93,29 +112,37 @@ func runKeygen(out string, force bool, pubFrom string, w io.Writer) error {
 		return nil
 	}
 
-	kp, seed, err := chkem.GenerateStaticKeyPair()
+	suite, err := suiteByName(suiteName)
+	if err != nil {
+		return err
+	}
+	kp, seed, err := suite.GenerateStaticKeyPair()
 	if err != nil {
 		return err
 	}
 	defer kp.Zeroize()
 	defer zeroize(seed)
 
-	pin := kp.PublicKey().Bytes()
-	if err := writeFile(keyPath, encodeLine(seed), 0o600, force); err != nil {
+	// Tag the seed and pin with the suite id so a loader self-selects the suite.
+	taggedSeed := chkem.TagSuite(suite.ID(), seed)
+	pin := chkem.TagSuite(suite.ID(), kp.PublicKey().Bytes())
+	defer zeroize(taggedSeed)
+	if err := writeFile(keyPath, encodeLine(taggedSeed), 0o600, force); err != nil {
 		return err
 	}
 	if err := writeFile(pubPath, encodeLine(pin), 0o644, force); err != nil {
 		return err
 	}
 
-	p("Generated static CH-KEM server identity.\n")
+	p("Generated static %s server identity.\n", suiteName)
 	p("  Secret seed:  %s  (keep private, mode 0600)\n", keyPath)
 	p("  Public pin:   %s  (distribute to clients)\n", pubPath)
 	p("  Fingerprint:  %s  (verify out-of-band)\n", fingerprint(pin))
 	return nil
 }
 
-// loadSecretKey reads a base64 secret seed file and reconstructs the key pair.
+// loadSecretKey reads a base64 suite-tagged secret seed file and reconstructs the
+// key pair, selecting the KEM suite from the seed's tag.
 func loadSecretKey(path string) (*chkem.KeyPair, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is an operator-supplied CLI key file argument; reading the named secret is the command's purpose
 	if err != nil {
@@ -126,7 +153,7 @@ func loadSecretKey(path string) (*chkem.KeyPair, error) {
 		return nil, fmt.Errorf("decode %s: %w", path, err)
 	}
 	defer zeroize(seed)
-	kp, err := chkem.ParseKeyPair(seed)
+	kp, err := chkem.ParseTaggedKeyPair(seed)
 	if err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}

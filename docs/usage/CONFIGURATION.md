@@ -32,8 +32,8 @@ All authentication is opt-in; unconfigured, the handshake is encryption-only and
 ```go
 // Static-key server pinning: the server proves possession of a long-term key,
 // the client pins its public key. Authenticates the server to the client.
-serverCfg.StaticKeyPair = kp                 // server: chkem.ParseKeyPair(seed)
-clientCfg.PinnedServerKey = kp.PublicKey()   // client: chkem.ParsePublicKey(pin)
+serverCfg.StaticKeyPair = kp                 // server: chkem.ParseTaggedKeyPair(seed)
+clientCfg.PinnedServerKey = kp.PublicKey()   // client: chkem.ParseTaggedPublicKey(pin)
 
 // Require-auth: reject any client that does not pin the server (v0.0.13+).
 serverCfg.RequireStaticAuth = true           // needs StaticKeyPair set

@@ -112,11 +112,14 @@ quantum-tunnel keygen
 # Custom file prefix
 quantum-tunnel keygen --out prod-edge
 
+# Generate an X-Wing identity instead of CH-KEM-v1
+quantum-tunnel keygen --suite x-wing --out edge
+
 # Re-derive the public pin from an existing secret key
 quantum-tunnel keygen --pub-from server.key --out server
 ```
 
-Keep `server.key` secret and persistent (load it on the server via `chkem.ParseKeyPair`); distribute `server.pub` to clients (pin it via `chkem.ParsePublicKey`). The command prints an SSH-style `SHA256:` fingerprint so operators can verify the pin out-of-band, and refuses to overwrite an existing file without `--force`. See [CONFIGURATION.md](CONFIGURATION.md#endpoint-authentication-v0012) for wiring the keys into a tunnel.
+The `--suite` flag selects the identity's KEM suite (`chkem-v1` default, or `x-wing`); the seed and pin files are tagged with the suite so a loader self-selects it. Keep `server.key` secret and persistent (load it on the server via `chkem.ParseTaggedKeyPair`); distribute `server.pub` to clients (pin it via `chkem.ParseTaggedPublicKey`). The command prints an SSH-style `SHA256:` fingerprint so operators can verify the pin out-of-band, and refuses to overwrite an existing file without `--force`. See [CONFIGURATION.md](CONFIGURATION.md#endpoint-authentication-v0012) for wiring the keys into a tunnel.
 
 ## Example Mode
 
