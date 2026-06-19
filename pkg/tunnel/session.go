@@ -103,6 +103,10 @@ type Session struct {
 	// server to prove possession of (client side). Nil means unauthenticated.
 	PinnedServerKey *chkem.PublicKey
 
+	// RequireStaticAuth makes a responder reject any initiator that does not
+	// authenticate it via static-key pinning (server side). Requires StaticKeyPair.
+	RequireStaticAuth bool
+
 	// Master secret derived from CH-KEM
 	masterSecret []byte
 
