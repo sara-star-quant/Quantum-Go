@@ -412,3 +412,35 @@ func DeriveRekeySecret(currentSecret, additionalData []byte) ([]byte, error) {
 		constants.CHKEMSharedSecretSize,
 	)
 }
+
+// DeriveAuthenticatedSecret folds a static-key authentication secret into the
+// ephemeral master secret for endpoint authentication.
+//
+// The client encapsulates to the server's pinned static public key and both
+// sides mix the resulting secret into the master secret. Only the holder of the
+// static private key can derive the same secret, so a wrong or absent key yields
+// a different master secret and the Finished MAC fails closed. The ephemeral
+// secret remains a mandatory input, so forward secrecy is preserved: a later
+// static-key compromise does not expose past sessions.
+//
+// Parameters:
+//   - ephemeralSecret: The ephemeral CH-KEM master secret (32 bytes)
+//   - staticSecret: The static-key authentication secret (32 bytes)
+//
+// Returns:
+//   - newSecret: New 32-byte master secret
+//   - error: Non-nil if either input is the wrong size
+func DeriveAuthenticatedSecret(ephemeralSecret, staticSecret []byte) ([]byte, error) {
+	if len(ephemeralSecret) != constants.CHKEMSharedSecretSize {
+		return nil, qerrors.NewCryptoError("DeriveAuthenticatedSecret", qerrors.ErrInvalidKeySize)
+	}
+	if len(staticSecret) != constants.CHKEMSharedSecretSize {
+		return nil, qerrors.NewCryptoError("DeriveAuthenticatedSecret", qerrors.ErrInvalidKeySize)
+	}
+
+	return DeriveKeyMultiple(
+		constants.DomainSeparatorAuthentication,
+		[][]byte{ephemeralSecret, staticSecret},
+		constants.CHKEMSharedSecretSize,
+	)
+}

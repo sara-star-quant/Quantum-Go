@@ -81,6 +81,10 @@ var (
 
 	// ErrExpiredTicket indicates a session ticket has expired
 	ErrExpiredTicket = errors.New("protocol: expired ticket")
+
+	// ErrServerKeyMismatch indicates the server did not prove possession of the
+	// pinned static key (wrong key, or static auth required but not negotiated).
+	ErrServerKeyMismatch = errors.New("protocol: server static key mismatch")
 )
 
 // Sentinel errors for tunnel operations

@@ -53,7 +53,8 @@ func (c *Codec) EncodeClientHello(m *ClientHello) ([]byte, error) {
 		32 + // random
 		1 + len(m.SessionID) + // session ID length + data
 		constants.CHKEMPublicKeySize + // public key
-		2 + 2*len(m.CipherSuites) // cipher suites count + data
+		2 + 2*len(m.CipherSuites) + // cipher suites count + data
+		1 + len(m.CHKEMStaticCiphertext) // static-ct presence flag + data
 
 	buf := make([]byte, HeaderSize+payloadSize)
 	offset := 0
@@ -91,6 +92,16 @@ func (c *Codec) EncodeClientHello(m *ClientHello) ([]byte, error) {
 		offset += 2
 	}
 
+	// Static-key authentication ciphertext (presence-flagged: 1 byte, then the
+	// CHKEMCiphertextSize ct when present). Always write the flag so the field is
+	// self-describing; older peers that stop after cipher suites ignore it.
+	if len(m.CHKEMStaticCiphertext) > 0 {
+		buf[offset] = 1
+		copy(buf[offset+1:], m.CHKEMStaticCiphertext)
+	} else {
+		buf[offset] = 0
+	}
+
 	return buf, nil
 }
 
@@ -108,6 +119,9 @@ func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 	if len(data) < HeaderSize+int(payloadLen) {
 		return nil, qerrors.ErrInvalidMessage
 	}
+	// All field reads below must stay within the declared payload, not just
+	// within len(data), so a malformed length field cannot over-read.
+	payloadEnd := HeaderSize + int(payloadLen)
 
 	// Minimum payload: version(2) + random(32) + sessionIDLen(1) + publicKey(1600) + cipherSuiteCount(2) + minCipherSuite(2) = 1639
 	minPayloadLen := 2 + 32 + 1 + constants.CHKEMPublicKeySize + 2 + 2
@@ -144,10 +158,27 @@ func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 	// Cipher suites
 	cipherSuiteCount := binary.BigEndian.Uint16(data[offset:])
 	offset += 2
+	if offset+2*int(cipherSuiteCount) > payloadEnd {
+		return nil, qerrors.ErrInvalidMessage
+	}
 	m.CipherSuites = make([]constants.CipherSuite, cipherSuiteCount)
 	for i := range m.CipherSuites {
 		m.CipherSuites[i] = constants.CipherSuite(binary.BigEndian.Uint16(data[offset:]))
 		offset += 2
+	}
+
+	// Static-key authentication ciphertext (presence-flagged). Older peers omit
+	// the flag entirely, so only read it if a byte remains within the payload.
+	if offset < payloadEnd {
+		present := data[offset]
+		offset++
+		if present == 1 {
+			if offset+constants.CHKEMCiphertextSize > payloadEnd {
+				return nil, qerrors.ErrInvalidMessage
+			}
+			m.CHKEMStaticCiphertext = make([]byte, constants.CHKEMCiphertextSize)
+			copy(m.CHKEMStaticCiphertext, data[offset:offset+constants.CHKEMCiphertextSize])
+		}
 	}
 
 	if err := m.Validate(); err != nil {
