@@ -11,20 +11,20 @@
 //
 // Length is big-endian uint32, not including header bytes.
 //
-// ClientHello Format (KEMSuite/KEMSuites added in protocol 4.0; trailing optional
-// static-ct and PSK-identity fields omitted here):
+// ClientHello Format (protocol 5.0; KEM material is 2-byte length-prefixed and
+// suite-sized; trailing optional static-ct and PSK-identity fields omitted here):
 //
-//	+---------+--------+-----------+----------+-----------+----------------+--------------+
-//	| Version | Random | SessionID | KEMSuite | KEMSuites | CHKEMPublicKey | CipherSuites |
-//	| 2B      | 32B    | 16B       | 2B       | 1B*2B*n   | 1600B (v1)     | 2B * count   |
-//	+---------+--------+-----------+----------+-----------+----------------+--------------+
+//	+---------+--------+-----------+----------+-----------+------------------+--------------+
+//	| Version | Random | SessionID | KEMSuite | KEMSuites | CHKEMPublicKey    | CipherSuites |
+//	| 2B      | 32B    | 16B       | 2B       | 1B*2B*n   | 2B len + suite-sz | 2B * count   |
+//	+---------+--------+-----------+----------+-----------+------------------+--------------+
 //
 // ServerHello Format:
 //
-//	+---------+--------+-----------+----------+-----------------+-------------+
-//	| Version | Random | SessionID | KEMSuite | CHKEMCiphertext | CipherSuite |
-//	| 2B      | 32B    | 16B       | 2B       | 1600B (v1)      | 2B          |
-//	+---------+--------+-----------+----------+-----------------+-------------+
+//	+---------+--------+-----------+----------+-------------------+-------------+
+//	| Version | Random | SessionID | KEMSuite | CHKEMCiphertext    | CipherSuite |
+//	| 2B      | 32B    | 16B       | 2B       | 2B len + suite-sz  | 2B          |
+//	+---------+--------+-----------+----------+-------------------+-------------+
 package protocol
 
 import (
@@ -54,9 +54,9 @@ func (c *Codec) EncodeClientHello(m *ClientHello) ([]byte, error) {
 		32 + // random
 		1 + len(m.SessionID) + // session ID length + data
 		2 + 1 + 2*len(m.KEMSuites) + // kem suite + supported-suite count + list
-		constants.CHKEMPublicKeySize + // public key
+		2 + len(m.CHKEMPublicKey) + // public key (2B length + data)
 		2 + 2*len(m.CipherSuites) + // cipher suites count + data
-		1 + len(m.CHKEMStaticCiphertext) + // static-ct presence flag + data
+		1 + optionalLenPrefixedSize(m.CHKEMStaticCiphertext) + // static-ct flag + (2B len + data)
 		1 + pskIdentityFieldLen(m.PSKIdentity) // psk-identity presence flag + (len + data)
 
 	buf := make([]byte, HeaderSize+payloadSize)
@@ -93,9 +93,11 @@ func (c *Codec) EncodeClientHello(m *ClientHello) ([]byte, error) {
 		offset += 2
 	}
 
-	// CH-KEM public key
+	// CH-KEM public key (suite-sized, 2-byte length-prefixed)
+	binary.BigEndian.PutUint16(buf[offset:], uint16(len(m.CHKEMPublicKey))) // #nosec G115 -- KEM public key length is bounded by the suite, fits uint16
+	offset += 2
 	copy(buf[offset:], m.CHKEMPublicKey)
-	offset += constants.CHKEMPublicKeySize
+	offset += len(m.CHKEMPublicKey)
 
 	// Cipher suites
 	binary.BigEndian.PutUint16(buf[offset:], uint16(len(m.CipherSuites))) // #nosec G115 -- cipher suite count is single digits, fits uint16
@@ -105,14 +107,15 @@ func (c *Codec) EncodeClientHello(m *ClientHello) ([]byte, error) {
 		offset += 2
 	}
 
-	// Static-key authentication ciphertext (presence-flagged: 1 byte, then the
-	// CHKEMCiphertextSize ct when present). Always write the flag so the field is
-	// self-describing; older peers that stop after cipher suites ignore it.
+	// Static-key authentication ciphertext (presence-flagged: 1 byte, then a 2-byte
+	// length and the suite-sized ct when present).
 	if len(m.CHKEMStaticCiphertext) > 0 {
 		buf[offset] = 1
 		offset++
+		binary.BigEndian.PutUint16(buf[offset:], uint16(len(m.CHKEMStaticCiphertext))) // #nosec G115 -- bounded by the suite ciphertext size
+		offset += 2
 		copy(buf[offset:], m.CHKEMStaticCiphertext)
-		offset += constants.CHKEMCiphertextSize
+		offset += len(m.CHKEMStaticCiphertext)
 	} else {
 		buf[offset] = 0
 		offset++
@@ -142,6 +145,34 @@ func pskIdentityFieldLen(identity []byte) int {
 	return 1 + len(identity)
 }
 
+// optionalLenPrefixedSize returns the payload bytes a presence-flagged,
+// 2-byte-length-prefixed field contributes beyond its presence flag.
+func optionalLenPrefixedSize(b []byte) int {
+	if len(b) == 0 {
+		return 0
+	}
+	return 2 + len(b)
+}
+
+// readLenPrefixed reads a 2-byte big-endian length and that many bytes from data at
+// *offset, bounded by payloadEnd, and advances *offset. KEM material (public keys,
+// ciphertexts) is suite-sized, so the codec frames it length-prefixed and the suite
+// validates the exact size downstream.
+func readLenPrefixed(data []byte, offset *int, payloadEnd int) ([]byte, error) {
+	if *offset+2 > payloadEnd {
+		return nil, qerrors.ErrInvalidMessage
+	}
+	n := int(binary.BigEndian.Uint16(data[*offset:]))
+	*offset += 2
+	if *offset+n > payloadEnd {
+		return nil, qerrors.ErrInvalidMessage
+	}
+	out := make([]byte, n)
+	copy(out, data[*offset:*offset+n])
+	*offset += n
+	return out, nil
+}
+
 // DecodeClientHello deserializes a ClientHello message.
 func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 	if len(data) < HeaderSize {
@@ -161,8 +192,9 @@ func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 	payloadEnd := HeaderSize + int(payloadLen)
 
 	// Minimum payload: version(2) + random(32) + sessionIDLen(1) + kemSuite(2) +
-	// kemSuiteCount(1) + publicKey(1600) + cipherSuiteCount(2) + minCipherSuite(2).
-	minPayloadLen := 2 + 32 + 1 + 2 + 1 + constants.CHKEMPublicKeySize + 2 + 2
+	// kemSuiteCount(1) + publicKeyLen(2) + cipherSuiteCount(2) + minCipherSuite(2).
+	// The public key itself is length-prefixed and bounded against payloadEnd below.
+	minPayloadLen := 2 + 32 + 1 + 2 + 1 + 2 + 2 + 2
 	if int(payloadLen) < minPayloadLen {
 		return nil, qerrors.ErrInvalidMessage
 	}
@@ -205,15 +237,17 @@ func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 		offset += 2
 	}
 
-	// CH-KEM public key
-	if offset+constants.CHKEMPublicKeySize > payloadEnd {
-		return nil, qerrors.ErrInvalidMessage
+	// CH-KEM public key (length-prefixed)
+	pk, err := readLenPrefixed(data, &offset, payloadEnd)
+	if err != nil {
+		return nil, err
 	}
-	m.CHKEMPublicKey = make([]byte, constants.CHKEMPublicKeySize)
-	copy(m.CHKEMPublicKey, data[offset:offset+constants.CHKEMPublicKeySize])
-	offset += constants.CHKEMPublicKeySize
+	m.CHKEMPublicKey = pk
 
 	// Cipher suites
+	if offset+2 > payloadEnd {
+		return nil, qerrors.ErrInvalidMessage
+	}
 	cipherSuiteCount := binary.BigEndian.Uint16(data[offset:])
 	offset += 2
 	if offset+2*int(cipherSuiteCount) > payloadEnd {
@@ -231,12 +265,11 @@ func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 		present := data[offset]
 		offset++
 		if present == 1 {
-			if offset+constants.CHKEMCiphertextSize > payloadEnd {
-				return nil, qerrors.ErrInvalidMessage
+			ct, err := readLenPrefixed(data, &offset, payloadEnd)
+			if err != nil {
+				return nil, err
 			}
-			m.CHKEMStaticCiphertext = make([]byte, constants.CHKEMCiphertextSize)
-			copy(m.CHKEMStaticCiphertext, data[offset:offset+constants.CHKEMCiphertextSize])
-			offset += constants.CHKEMCiphertextSize
+			m.CHKEMStaticCiphertext = ct
 		}
 	}
 
@@ -276,7 +309,7 @@ func (c *Codec) EncodeServerHello(m *ServerHello) ([]byte, error) {
 		32 + // random
 		1 + len(m.SessionID) + // session ID length + data
 		2 + // kem suite
-		constants.CHKEMCiphertextSize + // ciphertext
+		2 + len(m.CHKEMCiphertext) + // ciphertext (2B length + data)
 		2 // cipher suite
 
 	buf := make([]byte, HeaderSize+payloadSize)
@@ -307,9 +340,11 @@ func (c *Codec) EncodeServerHello(m *ServerHello) ([]byte, error) {
 	binary.BigEndian.PutUint16(buf[offset:], m.KEMSuite)
 	offset += 2
 
-	// CH-KEM ciphertext
+	// CH-KEM ciphertext (suite-sized, 2-byte length-prefixed)
+	binary.BigEndian.PutUint16(buf[offset:], uint16(len(m.CHKEMCiphertext))) // #nosec G115 -- bounded by the suite ciphertext size
+	offset += 2
 	copy(buf[offset:], m.CHKEMCiphertext)
-	offset += constants.CHKEMCiphertextSize
+	offset += len(m.CHKEMCiphertext)
 
 	// Cipher suite
 	binary.BigEndian.PutUint16(buf[offset:], uint16(m.CipherSuite))
@@ -333,8 +368,9 @@ func (c *Codec) DecodeServerHello(data []byte) (*ServerHello, error) {
 	}
 	payloadEnd := HeaderSize + int(payloadLen)
 
-	// Minimum payload: version(2) + random(32) + sessionIDLen(1) + kemSuite(2) + ciphertext(1600) + cipherSuite(2)
-	minPayloadLen := 2 + 32 + 1 + 2 + constants.CHKEMCiphertextSize + 2
+	// Minimum payload: version(2) + random(32) + sessionIDLen(1) + kemSuite(2) +
+	// ciphertextLen(2) + cipherSuite(2). The ciphertext is length-prefixed below.
+	minPayloadLen := 2 + 32 + 1 + 2 + 2 + 2
 	if int(payloadLen) < minPayloadLen {
 		return nil, qerrors.ErrInvalidMessage
 	}
@@ -367,15 +403,17 @@ func (c *Codec) DecodeServerHello(data []byte) (*ServerHello, error) {
 	m.KEMSuite = binary.BigEndian.Uint16(data[offset:])
 	offset += 2
 
-	// CH-KEM ciphertext
-	if offset+constants.CHKEMCiphertextSize > payloadEnd {
-		return nil, qerrors.ErrInvalidMessage
+	// CH-KEM ciphertext (length-prefixed)
+	ct, err := readLenPrefixed(data, &offset, payloadEnd)
+	if err != nil {
+		return nil, err
 	}
-	m.CHKEMCiphertext = make([]byte, constants.CHKEMCiphertextSize)
-	copy(m.CHKEMCiphertext, data[offset:offset+constants.CHKEMCiphertextSize])
-	offset += constants.CHKEMCiphertextSize
+	m.CHKEMCiphertext = ct
 
 	// Cipher suite
+	if offset+2 > payloadEnd {
+		return nil, qerrors.ErrInvalidMessage
+	}
 	m.CipherSuite = constants.CipherSuite(binary.BigEndian.Uint16(data[offset:]))
 
 	if err := m.Validate(); err != nil {
@@ -519,30 +557,33 @@ func (c *Codec) DecodeAlert(data []byte) (AlertLevel, AlertCode, string, error) 
 }
 
 // EncodeRekeyPayload serializes the plaintext inner rekey payload.
-// Format: NewPublicKey (1600B) + ActivationSequence (8B)
+// Format: PublicKeyLen (2B) + NewPublicKey (suite-sized) + ActivationSequence (8B)
 func (c *Codec) EncodeRekeyPayload(newPublicKey []byte, activationSeq uint64) ([]byte, error) {
-	if len(newPublicKey) != constants.CHKEMPublicKeySize {
+	if len(newPublicKey) == 0 || len(newPublicKey) > MaxMessageSize {
 		return nil, qerrors.ErrInvalidPublicKey
 	}
 
-	buf := make([]byte, constants.CHKEMPublicKeySize+8)
-	copy(buf, newPublicKey)
-	binary.BigEndian.PutUint64(buf[constants.CHKEMPublicKeySize:], activationSeq)
+	buf := make([]byte, 2+len(newPublicKey)+8)
+	binary.BigEndian.PutUint16(buf, uint16(len(newPublicKey))) // #nosec G115 -- KEM public key length is bounded by the suite, fits uint16
+	copy(buf[2:], newPublicKey)
+	binary.BigEndian.PutUint64(buf[2+len(newPublicKey):], activationSeq)
 
 	return buf, nil
 }
 
 // DecodeRekeyPayload deserializes the plaintext inner rekey payload.
 func (c *Codec) DecodeRekeyPayload(data []byte) ([]byte, uint64, error) {
-	minLen := constants.CHKEMPublicKeySize + 8
-	if len(data) < minLen {
+	if len(data) < 2 {
+		return nil, 0, qerrors.ErrInvalidMessage
+	}
+	n := int(binary.BigEndian.Uint16(data))
+	if len(data) < 2+n+8 {
 		return nil, 0, qerrors.ErrInvalidMessage
 	}
 
-	newPublicKey := make([]byte, constants.CHKEMPublicKeySize)
-	copy(newPublicKey, data[:constants.CHKEMPublicKeySize])
-
-	activationSeq := binary.BigEndian.Uint64(data[constants.CHKEMPublicKeySize:])
+	newPublicKey := make([]byte, n)
+	copy(newPublicKey, data[2:2+n])
+	activationSeq := binary.BigEndian.Uint64(data[2+n:])
 
 	return newPublicKey, activationSeq, nil
 }

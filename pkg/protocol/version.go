@@ -17,12 +17,12 @@ type Version struct {
 	Minor uint8
 }
 
-// Current is the current protocol version. Major 4 added KEM-suite negotiation: the
-// ClientHello and ServerHello now carry the negotiated KEM suite id, so peers can
-// agree on the KEM construction (CH-KEM-v1 today; X-Wing and others later). The
-// added fields make a 4.0 hello wire-incompatible with a 3.x peer. IsCompatible is
-// major-only, so the handshake rejects a mismatched peer cleanly.
-var Current = Version{Major: 4, Minor: 0}
+// Current is the current protocol version. Major 5 length-prefixes the KEM material
+// (public keys and ciphertexts) on the wire so it can carry suite-dependent sizes
+// (CH-KEM-v1's 1600 bytes, X-Wing's smaller key share, and future suites). It builds
+// on the Major 4 KEM-suite negotiation; both 4.0 and 5.0 are pre-release. IsCompatible
+// is major-only, so a 4.x and a 5.0 peer reject a mismatch cleanly at the handshake.
+var Current = Version{Major: 5, Minor: 0}
 
 // Bytes returns the version as a 2-byte value.
 func (v Version) Bytes() []byte {
