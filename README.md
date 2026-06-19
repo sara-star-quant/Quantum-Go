@@ -137,7 +137,7 @@ receive on Linux, and optional fixed-size handshake padding.
 | Handshakes/sec (stream/TCP, full CH-KEM, sequential) | ~1,450 (~670 µs each) |
 | Handshakes/sec (datagram/UDP, full CH-KEM, sequential) | ~1,300 (~760 µs each) |
 | Endpoint auth handshake cost (opt-in) | static-key ~+40% (one extra CH-KEM leg); PSK negligible (one KDF fold); data plane unaffected |
-| Stream record overhead | 16 bytes (AEAD tag); the nonce is derived, not transmitted (was 28 with the old transmitted nonce) |
+| Stream per-record overhead | 16 B AEAD (tag only; nonce derived, not transmitted, was 28) + 13 B frame header (type, length, seq) = 29 B total (was 41) |
 | Single-tunnel throughput (stream/TCP, AES-GCM, end-to-end) | ~690 MB/s (5.5 Gb/s), sustained across rekeys |
 | Datagram send (seal + frame, isolated, zero-alloc steady state) | ~3.0 GB/s (~380 ns/op, 1 alloc/op) |
 | Datagram goodput (UDP, one-way single flow, full receive loop) | ~58 MB/s on macOS loopback; ~1.8 Gb/s on Linux (see below) |
