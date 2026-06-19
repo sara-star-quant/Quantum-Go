@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: v0.0.11
+## Current Status: v0.0.12
 
 > **Direction.** Next is **stream security parity**: bring the TCP/stream path up to the
 > datagram path and clear the hardening backlog (role binding, ticket server binding,
@@ -458,7 +458,9 @@ pinning (stream path) now closes it for the pinned-server case; the rest follows
 - [x] Add test: verify authenticated peer is accepted
 - [x] Datagram path wiring (`WithStaticIdentity`/`WithPinnedServerKey`) - wrong-pin
   fails closed as a retry-ceiling timeout (no fail-fast signal yet)
-- [ ] `quantum-tunnel keygen` CLI for static-key generation and pin distribution
+- [x] `quantum-tunnel keygen` CLI for static-key generation and pin distribution -
+  writes a base64 secret seed (mode 0600) and public pin, prints an `SHA256:`
+  fingerprint, and re-derives the pin from a seed via `--pub-from`
 - [ ] Document authentication modes in SECURITY.md
 
 **Reference:** WireGuard static key authentication, TLS 1.3 PSK mode (RFC 8446 Section 2.2)
