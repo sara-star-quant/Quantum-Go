@@ -65,11 +65,16 @@ func (xwingSuite) Decapsulate(ct *Ciphertext, kp *KeyPair, _ Role) ([]byte, erro
 	if ct == nil || ct.suite != SuiteXWing {
 		return nil, qerrors.ErrInvalidCiphertext
 	}
+	if kp == nil {
+		return nil, qerrors.ErrInvalidPrivateKey
+	}
 	xkp, ok := kp.impl.(*crypto.XWingKeyPair)
 	if !ok {
 		return nil, qerrors.ErrInvalidPrivateKey
 	}
-	return crypto.XWingDecapsulate(xkp.SeedBytes(), ct.raw)
+	seed := xkp.SeedBytes()
+	defer crypto.Zeroize(seed)
+	return crypto.XWingDecapsulate(seed, ct.raw)
 }
 
 func (xwingSuite) ParsePublicKey(data []byte) (*PublicKey, error) {
