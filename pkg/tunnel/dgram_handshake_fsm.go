@@ -11,7 +11,11 @@
 // (datagram.go). Each transition produces exactly one handshake message.
 package tunnel
 
-import "github.com/sara-star-quant/quantum-go/pkg/protocol"
+import (
+	"bytes"
+
+	"github.com/sara-star-quant/quantum-go/pkg/protocol"
+)
 
 // hsMessage is one serialized handshake message plus its type. The bytes are the
 // verbatim output of a flight builder (a plaintext codec frame for the Hellos, or
@@ -76,6 +80,12 @@ func (d *dgramHandshake) onMessage(typ protocol.MessageType, body []byte) (out *
 	switch {
 	case typ != 0 && typ == d.expecting:
 		return d.advance(typ, body)
+	case d.role == RoleInitiator && typ == protocol.MessageTypeHelloRetryRequest &&
+		d.expecting == protocol.MessageTypeServerHello && !d.hs.hrrDone:
+		// First HelloRetryRequest while awaiting ServerHello: adopt the suite and
+		// re-send the ClientHello. A duplicate HRR (hrrDone) falls through to the
+		// retransmit case below and replays the cached retried ClientHello.
+		return d.advance(typ, body)
 	case typ != 0 && typ == d.prev && d.cached != nil:
 		return d.cached, false // retransmit: replay last flight, no re-invocation
 	default:
@@ -108,9 +118,37 @@ func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out *hs
 		d.expecting = 0 // no further inbound
 		return nil, true
 
+	case d.role == RoleInitiator && typ == protocol.MessageTypeHelloRetryRequest:
+		if err := d.hs.ProcessHelloRetryRequest(body); err != nil {
+			return nil, false
+		}
+		reply, err := d.hs.CreateClientHello() // retried hello in the server's suite
+		if err != nil {
+			return nil, false
+		}
+		d.commit(typ, &hsMessage{typ: protocol.MessageTypeClientHello, body: reply}, protocol.MessageTypeServerHello)
+		return d.cached, false
+
 	case d.role == RoleResponder && typ == protocol.MessageTypeClientHello:
+		// After we have sent a HelloRetryRequest, a repeat of the pre-HRR ClientHello
+		// is a retransmit of a lost HRR: replay the cached HRR rather than reprocess
+		// (the retransmit and the genuine retried hello share the ClientHello type, so
+		// distinguish them by content).
+		if d.hs.hrrDone && d.cached != nil && d.cached.typ == protocol.MessageTypeHelloRetryRequest &&
+			bytes.Equal(body, d.hs.firstClientHello) {
+			return d.cached, false
+		}
 		if err := d.hs.ProcessClientHello(body); err != nil {
 			return nil, false
+		}
+		if d.hs.sendHRR {
+			hrr, err := d.hs.CreateHelloRetryRequest()
+			if err != nil {
+				return nil, false
+			}
+			// Stay expecting a ClientHello (the client's retried hello in our suite).
+			d.commit(typ, &hsMessage{typ: protocol.MessageTypeHelloRetryRequest, body: hrr}, protocol.MessageTypeClientHello)
+			return d.cached, false
 		}
 		reply, err := d.hs.CreateServerHello()
 		if err != nil {
