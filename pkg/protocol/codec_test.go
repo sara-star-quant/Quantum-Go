@@ -1162,3 +1162,67 @@ func TestDecodeRekeyInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestClientHelloKEMSuiteRoundTrip(t *testing.T) {
+	codec := protocol.NewCodec()
+	kp, err := chkem.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair: %v", err)
+	}
+	random := make([]byte, 32)
+	_ = crypto.SecureRandom(random)
+
+	original := &protocol.ClientHello{
+		Version:        protocol.Current,
+		Random:         random,
+		KEMSuite:       uint16(chkem.SuiteCHKEMv1),
+		KEMSuites:      []uint16{uint16(chkem.SuiteCHKEMv1)},
+		CHKEMPublicKey: kp.PublicKey().Bytes(),
+		CipherSuites:   []constants.CipherSuite{constants.CipherSuiteAES256GCM},
+	}
+	encoded, err := codec.EncodeClientHello(original)
+	if err != nil {
+		t.Fatalf("EncodeClientHello: %v", err)
+	}
+	decoded, err := codec.DecodeClientHello(encoded)
+	if err != nil {
+		t.Fatalf("DecodeClientHello: %v", err)
+	}
+	if decoded.KEMSuite != original.KEMSuite {
+		t.Errorf("KEMSuite mismatch: got %#x, want %#x", decoded.KEMSuite, original.KEMSuite)
+	}
+	if len(decoded.KEMSuites) != 1 || decoded.KEMSuites[0] != uint16(chkem.SuiteCHKEMv1) {
+		t.Errorf("KEMSuites mismatch: got %v", decoded.KEMSuites)
+	}
+	if !bytes.Equal(decoded.CHKEMPublicKey, original.CHKEMPublicKey) {
+		t.Error("public key mismatch after the inserted KEM-suite fields")
+	}
+}
+
+func TestServerHelloKEMSuiteRoundTrip(t *testing.T) {
+	codec := protocol.NewCodec()
+	random := make([]byte, 32)
+	_ = crypto.SecureRandom(random)
+
+	original := &protocol.ServerHello{
+		Version:         protocol.Current,
+		Random:          random,
+		KEMSuite:        uint16(chkem.SuiteCHKEMv1),
+		CHKEMCiphertext: make([]byte, constants.CHKEMCiphertextSize),
+		CipherSuite:     constants.CipherSuiteAES256GCM,
+	}
+	encoded, err := codec.EncodeServerHello(original)
+	if err != nil {
+		t.Fatalf("EncodeServerHello: %v", err)
+	}
+	decoded, err := codec.DecodeServerHello(encoded)
+	if err != nil {
+		t.Fatalf("DecodeServerHello: %v", err)
+	}
+	if decoded.KEMSuite != uint16(chkem.SuiteCHKEMv1) {
+		t.Errorf("ServerHello KEMSuite mismatch: got %#x", decoded.KEMSuite)
+	}
+	if decoded.CipherSuite != constants.CipherSuiteAES256GCM {
+		t.Error("cipher suite mismatch after the inserted KEM-suite field")
+	}
+}
