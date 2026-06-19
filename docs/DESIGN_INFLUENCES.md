@@ -82,6 +82,16 @@ The protocol draws on the shared knowledge base of post-quantum cryptography res
 
 **Difference:** Rosenpass uses a dedicated biscuit key separate from the handshake keys. Our design encrypts the server state using the server's existing AEAD infrastructure with a key derived from the long-term server key, avoiding the need for an additional key management layer.
 
+### 2.8 Standardized Hybrid KEM Combiner
+
+**Source:** X-Wing (Barbosa, Connolly, Duval, Goncalves, Schwabe, Westerbaan; 2024) and the CFRG/IETF generic hybrid-KEM combiner work.
+
+**Concept:** A hybrid KEM that combines a post-quantum KEM with X25519 should run both shares through a standardized, proof-carrying combiner that binds the ML-KEM ciphertext and the X25519 share into the final key derivation. X-Wing is the concrete, widely-reviewed instantiation of this idea.
+
+**Our adaptation (direction, targeted at v1.0.0):** align the CH-KEM combiner step to the standardized construction so the derivation maps to a published IND-CCA proof and an interop profile becomes possible.
+
+**Difference and accuracy note:** X-Wing is fixed to ML-KEM-768 + X25519 (NIST Category 1). Quantum-Go uses ML-KEM-1024 (Category 5), so adopting X-Wing verbatim would downgrade the KEM. The direction is therefore one of two honest options: (a) adapt the combiner *construction* (its labeled SHA3 binding of the ML-KEM ciphertext and X25519 share) to our ML-KEM-1024 instantiation, keeping Category 5; and/or (b) offer an X-Wing-conformant Category-1 profile as an explicit interop option. Our current combiner, `SHAKE-256(K_x25519 || K_mlkem || transcript)`, is already sound and already binds the public keys and ciphertext through the transcript; aligning buys conformance and proof reuse, not a fix for a defect.
+
 ---
 
 ## 3. What We Explicitly Do Not Use
@@ -131,7 +141,9 @@ The following normative standards directly govern our implementation:
 
 7. Andreas Hulsing, Kai-Chun Ning, Peter Schwabe, Fiona Johanna Weber, and Philip R. Zimmermann. "Post-quantum WireGuard." IEEE Symposium on Security and Privacy (S&P), 2021.
 
+8. Manuel Barbosa, Deirdre Connolly, Joao Diogo Duval, Kathrin Hovelmanns, Christian Majenz, et al. "X-Wing: The Hybrid KEM You've Been Looking For." 2024. <https://eprint.iacr.org/2024/039>
+
 ---
 
-*Document Version: 1.0*
-*Last Updated: 2026-03-13*
+*Document Version: 1.1*
+*Last Updated: 2026-06-19*

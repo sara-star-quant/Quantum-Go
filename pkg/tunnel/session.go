@@ -651,7 +651,7 @@ func (s *Session) PrepareRekeyResponse(newPublicKeyBytes []byte, activationSeq u
 	}
 
 	// Encapsulate to the new public key
-	ciphertext, freshSecret, err := chkem.Encapsulate(newPublicKey)
+	ciphertext, freshSecret, err := chkem.Encapsulate(newPublicKey, chkem.RoleResponder)
 	if err != nil {
 		return nil, err
 	}
@@ -712,7 +712,7 @@ func (s *Session) ProcessRekeyResponse(ciphertextBytes []byte) error {
 	}
 
 	// Decapsulate using pending keypair
-	freshSecret, err := chkem.Decapsulate(ciphertext, s.pendingRekeyKeyPair)
+	freshSecret, err := chkem.Decapsulate(ciphertext, s.pendingRekeyKeyPair, chkem.RoleInitiator)
 	if err != nil {
 		return err
 	}

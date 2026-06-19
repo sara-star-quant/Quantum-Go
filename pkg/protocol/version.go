@@ -1,6 +1,6 @@
 // Package protocol defines the wire protocol for the CH-KEM tunnel.
 //
-// Protocol Version: 1.0
+// Protocol Version: 2.0
 //
 // The protocol provides:
 //   - Authenticated key exchange using CH-KEM
@@ -17,8 +17,10 @@ type Version struct {
 	Minor uint8
 }
 
-// Current is the current protocol version.
-var Current = Version{Major: 1, Minor: 0}
+// Current is the current protocol version. Major bumped to 2 with CH-KEM role +
+// version binding: the derived secret changed, so a v1 peer is incompatible and
+// IsCompatible rejects it cleanly instead of failing later at the Finished MAC.
+var Current = Version{Major: 2, Minor: 0}
 
 // Bytes returns the version as a 2-byte value.
 func (v Version) Bytes() []byte {

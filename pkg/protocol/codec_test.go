@@ -135,7 +135,7 @@ func TestDecodeClientHelloInvalidInputs(t *testing.T) {
 func TestEncodeDecodeServerHello(t *testing.T) {
 	codec := protocol.NewCodec()
 	kp, _ := chkem.GenerateKeyPair()
-	ct, _, _ := chkem.Encapsulate(kp.PublicKey())
+	ct, _, _ := chkem.Encapsulate(kp.PublicKey(), chkem.RoleResponder)
 
 	random := make([]byte, 32)
 	sessionID := make([]byte, constants.SessionIDSize)
@@ -702,7 +702,7 @@ func TestClientHelloValidation(t *testing.T) {
 
 func TestServerHelloValidation(t *testing.T) {
 	kp, _ := chkem.GenerateKeyPair()
-	ct, _, _ := chkem.Encapsulate(kp.PublicKey())
+	ct, _, _ := chkem.Encapsulate(kp.PublicKey(), chkem.RoleResponder)
 
 	tests := []struct {
 		name    string

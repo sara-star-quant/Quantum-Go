@@ -57,7 +57,7 @@ func FuzzParsePublicKey(f *testing.F) {
 func FuzzParseCiphertext(f *testing.F) {
 	// Add seed corpus
 	kp, _ := chkem.GenerateKeyPair()
-	ct, _, _ := chkem.Encapsulate(kp.PublicKey())
+	ct, _, _ := chkem.Encapsulate(kp.PublicKey(), chkem.RoleResponder)
 	f.Add(ct.Bytes())
 
 	// Edge cases
@@ -129,7 +129,7 @@ func FuzzDecodeServerHello(f *testing.F) {
 
 	// Add valid ServerHello as seed
 	kp, _ := chkem.GenerateKeyPair()
-	ct, _, _ := chkem.Encapsulate(kp.PublicKey())
+	ct, _, _ := chkem.Encapsulate(kp.PublicKey(), chkem.RoleResponder)
 	sessionID := make([]byte, constants.SessionIDSize)
 	_ = crypto.SecureRandom(sessionID)
 
@@ -278,7 +278,7 @@ func FuzzDecapsulate(f *testing.F) {
 	kp, _ := chkem.GenerateKeyPair()
 
 	// Add valid ciphertext as seed
-	ct, _, _ := chkem.Encapsulate(kp.PublicKey())
+	ct, _, _ := chkem.Encapsulate(kp.PublicKey(), chkem.RoleResponder)
 	f.Add(ct.Bytes())
 
 	// Edge cases
@@ -293,7 +293,7 @@ func FuzzDecapsulate(f *testing.F) {
 
 		// Decapsulation should not panic even with invalid ciphertext
 		// ML-KEM uses implicit rejection (returns random-looking secret)
-		_, _ = chkem.Decapsulate(ct, kp)
+		_, _ = chkem.Decapsulate(ct, kp, chkem.RoleInitiator)
 	})
 }
 

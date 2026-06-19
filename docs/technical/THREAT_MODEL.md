@@ -1,9 +1,8 @@
-# Quantum-Go Security Risk Assessment
+# Quantum-Go Threat Model
 
-**Document Classification:** Security Assessment
-**Version:** 1.0
-**Assessment Date:** 2026-01-18
-**Risk Framework:** NIST SP 800-30
+This is a self-authored threat model, informed by the NIST SP 800-30 risk methodology. It is NOT an independent third-party security audit; a third-party audit is tracked separately on the roadmap. Risk ratings reflect the authors' analysis of the design as of the dates noted.
+
+**Last Updated:** 2026-01-18
 
 ---
 
@@ -23,11 +22,11 @@
 
 ## 1. Executive Summary
 
-This risk assessment evaluates the security posture of the Quantum-Go tunnel encryption system implementing the Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM). The assessment covers cryptographic, implementation, operational, and regulatory risks.
+This threat model evaluates the security posture of the Quantum-Go tunnel encryption system implementing the Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM). It covers cryptographic, implementation, operational, and regulatory risks.
 
 ### 1.1 Overall Risk Rating
 
-**MODERATE** - Acceptable for high-security deployments with documented mitigations
+**MODERATE** - This is a self-assessment of the design, not a certification or third-party sign-off.
 
 ### 1.2 Key Findings
 
@@ -80,12 +79,12 @@ Impact Scale: 1 (Negligible) to 5 (Critical)
 Risk Score: 1-25
 ```
 
-| Score | Risk Level | Action Required |
-|-------|------------|-----------------|
-| 1-4 | Low | Monitor |
-| 5-9 | Moderate | Mitigate within 90 days |
-| 10-16 | High | Mitigate within 30 days |
-| 17-25 | Critical | Immediate action |
+| Score | Risk Level |
+|-------|------------|
+| 1-4 | Low |
+| 5-9 | Moderate |
+| 10-16 | High |
+| 17-25 | Critical |
 
 ---
 
@@ -322,11 +321,11 @@ type ReplayWindow struct {
 
 ### 8.1 Accepted Risks
 
-| Risk | Justification | Owner |
-|------|---------------|-------|
-| Side-channel (reduced) | Using audited std lib | Development |
+| Risk | Justification | Area |
+|------|---------------|------|
+| Side-channel (reduced) | Using audited std lib | Implementation |
 | Key theft (reduced) | Operational controls | Operations |
-| Algorithm break (very low) | Multiple layers | Security |
+| Algorithm break (very low) | Multiple layers | Cryptographic |
 
 ### 8.2 Residual Risk Summary
 
@@ -343,19 +342,19 @@ type ReplayWindow struct {
 
 ## 9. Recommendations
 
-### 9.1 Immediate Actions (0-30 days)
+### 9.1 High Priority
 
 1. **Complete self-test implementation** for FIPS compliance
 2. **Establish key management procedures** including rotation schedules
 3. **Deploy monitoring** for cryptographic operation failures
 
-### 9.2 Short-term Actions (30-90 days)
+### 9.2 Medium Priority
 
 1. **Third-party security audit** of cryptographic implementation
 2. **Penetration testing** of protocol implementation
 3. **Develop incident response plan** for key compromise scenarios
 
-### 9.3 Long-term Actions (90+ days)
+### 9.3 Long-term
 
 1. **FIPS 140-3 validation** process initiation
 2. **Hardware security module integration** for key storage
@@ -387,13 +386,4 @@ type ReplayWindow struct {
 
 ## Appendix B: Document Control
 
-| Version | Date | Author | Changes |
-|---------|------|--------|---------|
-| 1.0 | 2026-01-18 | Security Team | Initial release |
-
-**Review Schedule:** Quarterly
-**Next Review:** 2026-04-18
-
----
-
-*Document Version: 1.0*
+**Last Updated:** 2026-01-18

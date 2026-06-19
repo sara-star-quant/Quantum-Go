@@ -7,8 +7,10 @@ package constants
 
 // Protocol version and identification
 const (
-	// ProtocolVersion is the current version of the CH-KEM protocol
-	ProtocolVersion uint16 = 0x0001
+	// ProtocolVersion is the current version of the CH-KEM protocol. It is bound
+	// into the CH-KEM transcript; 0x0002 added role + version binding, which
+	// changes the derived secret and is wire-incompatible with 0x0001.
+	ProtocolVersion uint16 = 0x0002
 
 	// ProtocolName is used for domain separation in key derivation
 	ProtocolName = "CH-KEM-Tunnel-v1"
