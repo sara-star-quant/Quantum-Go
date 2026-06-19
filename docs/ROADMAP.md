@@ -449,7 +449,10 @@ The protocol provided no pre-handshake authentication. Any party could impersona
 any server. This is the most fundamental missing security property. Static-key
 pinning (stream path) now closes it for the pinned-server case; the rest follows.
 
-- [ ] PSK-based mutual authentication mode (pre-shared symmetric key)
+- [x] PSK-based mutual authentication mode (pre-shared symmetric key) -
+  `TransportConfig.PSK`/`PSKIdentity` and datagram `WithPSK`; a 32-byte PSK folds
+  into the master secret (domain-separated from the static fold), composes with
+  static-key pinning, and fails closed at the Finished MAC on mismatch. Protocol 2.2
 - [x] Static key verification mode (pin remote public key) - stream and datagram;
   client encapsulates a second CH-KEM leg to the pinned server key, folds it into
   the master secret, fails closed with `ErrServerKeyMismatch`.
