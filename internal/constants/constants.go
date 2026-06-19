@@ -98,6 +98,10 @@ const (
 	// nonce = prefix || seq, so the prefix must be agreed by both sides from the
 	// session master secret.
 	DomainSeparatorDatagramNonce = "CH-KEM-Tunnel-Datagram-Nonce"
+
+	// DomainSeparatorAuthentication is used to fold a static-key authentication
+	// secret into the master secret for endpoint authentication.
+	DomainSeparatorAuthentication = "CH-KEM-Tunnel-Authentication"
 )
 
 // Session Parameters

@@ -445,14 +445,19 @@ work in Strategic Priorities (authentication, formal verification, audit), not b
 #### 1. Endpoint Authentication
 **Priority:** Critical | **Effort:** High
 
-The protocol provides no pre-handshake authentication. Any party can impersonate
-any server. This is the most fundamental missing security property.
+The protocol provided no pre-handshake authentication. Any party could impersonate
+any server. This is the most fundamental missing security property. Static-key
+pinning (stream path) now closes it for the pinned-server case; the rest follows.
 
 - [ ] PSK-based mutual authentication mode (pre-shared symmetric key)
-- [ ] Static key verification mode (pin remote public key)
-- [ ] Include authentication proof in ClientHello/ServerHello
-- [ ] Add test: verify unauthenticated peer is rejected
-- [ ] Add test: verify authenticated peer is accepted
+- [x] Static key verification mode (pin remote public key) - stream path; client
+  encapsulates a second CH-KEM leg to the pinned server key, folds it into the
+  master secret, fails closed with `ErrServerKeyMismatch`. Datagram path pending.
+- [x] Include authentication proof in ClientHello (optional static-KEM ciphertext)
+- [x] Add test: verify unauthenticated/wrong-pin peer is rejected
+- [x] Add test: verify authenticated peer is accepted
+- [ ] Datagram path wiring (`WithStaticIdentity`/`WithPinnedServerKey`)
+- [ ] `quantum-tunnel keygen` CLI for static-key generation and pin distribution
 - [ ] Document authentication modes in SECURITY.md
 
 **Reference:** WireGuard static key authentication, TLS 1.3 PSK mode (RFC 8446 Section 2.2)

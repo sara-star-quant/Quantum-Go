@@ -19,6 +19,7 @@ import (
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/pkg/chkem"
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
@@ -64,6 +65,16 @@ type TransportConfig struct {
 
 	// RateLimitObserver receives notifications when rate limits are hit.
 	RateLimitObserver RateLimitObserver
+
+	// StaticKeyPair, when set on a server (Listen), is the long-term CH-KEM
+	// identity the server proves possession of. Generate and persist it with
+	// chkem.GenerateStaticKeyPair. Nil means unauthenticated (default).
+	StaticKeyPair *chkem.KeyPair
+
+	// PinnedServerKey, when set on a client (Dial), is the server static public
+	// key the client requires the server to prove possession of. Nil means
+	// unauthenticated (default).
+	PinnedServerKey *chkem.PublicKey
 }
 
 // RateLimitConfig holds configuration for rate limiting.
@@ -598,6 +609,7 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 		session.SetObserver(observer)
 		observer.OnSessionStart()
 	}
+	session.PinnedServerKey = config.PinnedServerKey
 
 	// Perform handshake
 	if err := InitiatorHandshake(session, conn); err != nil {
@@ -728,6 +740,7 @@ func (l *Listener) createSession() (*Session, error) {
 		session.SetObserver(observer)
 		observer.OnSessionStart()
 	}
+	session.StaticKeyPair = l.config.StaticKeyPair
 	return session, nil
 }
 

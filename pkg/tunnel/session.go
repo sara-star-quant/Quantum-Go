@@ -95,6 +95,14 @@ type Session struct {
 	// Remote public key
 	RemotePublicKey *chkem.PublicKey
 
+	// StaticKeyPair is the responder's long-term identity for endpoint
+	// authentication (server side). Nil means unauthenticated (default).
+	StaticKeyPair *chkem.KeyPair
+
+	// PinnedServerKey is the server static public key the initiator requires the
+	// server to prove possession of (client side). Nil means unauthenticated.
+	PinnedServerKey *chkem.PublicKey
+
 	// Master secret derived from CH-KEM
 	masterSecret []byte
 
