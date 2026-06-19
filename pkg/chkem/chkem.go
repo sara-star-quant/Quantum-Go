@@ -482,6 +482,24 @@ func (pk *PublicKey) Clone() *PublicKey {
 	}
 }
 
+// Suite returns the KEM suite this public key belongs to. A CH-KEM-v1 key (the
+// zero discriminator) reports SuiteCHKEMv1.
+func (pk *PublicKey) Suite() SuiteID {
+	if pk.suite == 0 {
+		return SuiteCHKEMv1
+	}
+	return pk.suite
+}
+
+// Suite returns the KEM suite this key pair belongs to (SuiteCHKEMv1 for the zero
+// discriminator).
+func (kp *KeyPair) Suite() SuiteID {
+	if kp.suite == 0 {
+		return SuiteCHKEMv1
+	}
+	return kp.suite
+}
+
 // X25519PublicKey returns the X25519 component of the public key.
 func (pk *PublicKey) X25519PublicKey() *ecdh.PublicKey {
 	return pk.x25519
