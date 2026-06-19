@@ -7,11 +7,11 @@
 
 ## Current Status: v0.0.13
 
-> **Direction.** Next is **stream security parity**: bring the TCP/stream path up to the
-> datagram path and clear the hardening backlog (role binding, ticket server binding,
-> 1024-bit stream replay window, session-bound stream nonce, real `.text` module integrity,
-> CI security). After that, **crypto-agility and endpoint authentication** toward v0.1.0
-> (HQC code-based KEM diversification for a CH-KEM v2 triple cascade; peer authentication).
+> **Direction.** Endpoint authentication (static-key pinning, require-auth, PSK mutual auth),
+> role binding, CI security, and the 1024-bit stream replay window have landed. The remaining
+> **stream security parity** backlog is the session-bound stream nonce and resumption ticket
+> server binding. After that, **crypto-agility** toward v0.1.0 (HQC code-based KEM
+> diversification for a CH-KEM v2 triple cascade).
 
 ## Strategic Priorities (valuation-driven)
 
@@ -313,9 +313,11 @@ can connect and never send data, exhausting goroutines and file descriptors.
 Current replay window is only 64 packets. At 1 Gbps with 1500-byte packets
 (~83,000 pps), this gives <1ms tolerance for out-of-order delivery.
 
-- [ ] Increase replay window to 1024+ using multi-word bitmap
-- [ ] Add test: verify out-of-order packets within window are accepted
-- [ ] Add benchmark: measure replay check overhead at larger window sizes
+- [x] Increase replay window to 1024+ using multi-word bitmap (stream `ReplayWindow`
+  reuses the datagram multi-word filter, recreated per rekey)
+- [x] Add test: verify out-of-order packets within window are accepted (`TestReplayWindowWideReorder`)
+- [x] Add benchmark: measure replay check overhead at larger window sizes
+  (`BenchmarkReplayWindowCheck`, ~37 ns/op in-order at 1024-bit, negligible vs the per-record AEAD)
 
 > Scope: this item tracks the **stream/TCP** path's 64-entry window. The datagram
 > transport already uses a 1024-bit multi-word window (`DatagramReplayWindow`,
