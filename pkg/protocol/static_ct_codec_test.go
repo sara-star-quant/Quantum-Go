@@ -54,9 +54,10 @@ func TestClientHelloStaticCiphertextRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode (with static ct): %v", err)
 	}
-	// The authenticated ClientHello is exactly the static block larger.
-	if len(enc2) != len(enc)+constants.CHKEMCiphertextSize {
-		t.Errorf("size delta: got %d, want %d", len(enc2)-len(enc), constants.CHKEMCiphertextSize)
+	// The authenticated ClientHello is larger by the ciphertext plus its 2-byte
+	// length prefix.
+	if len(enc2) != len(enc)+constants.CHKEMCiphertextSize+2 {
+		t.Errorf("size delta: got %d, want %d", len(enc2)-len(enc), constants.CHKEMCiphertextSize+2)
 	}
 	dec2, err := codec.DecodeClientHello(enc2)
 	if err != nil {
@@ -67,12 +68,23 @@ func TestClientHelloStaticCiphertextRoundTrip(t *testing.T) {
 	}
 }
 
-func TestClientHelloStaticCiphertextWrongSizeRejected(t *testing.T) {
+// TestClientHelloStaticCiphertextArbitrarySizeRoundTrips confirms the codec carries
+// a suite-sized static ciphertext of any length (length-prefixed); the exact-size
+// check now lives in the KEM suite's ParseCiphertext, not the codec.
+func TestClientHelloStaticCiphertextArbitrarySizeRoundTrips(t *testing.T) {
 	codec := protocol.NewCodec()
 	m := validClientHello(t)
-	m.CHKEMStaticCiphertext = make([]byte, 100) // not 0 and not CHKEMCiphertextSize
-	if _, err := codec.EncodeClientHello(m); err == nil {
-		t.Error("expected Validate to reject a wrong-size static ciphertext")
+	m.CHKEMStaticCiphertext = make([]byte, 100) // a non-v1 size
+	enc, err := codec.EncodeClientHello(m)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	dec, err := codec.DecodeClientHello(enc)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(dec.CHKEMStaticCiphertext) != 100 {
+		t.Errorf("static ciphertext length: got %d, want 100", len(dec.CHKEMStaticCiphertext))
 	}
 }
 

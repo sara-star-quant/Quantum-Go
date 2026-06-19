@@ -258,7 +258,9 @@ func (m *ClientHello) Validate() error {
 	if len(m.Random) != 32 {
 		return qerrors.ErrInvalidMessage
 	}
-	if len(m.CHKEMPublicKey) != constants.CHKEMPublicKeySize {
+	// The key share must be present; the negotiated KEM suite validates its exact
+	// size when it parses it (sizes are suite-dependent across the wire).
+	if len(m.CHKEMPublicKey) == 0 {
 		return qerrors.ErrInvalidPublicKey
 	}
 	if len(m.SessionID) > 2048 {
@@ -271,9 +273,6 @@ func (m *ClientHello) Validate() error {
 		if !cs.IsSupported() {
 			return qerrors.ErrUnsupportedCipherSuite
 		}
-	}
-	if len(m.CHKEMStaticCiphertext) != 0 && len(m.CHKEMStaticCiphertext) != constants.CHKEMCiphertextSize {
-		return qerrors.ErrInvalidCiphertext
 	}
 	if len(m.PSKIdentity) > constants.MaxPSKIdentitySize {
 		return qerrors.ErrInvalidMessage
@@ -292,7 +291,9 @@ func (m *ServerHello) Validate() error {
 	if len(m.SessionID) > 2048 {
 		return qerrors.ErrInvalidMessage
 	}
-	if len(m.CHKEMCiphertext) != constants.CHKEMCiphertextSize {
+	// The ciphertext must be present; the negotiated KEM suite validates its exact
+	// suite-dependent size when it parses it.
+	if len(m.CHKEMCiphertext) == 0 {
 		return qerrors.ErrInvalidCiphertext
 	}
 	if !m.CipherSuite.IsSupported() {
