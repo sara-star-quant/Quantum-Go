@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.15][] - 2026-06-20
+
+**Theme:** Crypto-agility and X-Wing. The hardcoded CH-KEM becomes a negotiated, pluggable KEM suite, and the standardized X-Wing KEM (ML-KEM-768 + X25519) lands as a second, interop-friendly suite. Peers negotiate the suite on the wire with a HelloRetryRequest fallback and a downgrade-safe synthetic-hash transcript, and the wire length-prefixes the now suite-sized KEM material (protocol 5.0). The default handshake stays on CH-KEM-v1 and is byte-identical, so the change is opt-in.
+
 ### Added
 - **KEM-suite abstraction (foundation for crypto-agility)**: `pkg/chkem` now exposes a `Suite` interface, a `SuiteID` wire identifier, and a registry, with the existing CH-KEM (ML-KEM-1024 + X25519 + SHAKE-256) registered as `SuiteCHKEMv1` (the default). The v1 suite delegates to the existing functions, so output is byte-for-byte unchanged; this is the additive first step toward negotiated, pluggable KEMs (X-Wing interop, HQC diversification). No wire or behavior change yet.
 - **HelloRetryRequest for KEM-suite negotiation**: when a server does not support the KEM suite a client's key share used, it now replies with a HelloRetryRequest naming a mutually-supported suite and the client retries once, on both the stream and datagram transports, instead of failing the handshake. The retry rewrites the handshake transcript with the RFC 8446 4.4.1 synthetic message hash, so tampering with the first ClientHello breaks the Finished MAC (downgrade-safe).
@@ -347,7 +351,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.14...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.15...HEAD
+[0.0.15]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.14...v0.0.15
 [0.0.14]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.13...v0.0.14
 [0.0.13]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.12...v0.0.13
 [0.0.12]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.11...v0.0.12
