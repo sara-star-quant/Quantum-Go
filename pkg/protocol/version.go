@@ -17,13 +17,12 @@ type Version struct {
 	Minor uint8
 }
 
-// Current is the current protocol version. Major 2 came with CH-KEM role +
-// version binding (a v1 peer is incompatible). Minor 1 added the optional
-// static-key authentication field in ClientHello; Minor 2 adds the optional PSK
-// identity field for mutual authentication. Both are additive and
-// major-compatible, so 2.0, 2.1, and 2.2 peers still interoperate (folding only
-// the auth legs they share).
-var Current = Version{Major: 2, Minor: 2}
+// Current is the current protocol version. Major 3 came with the session-bound
+// derived stream nonce: the stream data record no longer transmits the 12-byte
+// AEAD nonce (both peers derive it from a session nonce prefix and the sequence),
+// so a 3.0 record is wire-incompatible with a 2.x peer. IsCompatible is major-only,
+// so the handshake rejects a mismatched peer cleanly rather than corrupting data.
+var Current = Version{Major: 3, Minor: 0}
 
 // Bytes returns the version as a 2-byte value.
 func (v Version) Bytes() []byte {

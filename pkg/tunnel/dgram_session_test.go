@@ -168,8 +168,9 @@ func TestDatagramSealNonceBudget(t *testing.T) {
 }
 
 // TestInitializeKeysNoDatagramState guards against the stream path accidentally
-// creating datagram state. The TCP/stream InitializeKeys must leave the datagram
-// fields nil.
+// creating datagram epoch/replay state. The TCP/stream InitializeKeys must leave the
+// datagram-specific fields nil; the nonce prefixes are now shared (both transports
+// derive a nonce) and must be populated.
 func TestInitializeKeysNoDatagramState(t *testing.T) {
 	s, err := NewSession(RoleInitiator)
 	if err != nil {
@@ -179,7 +180,10 @@ func TestInitializeKeysNoDatagramState(t *testing.T) {
 	if err := s.InitializeKeys(ms, constants.CipherSuiteAES256GCM); err != nil {
 		t.Fatalf("init keys: %v", err)
 	}
-	if s.dgramEpochs != nil || s.dgramReplay != nil || s.sendNoncePrefix != nil || s.recvNoncePrefix != nil {
-		t.Fatal("stream InitializeKeys must not create datagram state")
+	if s.dgramEpochs != nil || s.dgramReplay != nil {
+		t.Fatal("stream InitializeKeys must not create datagram epoch/replay state")
+	}
+	if len(s.sendNoncePrefix) != constants.DatagramNoncePrefixSize || len(s.recvNoncePrefix) != constants.DatagramNoncePrefixSize {
+		t.Fatal("stream InitializeKeys must derive the nonce prefixes")
 	}
 }

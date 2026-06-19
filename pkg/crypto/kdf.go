@@ -354,6 +354,39 @@ func DeriveDatagramNoncePrefixes(masterSecret []byte) (initiatorPrefix, responde
 	return initiatorPrefix, responderPrefix, nil
 }
 
+// DeriveStreamNoncePrefixes derives the two per-direction nonce prefixes for the
+// stream transport. Like the datagram path, the stream no longer transmits the
+// AEAD nonce: it builds nonce = prefix || seq(8B), so both peers must agree on the
+// prefix. Derived from the master secret under a stream-specific domain separator
+// and split by role: the initiator seals with initiatorPrefix and opens with
+// responderPrefix, and vice versa.
+//
+// Parameters:
+//   - masterSecret: The CH-KEM shared secret
+//
+// Returns:
+//   - initiatorPrefix, responderPrefix: DatagramNoncePrefixSize-byte prefixes
+//   - error: Non-nil if derivation fails
+func DeriveStreamNoncePrefixes(masterSecret []byte) (initiatorPrefix, responderPrefix []byte, err error) {
+	if len(masterSecret) != constants.CHKEMSharedSecretSize {
+		return nil, nil, qerrors.NewCryptoError("DeriveStreamNoncePrefixes", qerrors.ErrInvalidKeySize)
+	}
+
+	material, err := DeriveKey(
+		constants.DomainSeparatorStreamNonce,
+		masterSecret,
+		2*constants.DatagramNoncePrefixSize,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	initiatorPrefix = material[:constants.DatagramNoncePrefixSize]
+	responderPrefix = material[constants.DatagramNoncePrefixSize:]
+
+	return initiatorPrefix, responderPrefix, nil
+}
+
 // DeriveResumptionSecret derives a new master secret for resumed sessions.
 //
 // This combines the PSK (ticket secret) with a fresh KEM shared secret,

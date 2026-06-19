@@ -28,7 +28,7 @@ func (s *Session) DatagramSealTo(dst, aad []byte, seq uint64, plaintext []byte) 
 		return nil, qerrors.ErrNonceExhausted
 	}
 	var nonce [constants.AESNonceSize]byte
-	datagramNonce(nonce[:], prefix, seq)
+	buildAEADNonce(nonce[:], prefix, seq)
 	out, err := cur.sendCipher.SealWithNonceTo(dst, nonce[:], plaintext, aad)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (s *Session) DatagramOpenTo(dst []byte, epoch uint8, seq uint64, ciphertext
 		return nil, qerrors.ErrAuthenticationFailed
 	}
 	var nonce [constants.AESNonceSize]byte
-	datagramNonce(nonce[:], prefix, seq)
+	buildAEADNonce(nonce[:], prefix, seq)
 	pt, err := cipher.OpenWithNonceTo(dst, nonce[:], ciphertext, aad)
 	if err != nil {
 		return nil, err
