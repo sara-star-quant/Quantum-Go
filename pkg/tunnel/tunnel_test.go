@@ -182,6 +182,33 @@ func TestReplayWindow(t *testing.T) {
 	}
 }
 
+// TestReplayWindowWideReorder verifies the widened (1024-bit) stream window accepts
+// out-of-order packets the original 64-bit window would have dropped as too old.
+func TestReplayWindowWideReorder(t *testing.T) {
+	rw := tunnel.NewReplayWindow()
+
+	// Establish a high sequence number as the window head.
+	if !rw.Check(2000) {
+		t.Fatal("first packet should be accepted")
+	}
+
+	// A packet 1023 behind the head is still inside the 1024-wide window; the old
+	// 64-wide window would have rejected it as too old.
+	if !rw.Check(2000 - 1023) {
+		t.Error("sequence within the widened window should be accepted")
+	}
+
+	// A packet 1024 behind the head has fallen off the trailing edge.
+	if rw.Check(2000 - 1024) {
+		t.Error("sequence beyond the window should be rejected as too old")
+	}
+
+	// Re-delivering the accepted in-window packet is a replay.
+	if rw.Check(2000 - 1023) {
+		t.Error("duplicate within the window should be rejected")
+	}
+}
+
 func TestSessionClose(t *testing.T) {
 	session, err := tunnel.NewSession(tunnel.RoleInitiator)
 	if err != nil {

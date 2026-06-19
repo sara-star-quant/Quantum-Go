@@ -113,3 +113,13 @@ func TestDatagramReplayWindow_NeverResetAcrossEpochs(t *testing.T) {
 		t.Fatal("boundary seq replayable after rekey")
 	}
 }
+
+// BenchmarkReplayWindowCheck measures the stream replay-window check at its
+// widened 1024-bit width: the common in-order path advances the multi-word
+// bitmap by one each call.
+func BenchmarkReplayWindowCheck(b *testing.B) {
+	rw := NewReplayWindow()
+	for i := 0; i < b.N; i++ {
+		rw.Check(uint64(i))
+	}
+}
