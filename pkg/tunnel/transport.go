@@ -75,6 +75,12 @@ type TransportConfig struct {
 	// key the client requires the server to prove possession of. Nil means
 	// unauthenticated (default).
 	PinnedServerKey *chkem.PublicKey
+
+	// RequireStaticAuth, when set on a server (Listen), rejects any client that
+	// does not authenticate the server via static-key pinning. It requires
+	// StaticKeyPair to be set. Default false admits unpinned clients alongside
+	// pinned ones.
+	RequireStaticAuth bool
 }
 
 // RateLimitConfig holds configuration for rate limiting.
@@ -732,6 +738,9 @@ func (l *Listener) checkIPRateLimit(conn net.Conn, remoteIP string) (net.Conn, e
 
 // createSession creates a new responder session with observer.
 func (l *Listener) createSession() (*Session, error) {
+	if l.config.RequireStaticAuth && l.config.StaticKeyPair == nil {
+		return nil, qerrors.ErrStaticAuthMisconfigured
+	}
 	session, err := NewSession(RoleResponder)
 	if err != nil {
 		return nil, err
@@ -741,6 +750,7 @@ func (l *Listener) createSession() (*Session, error) {
 		observer.OnSessionStart()
 	}
 	session.StaticKeyPair = l.config.StaticKeyPair
+	session.RequireStaticAuth = l.config.RequireStaticAuth
 	return session, nil
 }
 

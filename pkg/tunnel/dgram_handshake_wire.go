@@ -99,6 +99,7 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, ds *datagramSession, fir
 		return
 	}
 	session.StaticKeyPair = e.staticIdentity
+	session.RequireStaticAuth = e.requireStaticAuth
 	idx, err := e.registry.add(ds)
 	if err != nil {
 		e.registry.removeSource(src.String())

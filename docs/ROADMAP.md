@@ -461,6 +461,10 @@ pinning (stream path) now closes it for the pinned-server case; the rest follows
 - [x] `quantum-tunnel keygen` CLI for static-key generation and pin distribution -
   writes a base64 secret seed (mode 0600) and public pin, prints an `SHA256:`
   fingerprint, and re-derives the pin from a seed via `--pub-from`
+- [x] Server-side require-auth (`TransportConfig.RequireStaticAuth`, datagram
+  `WithRequireStaticAuth`) - rejects unpinned clients with `ErrStaticAuthRequired`
+  (stream) or a retry-ceiling timeout (datagram); misconfiguration without a static
+  key fails closed with `ErrStaticAuthMisconfigured`
 - [ ] Document authentication modes in SECURITY.md
 
 **Reference:** WireGuard static key authentication, TLS 1.3 PSK mode (RFC 8446 Section 2.2)

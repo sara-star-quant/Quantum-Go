@@ -14,11 +14,16 @@ import (
 // client session (nil on failure), the server session surfaced on acceptCh (nil
 // if the server never established), and the dial error.
 func dialDgramAuth(t *testing.T, seed uint64, drop, dup, reorder float64, serverKP *chkem.KeyPair, clientPin *chkem.PublicKey) (client, server *Session, dialErr error) {
+	return dialDgramAuthOpts(t, seed, drop, dup, reorder, serverKP, clientPin, false)
+}
+
+func dialDgramAuthOpts(t *testing.T, seed uint64, drop, dup, reorder float64, serverKP *chkem.KeyPair, clientPin *chkem.PublicKey, requireAuth bool) (client, server *Session, dialErr error) {
 	t.Helper()
 	connA, connB := memPipe(seed, drop, dup, reorder)
 	epA := mustEndpoint(t, connA)
 	epB := mustEndpoint(t, connB)
 	epB.staticIdentity = serverKP
+	epB.requireStaticAuth = requireAuth
 	epA.pinnedServerKey = clientPin
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
 		ep.rtoInitial = 2 * time.Millisecond
@@ -111,5 +116,47 @@ func TestDgramStaticAuthServerServesUnpinnedClient(t *testing.T) {
 	}
 	if client.State() != SessionStateEstablished || server.State() != SessionStateEstablished {
 		t.Fatalf("not established: client=%v server=%v", client.State(), server.State())
+	}
+}
+
+func TestDgramRequireStaticAuthAcceptsPinnedClient(t *testing.T) {
+	serverKP, _, err := chkem.GenerateStaticKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateStaticKeyPair: %v", err)
+	}
+	client, server, dialErr := dialDgramAuthOpts(t, 9, 0, 0, 0, serverKP, serverKP.PublicKey(), true)
+	if dialErr != nil {
+		t.Fatalf("require-auth with a pinned client failed: %v", dialErr)
+	}
+	if client == nil || server == nil {
+		t.Fatal("nil session(s)")
+	}
+	if client.State() != SessionStateEstablished || server.State() != SessionStateEstablished {
+		t.Fatalf("not established: client=%v server=%v", client.State(), server.State())
+	}
+}
+
+func TestDgramRequireStaticAuthRejectsUnpinnedClient(t *testing.T) {
+	serverKP, _, err := chkem.GenerateStaticKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateStaticKeyPair: %v", err)
+	}
+	// Client does not pin: the responder drops its unauthenticated ClientHello, so
+	// the dial fails closed at the retry ceiling rather than establishing.
+	client, server, dialErr := dialDgramAuthOpts(t, 4, 0, 0, 0, serverKP, nil, true)
+	if dialErr == nil {
+		t.Fatal("require-auth responder established a session for an unpinned client")
+	}
+	if client != nil || server != nil {
+		t.Error("require-auth responder surfaced a session for an unpinned client")
+	}
+}
+
+func TestDgramRequireStaticAuthMisconfigured(t *testing.T) {
+	// WithRequireStaticAuth without WithStaticIdentity must fail construction.
+	connA, _ := memPipe(1, 0, 0, 0)
+	_, err := NewDatagramEndpoint(connA, WithRequireStaticAuth())
+	if !errors.Is(err, qerrors.ErrStaticAuthMisconfigured) {
+		t.Fatalf("misconfigured require-auth: got %v, want ErrStaticAuthMisconfigured", err)
 	}
 }

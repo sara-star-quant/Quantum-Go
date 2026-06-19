@@ -138,7 +138,9 @@ The client encapsulates a second CH-KEM leg to the pinned key and folds the secr
 
 The wire alert stays generic, so a prober that guesses pins learns nothing.
 
-**Not yet provided**: client authentication and PSK-based mutual authentication (planned: v0.0.13). Static-key pinning authenticates the server to the client only; it does not let a server verify a client. For mutual authentication today, layer it externally.
+**Requiring authentication (server side)**: by default a server with a static identity still serves clients that do not pin it (the static leg is opt-in from the client). Set `TransportConfig.RequireStaticAuth` (stream) or `tunnel.WithRequireStaticAuth()` (datagram) to reject any client that does not authenticate the server, closing a silent downgrade where a misconfigured or stripped client connects unauthenticated. An unpinned client then fails closed: stream with `ErrStaticAuthRequired`, datagram as a retry-ceiling timeout. Requiring auth without a static key is a misconfiguration that fails closed (`ErrStaticAuthMisconfigured`). This requires clients to prove they used the server's public key; it is not client identity verification (the key is public).
+
+**Not yet provided**: client authentication and PSK-based mutual authentication (planned: v0.0.13). Static-key pinning authenticates the server to the client only; it does not let a server verify a client identity. For mutual authentication today, layer it externally.
 
 ---
 

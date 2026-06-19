@@ -85,6 +85,15 @@ var (
 	// ErrServerKeyMismatch indicates the server did not prove possession of the
 	// pinned static key (wrong key, or static auth required but not negotiated).
 	ErrServerKeyMismatch = errors.New("protocol: server static key mismatch")
+
+	// ErrStaticAuthRequired indicates the server requires every client to
+	// authenticate it via static-key pinning, but the client sent no static
+	// ciphertext (an unpinned or downgraded client).
+	ErrStaticAuthRequired = errors.New("protocol: static-key authentication required")
+
+	// ErrStaticAuthMisconfigured indicates a server is set to require static-key
+	// authentication without holding a static identity to prove.
+	ErrStaticAuthMisconfigured = errors.New("protocol: require static auth set without a static key pair")
 )
 
 // Sentinel errors for tunnel operations
