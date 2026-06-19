@@ -177,9 +177,15 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 	}
 
 	// Static-key authentication: encapsulate to the pinned server static key so
-	// only the holder of the matching private key can derive the same secret.
+	// only the holder of the matching private key can derive the same secret. The
+	// static leg uses the pinned key's own suite, which is independent of the
+	// negotiated ephemeral suite.
 	if h.session.PinnedServerKey != nil {
-		staticCT, staticSecret, err := h.session.kemSuite.Encapsulate(h.session.PinnedServerKey, chkem.RoleInitiator)
+		staticSuite, err := resolveKEMSuite(uint16(h.session.PinnedServerKey.Suite()))
+		if err != nil {
+			return nil, err
+		}
+		staticCT, staticSecret, err := staticSuite.Encapsulate(h.session.PinnedServerKey, chkem.RoleInitiator)
 		if err != nil {
 			return nil, err
 		}
@@ -505,11 +511,17 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	// rejection means a wrong key yields a pseudo-random secret (no error/oracle);
 	// the mismatch surfaces later as a Finished MAC failure.
 	if h.session.StaticKeyPair != nil && len(msg.CHKEMStaticCiphertext) > 0 {
-		staticCT, err := h.session.kemSuite.ParseCiphertext(msg.CHKEMStaticCiphertext)
+		// The static leg uses our static identity's own suite, independent of the
+		// negotiated ephemeral suite.
+		staticSuite, err := resolveKEMSuite(uint16(h.session.StaticKeyPair.Suite()))
 		if err != nil {
 			return err
 		}
-		staticSecret, err := h.session.kemSuite.Decapsulate(staticCT, h.session.StaticKeyPair, chkem.RoleResponder)
+		staticCT, err := staticSuite.ParseCiphertext(msg.CHKEMStaticCiphertext)
+		if err != nil {
+			return err
+		}
+		staticSecret, err := staticSuite.Decapsulate(staticCT, h.session.StaticKeyPair, chkem.RoleResponder)
 		if err != nil {
 			return err
 		}
