@@ -124,9 +124,10 @@ func (s *Session) datagramSendEpoch() uint8 {
 	return s.dgramEpochs.cur.epoch
 }
 
-// datagramNonce builds the 12-byte AEAD nonce prefix || seq(8B BE) for the given
-// prefix into dst (which must be 12 bytes).
-func datagramNonce(dst, prefix []byte, seq uint64) {
+// buildAEADNonce builds the 12-byte AEAD nonce prefix || seq(8B BE) into dst
+// (which must be 12 bytes). Shared by the stream and datagram transports, both of
+// which derive the nonce rather than transmitting it.
+func buildAEADNonce(dst, prefix []byte, seq uint64) {
 	copy(dst[:constants.DatagramNoncePrefixSize], prefix)
 	binary.BigEndian.PutUint64(dst[constants.DatagramNoncePrefixSize:], seq)
 }
@@ -153,7 +154,7 @@ func (s *Session) DatagramSeal(aad []byte, seq uint64, plaintext []byte) ([]byte
 	}
 
 	var nonce [constants.AESNonceSize]byte
-	datagramNonce(nonce[:], prefix, seq)
+	buildAEADNonce(nonce[:], prefix, seq)
 	ct, err := cipher.SealWithNonce(nonce[:], plaintext, aad)
 	if err != nil {
 		return nil, err
@@ -177,7 +178,7 @@ func (s *Session) DatagramOpen(epoch uint8, seq uint64, ciphertext, aad []byte) 
 	}
 
 	var nonce [constants.AESNonceSize]byte
-	datagramNonce(nonce[:], prefix, seq)
+	buildAEADNonce(nonce[:], prefix, seq)
 	pt, err := cipher.OpenWithNonce(nonce[:], ciphertext, aad)
 	if err != nil {
 		return nil, err

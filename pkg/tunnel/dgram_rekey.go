@@ -69,7 +69,7 @@ func (s *Session) sealRekeyControl(msgType protocol.MessageType, payload []byte)
 		return nil, 0, qerrors.ErrInvalidState
 	}
 	var nonce [constants.AESNonceSize]byte
-	datagramNonce(nonce[:], prefix, seq)
+	buildAEADNonce(nonce[:], prefix, seq)
 	ct, err := cur.sendCipher.SealWithNonce(nonce[:], payload, rekeyAAD(msgType, cur.epoch, seq))
 	if err != nil {
 		return nil, 0, err
@@ -95,7 +95,7 @@ func (s *Session) openRekeyControl(msgType protocol.MessageType, epoch uint8, bo
 		return nil, qerrors.ErrAuthenticationFailed
 	}
 	var nonce [constants.AESNonceSize]byte
-	datagramNonce(nonce[:], prefix, seq)
+	buildAEADNonce(nonce[:], prefix, seq)
 	return cipher.OpenWithNonce(nonce[:], body[8:], rekeyAAD(msgType, epoch, seq))
 }
 

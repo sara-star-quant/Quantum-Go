@@ -126,6 +126,12 @@ type Session struct {
 	sendSeq atomic.Uint64
 	recvSeq atomic.Uint64 //nolint:unused // Reserved for future bidirectional validation
 
+	// sendEpochStartSeq is the send sequence at which the current send cipher took
+	// over. seq - sendEpochStartSeq is the per-epoch packet count, bounding how much
+	// the current key seals (the stream nonce is derived, so the AEAD's own counter
+	// no longer tracks this). Mirrors the datagram epoch startSeq.
+	sendEpochStartSeq atomic.Uint64
+
 	// Replay protection window
 	replayWindow *ReplayWindow
 
@@ -154,13 +160,17 @@ type Session struct {
 	pendingRecvCipher   *crypto.AEAD   // New receive cipher waiting for activation
 	pendingSendCipher   *crypto.AEAD   // New send cipher waiting for activation (initiator)
 
+	// Per-direction AEAD nonce prefixes. Both transports derive the nonce as
+	// prefix || seq instead of transmitting it; the prefix is fixed for the session
+	// (derived once from the initial master secret). See InitializeKeys (stream) and
+	// InitializeDatagramKeys (datagram).
+	sendNoncePrefix []byte
+	recvNoncePrefix []byte
+
 	// Datagram transport state (nil/unused on the TCP/stream path). The datagram
-	// path derives nonces (prefix || seq) instead of transmitting them, selects
-	// the receive cipher by an explicit per-frame epoch (dgramEpochs) instead of
-	// the stream trial-decrypt promote/discard, and tracks replay in a wide,
-	// never-reset window (dgramReplay). See dgram_session.go.
-	sendNoncePrefix   []byte
-	recvNoncePrefix   []byte
+	// path selects the receive cipher by an explicit per-frame epoch (dgramEpochs)
+	// instead of the stream trial-decrypt promote/discard, and tracks replay in a
+	// wide, never-reset window (dgramReplay). See dgram_session.go.
 	dgramEpochs       *datagramEpochState
 	dgramReplay       *DatagramReplayWindow
 	lastActivityNanos atomic.Int64
@@ -286,6 +296,23 @@ func (s *Session) InitializeKeys(masterSecret []byte, cipherSuite constants.Ciph
 	// Zeroize key material (sendKey/recvKey are aliases to initiatorKey/responderKey)
 	crypto.ZeroizeMultiple(initiatorKey, responderKey)
 
+	// Derive the per-direction nonce prefixes. The stream no longer transmits the
+	// AEAD nonce; it builds nonce = prefix || seq. The prefix is fixed for the
+	// session (not re-derived on rekey), which is safe because seq is global and
+	// monotonic, so the nonce never repeats.
+	initiatorPrefix, responderPrefix, err := crypto.DeriveStreamNoncePrefixes(masterSecret)
+	if err != nil {
+		return err
+	}
+	if s.Role == RoleInitiator {
+		s.sendNoncePrefix = initiatorPrefix
+		s.recvNoncePrefix = responderPrefix
+	} else {
+		s.sendNoncePrefix = responderPrefix
+		s.recvNoncePrefix = initiatorPrefix
+	}
+	s.sendEpochStartSeq.Store(s.sendSeq.Load())
+
 	s.EstablishedAt = time.Now()
 	s.SetState(SessionStateEstablished)
 
@@ -300,8 +327,12 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 	// The send cipher is switched to the new key explicitly at rekey time (initiator in
 	// ProcessRekeyResponse; responder in ActivateRekeySend after its response is sent),
 	// never lazily by sequence number — see the rekey trial-decryption design in Decrypt.
+	// Read the cipher, nonce prefix, and epoch start together so the key-wear guard and
+	// the derived nonce stay consistent with one another across a concurrent rekey.
 	s.mu.RLock()
 	cipher := s.sendCipher
+	prefix := s.sendNoncePrefix
+	startSeq := s.sendEpochStartSeq.Load()
 	s.mu.RUnlock()
 
 	observer := s.observer
@@ -320,11 +351,27 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 		return nil, 0, qerrors.ErrInvalidState
 	}
 
-	// Use sequence number as additional authenticated data
+	// Hard cap on how many records this epoch's key seals. NeedsRekey starts a rekey
+	// well before this; reaching the cap means it could not complete, so refuse rather
+	// than overrun the key's safe usage limit. (The AEAD's own counter no longer tracks
+	// this because the stream uses SealWithNonce.) The seq >= startSeq guard avoids a
+	// uint64 underflow at the rekey boundary, where this seq was assigned just before a
+	// concurrent rekey advanced sendEpochStartSeq (seq < startSeq, so per-epoch count 0).
+	if seq >= startSeq && seq-startSeq >= constants.MaxPacketsBeforeRekey {
+		if done != nil {
+			done(qerrors.ErrNonceExhausted)
+		}
+		return nil, 0, qerrors.ErrNonceExhausted
+	}
+
+	// Use sequence number as additional authenticated data, and derive the AEAD nonce
+	// as prefix || seq (not transmitted on the wire).
 	aad := make([]byte, 8)
 	binary.BigEndian.PutUint64(aad, seq)
 
-	ciphertext, err := cipher.Seal(plaintext, aad)
+	var nonce [constants.AESNonceSize]byte
+	buildAEADNonce(nonce[:], prefix, seq)
+	ciphertext, err := cipher.SealWithNonce(nonce[:], plaintext, aad)
 	if err != nil {
 		if done != nil {
 			done(err)
@@ -349,6 +396,7 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 	s.mu.RLock()
 	cipher := s.recvCipher
 	pendingCipher := s.pendingRecvCipher
+	prefix := s.recvNoncePrefix
 	s.mu.RUnlock()
 
 	if cipher == nil {
@@ -372,11 +420,15 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 		_, done = observer.OnDecrypt(context.Background(), len(ciphertext))
 	}
 
-	// Use sequence number as additional authenticated data
+	// Use sequence number as additional authenticated data, and derive the AEAD nonce
+	// as prefix || seq (the sender did not transmit it). The same nonce serves both the
+	// current and the pending cipher; only the key differs.
 	aad := make([]byte, 8)
 	binary.BigEndian.PutUint64(aad, seq)
+	var nonce [constants.AESNonceSize]byte
+	buildAEADNonce(nonce[:], prefix, seq)
 
-	plaintext, err := cipher.Open(ciphertext, aad)
+	plaintext, err := cipher.OpenWithNonce(nonce[:], ciphertext, aad)
 	if err != nil && pendingCipher != nil {
 		// Rekey trial decryption: the peer may have switched to its new send key
 		// before our matching receive key took over. Try the pending (new) cipher;
@@ -384,7 +436,7 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 		// receive cipher. On an in-order stream this happens exactly once, at the
 		// old->new boundary. (Rekey state/master-secret finalization is independent
 		// and already done at our own send-cipher switch.)
-		if pt, perr := pendingCipher.Open(ciphertext, aad); perr == nil {
+		if pt, perr := pendingCipher.OpenWithNonce(nonce[:], ciphertext, aad); perr == nil {
 			s.promotePendingRecvCipher()
 			plaintext, err = pt, nil
 		}
@@ -422,8 +474,10 @@ func (s *Session) NeedsRekey() bool {
 		return false
 	}
 
-	// Check nonce exhaustion
-	if s.sendCipher.NeedsRekey() {
+	// Per-epoch key-wear: rekey before the current key seals too many records. The
+	// stream derives its nonce (SealWithNonce), so the AEAD's own counter no longer
+	// tracks this; use seq - sendEpochStartSeq like the datagram path.
+	if s.sendSeq.Load()-s.sendEpochStartSeq.Load() >= datagramRekeyHighWater {
 		return true
 	}
 
@@ -483,6 +537,7 @@ func (s *Session) Rekey(newMasterSecret []byte) error {
 	// Atomically swap ciphers
 	s.sendCipher = newSendCipher
 	s.recvCipher = newRecvCipher
+	s.sendEpochStartSeq.Store(s.sendSeq.Load())
 
 	// Update master secret
 	crypto.Zeroize(s.masterSecret)
@@ -739,6 +794,7 @@ func (s *Session) ProcessRekeyResponse(ciphertextBytes []byte) error {
 	// application data must use the new key. The receive cipher is kept pending and
 	// switched lazily via trial decryption once the responder's new-key traffic arrives.
 	s.sendCipher = newSendCipher
+	s.sendEpochStartSeq.Store(s.sendSeq.Load())
 	s.pendingRecvCipher = newRecvCipher
 	s.pendingRekeySecret = newSecret
 
@@ -812,6 +868,7 @@ func (s *Session) ActivatePendingKeys() {
 	if s.pendingSendCipher != nil {
 		s.sendCipher = s.pendingSendCipher
 		s.pendingSendCipher = nil
+		s.sendEpochStartSeq.Store(s.sendSeq.Load())
 	}
 	s.replayWindow = NewReplayWindow()
 
@@ -833,6 +890,7 @@ func (s *Session) ActivateRekeySend() {
 	if s.pendingSendCipher != nil {
 		s.sendCipher = s.pendingSendCipher
 		s.pendingSendCipher = nil
+		s.sendEpochStartSeq.Store(s.sendSeq.Load())
 	}
 
 	// Send direction has switched to the new key, so the rekey handshake is complete

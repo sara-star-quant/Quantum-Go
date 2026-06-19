@@ -106,6 +106,11 @@ const (
 	// DomainSeparatorPSK is used to fold a pre-shared key into the master secret
 	// for mutual authentication.
 	DomainSeparatorPSK = "CH-KEM-Tunnel-PSK"
+
+	// DomainSeparatorStreamNonce derives the stream transport's per-direction AEAD
+	// nonce prefixes. Kept distinct from the datagram label so the two transports
+	// derive independent prefixes.
+	DomainSeparatorStreamNonce = "CH-KEM-Tunnel-Stream-Nonce"
 )
 
 // PSKSize is the required length of a pre-shared key in bytes (256-bit).

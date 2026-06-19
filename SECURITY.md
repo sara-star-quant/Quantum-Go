@@ -92,7 +92,7 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 | Forward Secrecy           | Provided            | Ephemeral keys per session             |
 | Replay Protection         | Provided            | Sliding window (1024, multi-word)      |
 | Endpoint Authentication   | Partial/Opt-in      | Static-key pinning (server) + PSK (mutual) |
-| Nonce-Misuse Resistance   | Partial/Conditional | Sequence-based nonces (must not reuse) |
+| Nonce-Misuse Resistance   | Partial/Conditional | Session-bound derived nonce (prefix \|\| seq), not transmitted |
 | Side-Channel Resistance   | Partial/Conditional | Relies on Go stdlib (audited)          |
 | Key Compromise Impersonation | Not provided     | Not designed for (ephemeral keys)      |
 
@@ -183,14 +183,7 @@ The client advertises the identity label so the server selects the matching key,
    - There is **no certificate- or token-based client identity**: PSK proves shared-secret possession, not a per-client asymmetric credential.
    - For per-client asymmetric identity today, layer it externally (mTLS-style certificates).
 
-2. **AEAD nonce prefix is zero** (planned: a later stream-hardening release):
-   - Nonce format is `[0000 || counter(8B)]` -- the upper 4 bytes are not session-bound
-   - Two sessions with the same encryption key would produce identical nonce sequences
-   - Risk is low in practice because traffic keys are derived from unique shared secrets
-   - The datagram transport already derives a session-bound nonce prefix; this gap is the stream path only
-   - Full fix: use session ID bytes as nonce prefix
-
-3. **Resumption tickets not bound to server identity** (planned: a later stream-hardening release):
+2. **Resumption tickets not bound to server identity** (planned: a later stream-hardening release):
    - Session tickets contain only master secret and cipher suite
    - A captured ticket could theoretically be replayed against a different server
    - Risk is low: requires the attacker to know the ticket encryption key
@@ -198,25 +191,25 @@ The client advertises the identity label so the server selects the matching key,
 
 #### Implementation-level
 
-4. **Nonce management**:
+3. **Nonce management**:
    - Sequence-based nonces are safe for single-threaded or properly synchronized use
    - **DO NOT** use same session keys from multiple goroutines without external locking
    - Nonce exhaustion triggers automatic rekey
 
-5. **Timing side-channels**:
+4. **Timing side-channels**:
    - ML-KEM implementation (cloudflare/circl) uses constant-time operations
    - X25519 from Go stdlib is constant-time
    - **AES-GCM requires hardware AES-NI** for constant-time (CPU flags checked)
    - ChaCha20-Poly1305 is software-constant-time
 
-6. **Memory safety**:
+5. **Memory safety**:
    - Go runtime does not guarantee memory zeroization
    - Garbage collector may copy secrets to new locations
    - Swapping to disk may leak key material
    - Mitigation: Use HSM/TPM for long-term keys
    - v0.0.9 added `runtime.KeepAlive` to prevent dead store elimination of `Zeroize`
 
-7. **Random number generation**:
+6. **Random number generation**:
    - Uses `crypto/rand` (Linux: getrandom syscall)
    - Ensure `/dev/urandom` is properly seeded on older systems
    - In virtualized environments, verify entropy availability
