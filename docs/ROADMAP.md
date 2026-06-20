@@ -5,16 +5,15 @@
 
 ---
 
-## Current Status: v0.0.15
+## Current Status: v0.0.16
 
-> **Direction (Q3 2026).** Crypto-agility has landed: the KEM is a negotiated, pluggable suite with a
-> HelloRetryRequest fallback and X-Wing (ML-KEM-768 + X25519) as a standardized second suite (protocol
-> 5.0), on top of endpoint authentication, role binding, CI security, and the stream-security parity
-> work (resumption ticket server binding is the one small remaining cleanup). The next arc is the
-> **assurance tier** - standards-conformance/interop, formal verification, a third-party audit, and real
-> FIPS 140-3 validation - the work that converts a working library into a buyable one. HQC code-based
-> diversification (CH-KEM v2) is deferred behind that arc and option-priced on a trusted HQC primitive
-> (circl `kem/hqc` or an audited pure-Go port), not pulled forward ahead of assurance.
+> **Direction (Q3 2026).** The **assurance tier** is well underway: a written wire-protocol specification,
+> published cross-implementation conformance vectors, and machine-checked ProVerif security proofs have
+> landed (v0.0.16), and an audit-readiness package with a govulncheck supply-chain gate is in place. The
+> remaining assurance work is a **third-party audit** and **real FIPS 140-3 / CMVP validation**. This sits
+> on crypto-agility (negotiated suites + X-Wing, protocol 5.0) and endpoint authentication from earlier
+> releases. HQC code-based diversification (CH-KEM v2) stays deferred and option-priced on a trusted HQC
+> primitive (circl `kem/hqc` or an audited pure-Go port), behind the assurance work.
 
 ## Strategic Priorities (valuation-driven)
 

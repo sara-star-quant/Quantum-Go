@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.16][] - 2026-06-20
+
+**Theme:** Assurance and verification. This release adds the evidence that turns a working library into an auditable one: a written wire-protocol specification, published cross-implementation conformance vectors, machine-checked formal security proofs, and an audit-readiness package. There is no wire or default-behavior change; the only new library API is seed-injected encapsulation for deterministic test vectors.
+
+### Added
+- **Wire protocol specification** (`docs/PROTOCOL.md`): a descriptive interop profile of the handshake, KEM-suite negotiation (CH-KEM-v1 and X-Wing with their combiner constructions), HelloRetryRequest and the RFC 8446 4.4.1 synthetic-hash transcript, the key schedule and Finished MAC, the authentication folds, the AEAD record layer, rekey, and the datagram transport, with normative references. An independent implementation can interoperate from it.
+- **Published conformance test vectors** (`testdata/conformance/`): machine-checkable known-answer vectors for the KEM suites, the combiner, the key schedule, the wire encoding, and the record layer, reproducible from the spec plus FIPS 203 / RFC 7748 / FIPS 202 / the X-Wing draft. Adds `crypto.MLKEMEncapsulateWithSeed` and exports `crypto.XWingEncapsulateWithSeed` for deterministic encapsulation; both are additive and leave the handshake unchanged.
+- **Machine-checked formal verification** (`docs/formal/`): ProVerif symbolic proofs of session-key secrecy, the hybrid "secure if either leg holds" guarantee, forward secrecy, and injective server authentication, with planted-flaw negative tests for non-vacuity and a path-filtered CI gate that never blocks ordinary commits.
+- **Audit-readiness package** (`docs/compliance/AUDIT_READINESS.md`): audit scope, a cryptographic inventory, a claims-to-evidence map, the supply-chain posture, known limitations, and one-command reproduction. Adds a `govulncheck` CI job (supply-chain scan, currently reporting no known vulnerabilities).
+
 ## [0.0.15][] - 2026-06-20
 
 **Theme:** Crypto-agility and X-Wing. The hardcoded CH-KEM becomes a negotiated, pluggable KEM suite, and the standardized X-Wing KEM (ML-KEM-768 + X25519) lands as a second, interop-friendly suite. Peers negotiate the suite on the wire with a HelloRetryRequest fallback and a downgrade-safe synthetic-hash transcript, and the wire length-prefixes the now suite-sized KEM material (protocol 5.0). The default handshake stays on CH-KEM-v1 and is byte-identical, so the change is opt-in.
@@ -351,7 +361,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.15...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.16...HEAD
+[0.0.16]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.15...v0.0.16
 [0.0.15]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.14...v0.0.15
 [0.0.14]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.13...v0.0.14
 [0.0.13]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.12...v0.0.13
