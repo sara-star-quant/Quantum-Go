@@ -1,0 +1,34 @@
+Quantum-Go formal verification results
+Tool: Proverif 2.05. Cryptographic protocol verifier, by Bruno Blanchet, Vincent Cheval, and Marc Sylvestre
+Protocol version verified: 5.0
+
+=== chkem_auth.pv ===
+RESULT inj-event(ClientAccept(sp,t)) ==> inj-event(ServerRunning(sp,t)) is true.
+RESULT not event(AuthDone) is false.
+
+=== chkem_fs.pv ===
+RESULT not attacker_p1(secretMsg[]) is true.
+RESULT not event(Done) is false.
+
+=== chkem_hybrid.pv ===
+RESULT not attacker(secretMsgA[]) is true.
+RESULT not attacker(secretMsgB[]) is true.
+RESULT not event(DoneH) is false.
+
+=== chkem_secrecy.pv ===
+RESULT not attacker(secretMsg[]) is true.
+RESULT not event(Done) is false.
+
+=== negative/auth_broken.pv ===
+RESULT inj-event(ClientAccept(sp,t)) ==> inj-event(ServerRunning(sp,t)) is false.
+RESULT (even event(ClientAccept(sp,t)) ==> event(ServerRunning(sp,t)) is false.)
+
+=== negative/fs_broken.pv ===
+RESULT not attacker_p1(secretMsg[]) is false.
+
+=== negative/hybrid_broken.pv ===
+RESULT not attacker(secretMsgA[]) is false.
+
+=== negative/secrecy_broken.pv ===
+RESULT not attacker(secretMsg[]) is false.
+

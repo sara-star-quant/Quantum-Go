@@ -1,0 +1,17 @@
+(* NEGATIVE: combiner forgets the KEM secrets and keys traffic off the public
+   transcript only. Secrecy MUST fail (attacker recovers the key). Load: -lib prelude. *)
+free secretMsg: bitstring [private].
+query attacker(secretMsg).
+let client(Spub: pkey) =
+  new esk: skey; new staticSs: bitstring; new nc: bitstring;
+  let ch = (pk(esk), aenc(Spub, staticSs), nc) in
+  out(net, ch);
+  in(net, sh: bitstring);
+  let master = kdfTraffic(TH((ch, sh))) in       (* BROKEN: no secret input *)
+  out(net, senc(secretMsg, master)).
+let server =
+  in(net, ch: bitstring);
+  let (epk: pkey, sc: bitstring, nc: bitstring) = ch in
+  new e: bitstring; new ns: bitstring;
+  out(net, (aenc(epk, e), ns)).
+process new lsk: skey; out(net, pk(lsk)); ( (! client(pk(lsk))) | (! server) )

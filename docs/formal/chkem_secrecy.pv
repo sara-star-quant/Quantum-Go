@@ -1,0 +1,46 @@
+(*
+  CH-KEM handshake - session-key secrecy (symbolic, Dolev-Yao). Load: -lib prelude.
+
+  The client encapsulates the ephemeral CH-KEM leg and a static leg to the pinned
+  server key, derives the master secret, and protects application data under the
+  traffic key. Proves the attacker cannot learn that data, and that an honest
+  session actually completes (non-vacuity).
+*)
+
+free secretMsg: bitstring [private].
+
+(* Session-key secrecy. *)
+query attacker(secretMsg).
+
+(* Reachability: an honest run completes (so secrecy is not vacuous). *)
+event Done.
+query event(Done).
+
+let client(Spub: pkey) =
+  new esk: skey;
+  new staticSs: bitstring;
+  new nc: bitstring;
+  let epk = pk(esk) in
+  let staticCt = aenc(Spub, staticSs) in
+  let ch = (epk, staticCt, nc) in
+  out(net, ch);
+  in(net, sh: bitstring);
+  let (ct: bitstring, ns: bitstring) = sh in
+  let ephSs = adec(ct, esk) in
+  let master = deriveMaster(ephSs, staticSs, TH((ch, sh))) in
+  event Done;
+  out(net, senc(secretMsg, kdfTraffic(master))).
+
+let server(lsk: skey) =
+  in(net, ch: bitstring);
+  let (epk: pkey, staticCt: bitstring, nc: bitstring) = ch in
+  new ephSs: bitstring;
+  new ns: bitstring;
+  let ct = aenc(epk, ephSs) in
+  out(net, (ct, ns)).
+
+process
+  new lsk: skey;
+  let Spub = pk(lsk) in
+  out(net, Spub);
+  ( (! client(Spub)) | (! server(lsk)) )

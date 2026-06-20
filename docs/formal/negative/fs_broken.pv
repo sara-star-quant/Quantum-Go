@@ -1,0 +1,12 @@
+(* NEGATIVE: master ignores the ephemeral secret. After the long-term key leaks,
+   forward secrecy MUST fail. Load: -lib prelude. *)
+free secretMsg: bitstring [private].
+query attacker(secretMsg).
+let session(Spub: pkey) =
+  new ephSs: bitstring; new staticSs: bitstring; new tr: bitstring;
+  let staticCt = aenc(Spub, staticSs) in
+  out(net, (staticCt, tr));
+  let master = authMaster(staticSs, tr) in       (* BROKEN: no ephemeral input *)
+  out(net, senc(secretMsg, kdfTraffic(master))).
+process new lsk: skey; let Spub = pk(lsk) in out(net, Spub);
+  ( (! session(Spub)) | phase 1; out(net, lsk) )

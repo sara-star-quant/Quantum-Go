@@ -1,0 +1,34 @@
+(*
+  CH-KEM forward secrecy (symbolic). Load: -lib prelude.
+
+  An honest session derives the master from a fresh ephemeral leg secret and a static
+  leg encapsulated to the server's long-term key. In phase 1 the long-term key leaks,
+  so the attacker can recover the static-leg secret. Forward secrecy: the session key
+  and the data under it stay secret because the fresh ephemeral leg secret is never
+  exposed. (The ephemeral secret is an honest value, not an attacker-injectable
+  ciphertext; preventing active ephemeral-leg substitution is the authenticated
+  handshake's job - chkem_auth.pv.)
+*)
+
+free secretMsg: bitstring [private].
+
+query attacker(secretMsg).
+
+event Done.
+query event(Done).
+
+let session(Spub: pkey) =
+  new ephSs: bitstring;
+  new staticSs: bitstring;
+  new tr: bitstring;
+  let staticCt = aenc(Spub, staticSs) in
+  out(net, (staticCt, tr));
+  let master = deriveMaster(ephSs, staticSs, tr) in
+  event Done;
+  out(net, senc(secretMsg, kdfTraffic(master))).
+
+process
+  new lsk: skey;
+  let Spub = pk(lsk) in
+  out(net, Spub);
+  ( (! session(Spub)) | phase 1; out(net, lsk) )

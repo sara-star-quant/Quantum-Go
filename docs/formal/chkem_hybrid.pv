@@ -1,0 +1,47 @@
+(*
+  CH-KEM hybrid combiner - "secure if EITHER leg holds" (symbolic). Load: -lib prelude.
+
+  The ephemeral exchange has two KEM legs (X25519 and ML-KEM). Each leg's shared
+  secret is honestly generated. Each variant hands the attacker ONE leg's secret
+  (and the public transcript) and shows the master secret, hence the protected data,
+  stays secret via the other leg. This is the combiner-level hybrid guarantee:
+  knowing one input does not reveal the derived key. The legs' secrets are themselves
+  shown unrecoverable in chkem_secrecy.pv; together they give the hybrid property.
+
+  (Modeling the legs' KEM secrets as fresh honest values, not attacker-encapsulated
+  ciphertexts, deliberately excludes active leg-substitution MitM, which the
+  authenticated handshake - chkem_auth.pv - is what prevents.)
+*)
+
+free secretMsgA: bitstring [private].   (* protected when leg A is known to the attacker *)
+free secretMsgB: bitstring [private].   (* protected when leg B is known to the attacker *)
+
+query attacker(secretMsgA).
+query attacker(secretMsgB).
+
+event DoneH.
+query event(DoneH).
+
+(* Leg A's secret leaked; secrecy must hold via leg B. *)
+let leakA =
+  new ssA: bitstring;
+  new ssB: bitstring;
+  new tr: bitstring;
+  out(net, ssA);
+  out(net, tr);
+  let master = deriveMaster(ssA, ssB, tr) in
+  event DoneH;
+  out(net, senc(secretMsgA, kdfTraffic(master))).
+
+(* Leg B's secret leaked; secrecy must hold via leg A. *)
+let leakB =
+  new ssA: bitstring;
+  new ssB: bitstring;
+  new tr: bitstring;
+  out(net, ssB);
+  out(net, tr);
+  let master = deriveMaster(ssA, ssB, tr) in
+  out(net, senc(secretMsgB, kdfTraffic(master))).
+
+process
+  ( (! leakA) | (! leakB) )
