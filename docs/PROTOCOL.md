@@ -300,6 +300,13 @@ different suite. The X-Wing suite (0x0002) MUST be byte-exact with draft-connoll
 implementation gates it against the published X-Wing test vectors (the SHAKE-128 digest of the spec
 vectors) as a conformance check.
 
+Published known-answer vectors live in `testdata/conformance/vectors.json` (see
+`testdata/conformance/README.md`). They cover the KEM suites (seed to public key; encapsulation coins to
+ciphertext and shared secret), the combiner, the key schedule and Finished verify_data, the authentication
+folds, the wire encoding of each handshake message, and the record layer. The vectors are reproducible from
+this specification plus FIPS 203, RFC 7748, FIPS 202, and the X-Wing draft, so an independent implementation
+can validate against them byte-for-byte.
+
 ## 12. Normative references
 
 - FIPS 203 - Module-Lattice-Based Key-Encapsulation Mechanism Standard (ML-KEM).

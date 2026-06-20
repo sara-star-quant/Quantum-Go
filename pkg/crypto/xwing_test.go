@@ -66,7 +66,7 @@ func TestXWingConformanceVectors(t *testing.T) {
 		_, _ = h.Read(eseed[:])
 		writeHexX(w, "eseed", eseed[:])
 
-		ct, ss, err := xwingEncapsulateWithSeed(pk, eseed[:])
+		ct, ss, err := XWingEncapsulateWithSeed(pk, eseed[:])
 		if err != nil {
 			t.Fatalf("encapsulate: %v", err)
 		}
