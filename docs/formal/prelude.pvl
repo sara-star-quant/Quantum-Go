@@ -1,0 +1,23 @@
+(* Shared declarations for the CH-KEM ProVerif models. Load with: proverif -lib prelude *)
+type skey.
+type pkey.
+
+(* IND-CCA KEM as public-key encryption of a fresh shared secret. *)
+fun pk(skey): pkey.
+fun aenc(pkey, bitstring): bitstring.
+reduc forall sk: skey, m: bitstring; adec(aenc(pk(sk), m), sk) = m.
+
+(* One-way KDF / MAC, collision-resistant in the symbolic model. *)
+fun TH(bitstring): bitstring.                                 (* transcript hash *)
+fun deriveMaster(bitstring, bitstring, bitstring): bitstring.  (* eph_ss, static_ss, transcript *)
+fun kdfTraffic(bitstring): bitstring.
+fun macf(bitstring, bitstring): bitstring.
+
+(* symmetric encryption, only to express key secrecy *)
+fun senc(bitstring, bitstring): bitstring.
+reduc forall m: bitstring, k: bitstring; sdec(senc(m, k), k) = m.
+
+const clientTag: bitstring.
+const serverTag: bitstring.
+free net: channel.
+fun authMaster(bitstring, bitstring): bitstring.              (* static_ss, transcript -> master *)

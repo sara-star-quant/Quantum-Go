@@ -1,0 +1,10 @@
+(* NEGATIVE: combiner ignores leg B. With leg A leaked, secrecy MUST fail.
+   Load: -lib prelude. *)
+free secretMsgA: bitstring [private].
+query attacker(secretMsgA).
+let leakA =
+  new ssA: bitstring; new ssB: bitstring; new tr: bitstring;
+  out(net, ssA); out(net, tr);
+  let master = kdfTraffic(ssA) in                (* BROKEN: ignores ssB *)
+  out(net, senc(secretMsgA, master)).
+process ( ! leakA )

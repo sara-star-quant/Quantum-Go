@@ -1,0 +1,44 @@
+name: Formal Verification
+
+# Path-filtered: this runs ONLY when the formal models change, so a minutes-long
+# ProVerif proof never gates ordinary code or doc commits.
+on:
+  push:
+    paths:
+      - 'docs/formal/**'
+      - '.github/workflows/formal.yml'
+  pull_request:
+    paths:
+      - 'docs/formal/**'
+      - '.github/workflows/formal.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  proverif:
+    name: ProVerif symbolic proofs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      # Buildx with the docker-container driver is required for the gha build cache.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build the pinned ProVerif image
+        uses: docker/build-push-action@v6
+        with:
+          context: docs/formal
+          file: docs/formal/proverif.Dockerfile
+          tags: qgo-proverif
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify models (positives prove, negatives fail)
+        run: docs/formal/verify.sh
+
+      - name: Assert the committed proof log is up to date
+        run: git diff --exit-code docs/formal/RESULTS.txt

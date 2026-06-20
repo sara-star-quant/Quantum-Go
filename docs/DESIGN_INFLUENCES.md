@@ -58,9 +58,9 @@ The protocol draws on the shared knowledge base of post-quantum cryptography res
 
 **Concept:** Post-quantum hybrid protocols should be formally verified to ensure that the composition of classical and post-quantum primitives does not introduce subtle vulnerabilities absent in either component alone.
 
-**Our adaptation:** ProVerif/Tamarin model of the CH-KEM 4-message handshake (planned for v0.1.0 audit preparation).
+**Our adaptation (delivered):** a ProVerif symbolic model of the CH-KEM handshake machine-checks session-key secrecy, the hybrid "secure if either leg holds" guarantee, forward secrecy, and injective server authentication, with planted-flaw negative tests for non-vacuity. See [docs/formal/](formal/README.md). This is symbolic (Dolev-Yao) verification of the protocol composition; it complements the computational IND-CCA argument in [math/MATHEMATICAL_FOUNDATION.md](math/MATHEMATICAL_FOUNDATION.md).
 
-**Difference:** Lafourcade's analysis targets WireGuard's Noise IK pattern with bolt-on PQ KEM. Our model will cover CH-KEM's TLS 1.3-structured handshake, which has a fundamentally different message flow (4-message with explicit Finished messages vs. Noise IK's 2-message pattern).
+**Difference:** Lafourcade's analysis targets WireGuard's Noise IK pattern with bolt-on PQ KEM. Our model covers CH-KEM's TLS 1.3-structured handshake, which has a fundamentally different message flow (explicit Finished messages vs. Noise IK's 2-message pattern).
 
 ### 2.6 KEM-Based Handshake Optimization
 
