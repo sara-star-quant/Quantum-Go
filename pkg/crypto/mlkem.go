@@ -118,19 +118,28 @@ func (r *deterministicReader) Read(p []byte) (n int, err error) {
 //   - sharedSecret: The shared secret (32 bytes)
 //   - error: Non-nil if encapsulation fails
 func MLKEMEncapsulate(ek *MLKEMPublicKey) (ciphertext, sharedSecret []byte, err error) {
-	if ek == nil || ek.key == nil {
-		return nil, nil, qerrors.ErrInvalidPublicKey
-	}
-
-	ct := make([]byte, mlkem1024.CiphertextSize)
-	ss := make([]byte, mlkem1024.SharedKeySize)
-
-	// Generate random seed for encapsulation
+	// Sample the encapsulation coins from the CSPRNG, then run the deterministic core.
 	seed := make([]byte, mlkem1024.EncapsulationSeedSize)
 	if err := SecureRandom(seed); err != nil {
 		return nil, nil, qerrors.NewCryptoError("MLKEMEncapsulate", err)
 	}
+	return MLKEMEncapsulateWithSeed(ek, seed)
+}
 
+// MLKEMEncapsulateWithSeed is MLKEMEncapsulate with caller-supplied encapsulation
+// coins (FIPS 203 EncapsulationSeedSize bytes). It is deterministic in (ek, seed),
+// which conformance known-answer vectors and deterministic self-tests rely on.
+// Production code calls MLKEMEncapsulate, which samples the coins from the CSPRNG.
+func MLKEMEncapsulateWithSeed(ek *MLKEMPublicKey, seed []byte) (ciphertext, sharedSecret []byte, err error) {
+	if ek == nil || ek.key == nil {
+		return nil, nil, qerrors.ErrInvalidPublicKey
+	}
+	if len(seed) != mlkem1024.EncapsulationSeedSize {
+		return nil, nil, qerrors.ErrInvalidKeySize
+	}
+
+	ct := make([]byte, mlkem1024.CiphertextSize)
+	ss := make([]byte, mlkem1024.SharedKeySize)
 	ek.key.EncapsulateTo(ct, ss, seed)
 
 	return ct, ss, nil

@@ -70,12 +70,14 @@ func XWingEncapsulate(publicKey []byte) (ciphertext, sharedSecret []byte, err er
 	if err := SecureRandom(seed); err != nil {
 		return nil, nil, qerrors.NewCryptoError("XWing.Encapsulate", err)
 	}
-	return xwingEncapsulateWithSeed(publicKey, seed)
+	return XWingEncapsulateWithSeed(publicKey, seed)
 }
 
-// xwingEncapsulateWithSeed is the seed-injected core of XWingEncapsulate, used by
-// the conformance test to reproduce the published X-Wing vectors.
-func xwingEncapsulateWithSeed(publicKey, seed []byte) (ciphertext, sharedSecret []byte, err error) {
+// XWingEncapsulateWithSeed is the seed-injected core of XWingEncapsulate: it takes
+// caller-supplied encapsulation randomness (EncapsulationSeedSize bytes) and is
+// deterministic in (publicKey, seed), which conformance known-answer vectors rely on.
+// Production code calls XWingEncapsulate, which samples the seed from the CSPRNG.
+func XWingEncapsulateWithSeed(publicKey, seed []byte) (ciphertext, sharedSecret []byte, err error) {
 	if len(seed) != xwing.EncapsulationSeedSize {
 		return nil, nil, qerrors.ErrInvalidKeySize
 	}
