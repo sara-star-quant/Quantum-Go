@@ -6,9 +6,10 @@
 
 This document specifies the Quantum-Go tunnel handshake and KEM negotiation on the wire, so that an
 independent implementation can interoperate and so the construction maps to published cryptographic
-standards. It covers the handshake and key schedule; the data-plane record layer, rekey, and datagram
-fragmentation are specified separately (see `docs/datagram-transport.md` and a forthcoming data-plane
-section). This is a profile of an existing implementation, not an IETF standards-track document.
+standards. It covers the handshake and key schedule (Sections 1-6), the record layer, rekey, and the
+datagram transport (Sections 7-9), with further operational detail in `docs/datagram-transport.md` and
+`docs/datagram-dos.md`. This is a profile of an existing implementation, not an IETF standards-track
+document.
 
 ## 1. Scope and versions
 
@@ -37,7 +38,7 @@ Two framing functions are normative:
 - `TH(c_1, ..., c_m)` = `SHA3-256( len32(m) || len32(|c_1|) || c_1 || ... || len32(|c_m|) || c_m )`.
   (`TranscriptHash`.)
 
-All key-schedule labels are ASCII domain-separation strings, listed in Section 6.
+All key-schedule labels are ASCII domain-separation strings, listed in Section 10.
 
 ## 3. KEM suites
 
@@ -200,7 +201,81 @@ Both folds occur before key derivation and the Finished MAC, so they authenticat
 The ClientHello lists supported cipher suites; the responder selects one and echoes it in ServerHello. The
 FIPS build restricts selection to AES-256-GCM.
 
-## 7. Key-schedule labels (domain separation)
+## 7. Record layer (data plane)
+
+After the handshake, application data flows as encrypted records under the traffic keys (Section 5.4).
+Each direction has its own key and 4-byte nonce prefix.
+
+A Data record (type 0x10) on the stream is:
+
+```
+0x10 || len32(8 + |aead_ct|) || seq(8) || aead_ct
+```
+
+where `seq` is the 64-bit big-endian record sequence number (global and monotonic within the session) and
+`aead_ct` is the AEAD seal of the application plaintext. The 12-byte AEAD nonce is
+`nonce = nonce_prefix(4) || seq(8)`; the prefix derives from the master secret (Section 5.4) and is never
+transmitted, so the receiver reconstructs the nonce from the on-wire `seq` and its own derived prefix. The
+AAD is the 8-byte big-endian `seq`. The sequence number therefore both names the nonce and is
+authenticated, so a record cannot be reordered into a different nonce.
+
+Replay protection: the receiver tracks a 1024-bit sliding window over `seq`; a sequence below the window
+(too old) or already seen is rejected. The window persists across a rekey (the trial-decrypt cipher
+promotion of Section 8 does not reset it), so a replay of a rekey-boundary record fails.
+
+Key wear: an epoch's key seals at most `MaxPacketsBeforeRekey` (2^28) records. The implementation starts a
+rekey well before that; reaching the cap aborts rather than overrunning the key's safe usage.
+
+Keepalive and shutdown: Ping (0x12) / Pong (0x13) keepalives, a Close (0x14) graceful-shutdown
+notification, and an Alert (0xF0) carrying a sanitized error code all share the record layer. Alert text
+stays generic so a prober learns nothing.
+
+## 8. Rekey (key rotation with forward secrecy)
+
+A long-lived session rotates keys before the per-epoch limit. A rekey is a fresh KEM exchange ratcheted
+into the current master secret, so it is forward-secret and stays secure if either the old master or the
+fresh KEM holds.
+
+Stream rekey:
+
+1. The initiator generates a fresh KEM key pair in the session's suite and sends its public key plus an
+   activation sequence (`current_send_seq + 16`, leaving room for in-flight records) in a Rekey record
+   (type 0x11) sealed under the current key. The inner payload is `len16(|pubkey|) || pubkey ||
+   activation_seq(8)`.
+2. The responder encapsulates to the fresh public key, derives
+   `new_master = KDF("CH-KEM-Tunnel-Rekey", [ old_master, fresh_kem_secret ], 32)`, derives new traffic
+   keys, and returns the KEM ciphertext sealed under the current key.
+3. The initiator decapsulates and computes the same `new_master`. Each side switches its send cipher at
+   its own activation sequence.
+
+The receiver promotes keys by trial decryption: it keeps the current and the pending cipher and accepts a
+record under whichever opens it, so a record straddling the activation boundary is not lost. The replay
+window carries across the promotion (Section 7).
+
+Datagram rekey uses dedicated message types (DatagramRekeyInit 0x15, DatagramRekeyResponse 0x16) and is
+epoch-based: each rekey increments the epoch, the new keys derive from `new_master` as above, and the
+per-frame AAD binds the epoch, so a cross-epoch replay fails.
+
+## 9. Datagram transport
+
+The datagram (UDP) transport carries the same handshake and record semantics over an unreliable, unordered
+medium, adding fragmentation, reassembly, and return-routability anti-DoS. Full detail is in
+`docs/datagram-transport.md` and `docs/datagram-dos.md`; the wire-relevant points:
+
+- MTU budget 1200 bytes per datagram. A logical handshake message larger than one datagram is split into
+  fragments, each carrying `senderIndex`, `msgType`, `fragOffset`, `fragLength`, `totalLength`, and an
+  optional cookie, and reassembled from a per-message coverage map. The reassembler bounds the declared
+  total size (`DatagramMaxHandshakeMessageSize`, 4096), the concurrent in-progress messages per source,
+  and a per-message timeout.
+- Return-routability cookie: under half-open pressure the responder answers an unknown source with a
+  stateless Retry frame carrying a cookie the initiator must echo in its next ClientHello, proving it can
+  receive at its claimed address before the responder commits handshake state. The Retry is sent only when
+  the triggering datagram is at least as large as the Retry, so it cannot amplify.
+- Records use the same `nonce_prefix || seq` AEAD nonce (the datagram prefix label, Section 5.4) with the
+  epoch bound into the AAD (Section 8). Optional per-frame padding to the MTU resists traffic-analysis
+  fingerprinting, and an authenticated source-address change (roaming) is accepted without a new handshake.
+
+## 10. Key-schedule labels (domain separation)
 
 All labels are ASCII. `KDF` and `TH` are defined in Section 2.
 
@@ -213,10 +288,10 @@ All labels are ASCII. `KDF` and `TH` are defined in Section 2.
 | `CH-KEM-Tunnel-Stream-Nonce` / `CH-KEM-Tunnel-Datagram-Nonce` | per-direction AEAD nonce prefixes |
 | `CH-KEM-Tunnel-Authentication` | static-key auth fold (Section 5.5) |
 | `CH-KEM-Tunnel-PSK` | pre-shared-key fold (Section 5.5) |
-| `CH-KEM-Tunnel-Rekey` | rekey secret derivation (data-plane spec) |
+| `CH-KEM-Tunnel-Rekey` | rekey secret derivation (Section 8) |
 | `CH-KEM-Tunnel-Resumption` | resumption secret derivation |
 
-## 8. Conformance
+## 11. Conformance
 
 A conforming implementation MUST implement CH-KEM-v1 (0x0001), reject a peer with a different major wire
 version, and bind the negotiated suite, versions, and transcript into the Finished MAC as in Section 5. It
@@ -225,7 +300,7 @@ different suite. The X-Wing suite (0x0002) MUST be byte-exact with draft-connoll
 implementation gates it against the published X-Wing test vectors (the SHAKE-128 digest of the spec
 vectors) as a conformance check.
 
-## 9. Normative references
+## 12. Normative references
 
 - FIPS 203 - Module-Lattice-Based Key-Encapsulation Mechanism Standard (ML-KEM).
 - FIPS 202 - SHA-3 Standard: Permutation-Based Hash and Extendable-Output Functions (SHA3-256, SHAKE-256).
