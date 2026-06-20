@@ -37,6 +37,39 @@ jobs:
         VERSION: ${{ steps.get_version.outputs.VERSION }}
       run: make release
 
+    - name: Generate release notes
+      env:
+        VERSION: ${{ steps.get_version.outputs.VERSION }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        # Pull this version's section from CHANGELOG.md (the highlights for the release).
+        notes=$(sed -n "/^## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | sed '1d;$d')
+        {
+          echo "## Quantum-Go v$VERSION"
+          echo
+          if [ -n "$notes" ]; then echo "$notes"; else echo "See the [CHANGELOG](https://github.com/$REPO/blob/main/CHANGELOG.md)."; fi
+          echo
+          echo "### Installation"
+          echo
+          echo "Linux (amd64):"
+          echo '```bash'
+          echo "wget https://github.com/$REPO/releases/download/v$VERSION/quantum-tunnel-$VERSION-linux-amd64.tar.gz"
+          echo "tar -xzf quantum-tunnel-$VERSION-linux-amd64.tar.gz"
+          echo "sudo mv quantum-tunnel-linux-amd64 /usr/local/bin/quantum-tunnel"
+          echo '```'
+          echo
+          echo "macOS (arm64): download \`quantum-tunnel-$VERSION-darwin-arm64.tar.gz\`. Windows (amd64): download \`quantum-tunnel-$VERSION-windows-amd64.zip\`."
+          echo
+          echo "### Verify checksums"
+          echo '```bash'
+          echo "shasum -a 256 -c checksums-sha256.txt"
+          echo '```'
+          echo
+          echo "[Repository](https://github.com/$REPO) - [Security Policy](https://github.com/$REPO/blob/main/SECURITY.md) - [Protocol Spec](https://github.com/$REPO/blob/main/docs/PROTOCOL.md)"
+        } > release_notes.md
+        echo "--- generated release notes ---"; cat release_notes.md
+
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
@@ -44,56 +77,7 @@ jobs:
           bin/release/*.tar.gz
           bin/release/*.zip
           bin/release/checksums-sha256.txt
-        body: |
-          ## Quantum-Go v${{ steps.get_version.outputs.VERSION }}
-
-          Tunnel encryption: ML-KEM-1024 (NIST FIPS 203) + X25519 (RFC 7748).
-
-          ### Installation
-
-          #### Linux (amd64)
-          ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.get_version.outputs.VERSION }}/quantum-tunnel-${{ steps.get_version.outputs.VERSION }}-linux-amd64.tar.gz
-          tar -xzf quantum-tunnel-${{ steps.get_version.outputs.VERSION }}-linux-amd64.tar.gz
-          sudo mv quantum-tunnel-linux-amd64 /usr/local/bin/quantum-tunnel
-          ```
-
-          #### macOS (arm64 - Apple Silicon)
-          ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/v${{ steps.get_version.outputs.VERSION }}/quantum-tunnel-${{ steps.get_version.outputs.VERSION }}-darwin-arm64.tar.gz
-          tar -xzf quantum-tunnel-${{ steps.get_version.outputs.VERSION }}-darwin-arm64.tar.gz
-          sudo mv quantum-tunnel-darwin-arm64 /usr/local/bin/quantum-tunnel
-          ```
-
-          #### Windows (amd64)
-          Download `quantum-tunnel-${{ steps.get_version.outputs.VERSION }}-windows-amd64.zip` and extract to your PATH.
-
-          ### Verify installation
-          ```bash
-          quantum-tunnel version
-          ```
-
-          ### Quick start
-          ```bash
-          # Start demo server
-          quantum-tunnel demo --mode server --addr :8443
-
-          # Connect client
-          quantum-tunnel demo --mode client --addr localhost:8443
-
-          # Run benchmarks
-          quantum-tunnel bench --handshakes 100
-          ```
-
-          ### Documentation
-          - [GitHub Repository](https://github.com/${{ github.repository }})
-          - [API Documentation](https://pkg.go.dev/github.com/${{ github.repository }})
-          - [Security Policy](https://github.com/${{ github.repository }}/blob/main/SECURITY.md)
-
-          ### Verify checksums
-          ```bash
-          shasum -a 256 -c checksums-sha256.txt
-          ```
+        body_path: release_notes.md
         draft: false
         prerelease: false
       env:
