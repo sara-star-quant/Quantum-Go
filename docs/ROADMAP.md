@@ -642,15 +642,19 @@ The following jurisdictions have specific requirements for **users deploying** e
   lattice-family break. HQC is NIST's selected code-based backup KEM (March 2025);
   it is the only standardized, MTU-workable code-based option (Classic McEliece's
   ~1 MB public key is impractical for the datagram handshake; BIKE was not selected).
-  Prerequisites and costs, in order: (1) a small KEM-agility interface in `pkg/chkem`
-  so cascade members are pluggable (today ML-KEM-1024 + X25519 are hardcoded);
-  (2) HQC-256 to match Category 5, which carries a ~7 KB public key and ~14.5 KB
-  ciphertext - the datagram handshake grows from ~2 fragments to ~13+, so it leans
-  harder on the existing fragmenter/reassembler and is more loss-sensitive;
-  (3) verify HQC support and parameter set in `cloudflare/circl` before committing.
-  Not urgent: the current ML-KEM-1024 + X25519 hybrid already backstops a lattice
-  weakening classically and a quantum adversary post-quantumly, so this is
-  defense-in-depth diversification, not a fix for a present exposure.
+  Status: (1) the KEM-agility interface in `pkg/chkem` shipped in v0.0.15 (pluggable,
+  negotiated suites with CH-KEM-v1 and X-Wing), so adding a third cascade member is
+  now a small, well-scoped change, not a refactor. (2) HQC-256 (Category 5) carries a
+  ~7 KB public key and ~14.5 KB ciphertext - the datagram handshake would grow from
+  ~2 fragments to ~13+, leaning harder on the fragmenter/reassembler and the cap
+  (`DatagramMaxHandshakeMessageSize`), and is more loss-sensitive. (3) BLOCKED on the
+  primitive: HQC is absent from `cloudflare/circl` (verified against v1.6.3 and `main`),
+  so sourcing it needs either CGO (liboqs-go, which breaks the pure-Go release and FIPS
+  builds unless build-tagged) or a hand-vetted pure-Go port - both deferred. Revisit when
+  circl ships `kem/hqc` or a pure-Go HQC clears an independent audit. Not urgent: the
+  current ML-KEM-1024 + X25519 hybrid already backstops a lattice weakening classically
+  and a quantum adversary post-quantumly, so this is defense-in-depth diversification,
+  not a fix for a present exposure.
 
 ### Adapted Research Directions
 
