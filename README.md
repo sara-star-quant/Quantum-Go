@@ -113,6 +113,7 @@ See [Quick Start Guide](docs/usage/QUICKSTART.md) for detailed examples.
 | [Configuration](docs/usage/CONFIGURATION.md) | Tuning timeouts, rate limiting, and sessions |
 | [CLI Reference](docs/usage/CLI.md) | Using `quantum-tunnel` for demos and benchmarks |
 | [Architecture](docs/technical/ARCHITECTURE.md) | CH-KEM protocol and security design |
+| [Protocol Specification](docs/PROTOCOL.md) | Wire handshake, KEM negotiation, and key schedule (interop profile) |
 | [Threat Model](docs/technical/THREAT_MODEL.md) | Self-authored threat and risk analysis (NIST SP 800-30) |
 | [Roadmap](docs/ROADMAP.md) | Development roadmap and compliance plans |
 
