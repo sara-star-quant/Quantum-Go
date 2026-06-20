@@ -116,6 +116,7 @@ See [Quick Start Guide](docs/usage/QUICKSTART.md) for detailed examples.
 | [Protocol Specification](docs/PROTOCOL.md) | Wire handshake, KEM negotiation, and key schedule (interop profile) |
 | [Formal Verification](docs/formal/README.md) | Machine-checked ProVerif proofs (secrecy, hybrid, forward secrecy, server auth) |
 | [Threat Model](docs/technical/THREAT_MODEL.md) | Self-authored threat and risk analysis (NIST SP 800-30) |
+| [Audit Readiness](docs/compliance/AUDIT_READINESS.md) | Scope, crypto inventory, claims-to-evidence map, and supply-chain posture |
 | [Roadmap](docs/ROADMAP.md) | Development roadmap and compliance plans |
 
 ## Performance
