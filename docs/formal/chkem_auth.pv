@@ -1,0 +1,48 @@
+(*
+  CH-KEM server authentication (symbolic). Load: -lib prelude.
+
+  Static-key-pinned mode: the client encapsulates a secret to the server's pinned
+  long-term key; only the holder of that key (lsk) can decapsulate it and derive the
+  master, so only the real server can produce a ServerFinished MAC the client accepts.
+  The active Dolev-Yao attacker may inject/modify any message but, lacking lsk, cannot
+  forge the MAC. Proves agreement: a client acceptance with server sp and transcript t
+  implies the genuine server sp ran on t (hence agreement on the transcript - the
+  symbolic Finished-binding / anti-downgrade property).
+*)
+
+event ServerRunning(pkey, bitstring).
+event ClientAccept(pkey, bitstring).
+
+query sp: pkey, t: bitstring;
+  inj-event(ClientAccept(sp, t)) ==> inj-event(ServerRunning(sp, t)).
+
+event AuthDone.
+query event(AuthDone).
+
+let clientA(Spub: pkey) =
+  new staticSs: bitstring;
+  new nc: bitstring;
+  let staticCt = aenc(Spub, staticSs) in
+  let ch = (staticCt, nc) in
+  out(net, ch);
+  let transcript = TH(ch) in
+  let master = authMaster(staticSs, transcript) in
+  in(net, sfin: bitstring);
+  if sfin = macf(master, serverTag) then
+  event ClientAccept(Spub, transcript);
+  event AuthDone.
+
+let serverA(lsk: skey) =
+  in(net, ch: bitstring);
+  let (staticCt: bitstring, nc: bitstring) = ch in
+  let staticSs = adec(staticCt, lsk) in
+  let transcript = TH(ch) in
+  let master = authMaster(staticSs, transcript) in
+  event ServerRunning(pk(lsk), transcript);
+  out(net, macf(master, serverTag)).
+
+process
+  new lsk: skey;
+  let Spub = pk(lsk) in
+  out(net, Spub);
+  ( (! clientA(Spub)) | (! serverA(lsk)) )

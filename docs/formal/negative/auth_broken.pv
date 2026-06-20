@@ -1,0 +1,23 @@
+(* NEGATIVE: server "Finished" keyed off the public transcript, not the static-key
+   secret. Server authentication MUST fail (attacker forges it). Load: -lib prelude. *)
+event ServerRunning(pkey, bitstring).
+event ClientAccept(pkey, bitstring).
+query sp: pkey, t: bitstring;
+  inj-event(ClientAccept(sp, t)) ==> inj-event(ServerRunning(sp, t)).
+let clientA(Spub: pkey) =
+  new staticSs: bitstring; new nc: bitstring;
+  let ch = (aenc(Spub, staticSs), nc) in
+  out(net, ch);
+  let transcript = TH(ch) in
+  let master = authMaster(TH(ch), TH(ch)) in     (* BROKEN: no static secret *)
+  in(net, sfin: bitstring);
+  if sfin = macf(master, serverTag) then
+  event ClientAccept(Spub, transcript).
+let serverA(lsk: skey) =
+  in(net, ch: bitstring);
+  let (sc: bitstring, nc: bitstring) = ch in
+  let transcript = TH(ch) in
+  let master = authMaster(TH(ch), TH(ch)) in
+  event ServerRunning(pk(lsk), transcript);
+  out(net, macf(master, serverTag)).
+process new lsk: skey; out(net, pk(lsk)); ( (! clientA(pk(lsk))) | (! serverA(lsk)) )
