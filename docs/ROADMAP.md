@@ -1,38 +1,51 @@
 # Quantum-Go Development Roadmap
 
-**Version:** 4.2
-**Last Updated:** 2026-06-19
+**Version:** 4.3
+**Last Updated:** 2026-06-20
 
 ---
 
 ## Current Status: v0.0.15
 
-> **Direction.** Crypto-agility has landed: the KEM is now a negotiated, pluggable suite with a
-> HelloRetryRequest fallback, and X-Wing (ML-KEM-768 + X25519) ships as a second interop-friendly
-> suite (protocol 5.0). Earlier work (endpoint authentication, role binding, CI security, the
-> 1024-bit stream replay window, the session-bound derived stream nonce) is in. The remaining
-> **stream security parity** item is resumption ticket server binding. Next toward v0.1.0: HQC
-> code-based KEM diversification for a CH-KEM v2 triple cascade.
+> **Direction (Q3 2026).** Crypto-agility has landed: the KEM is a negotiated, pluggable suite with a
+> HelloRetryRequest fallback and X-Wing (ML-KEM-768 + X25519) as a standardized second suite (protocol
+> 5.0), on top of endpoint authentication, role binding, CI security, and the stream-security parity
+> work (resumption ticket server binding is the one small remaining cleanup). The next arc is the
+> **assurance tier** - standards-conformance/interop, formal verification, a third-party audit, and real
+> FIPS 140-3 validation - the work that converts a working library into a buyable one. HQC code-based
+> diversification (CH-KEM v2) is deferred behind that arc and option-priced on a trusted HQC primitive
+> (circl `kem/hqc` or an audited pure-Go port), not pulled forward ahead of assurance.
 
 ## Strategic Priorities (valuation-driven)
 
 For a cryptographic library, market evaluation is gated by reduction of trust-uncertainty, not
-feature count. Stream-security parity (above) remains the immediate near-term cleanup. Beyond it,
-the next major arc is sequenced by credibility impact, not by version-tag order:
+feature count. Endpoint authentication and crypto-agility (negotiated suites + the standardized X-Wing
+combiner) have landed, so the deployability and bespoke-island blockers are largely cleared. The next
+arc (Q3 2026 onward) is the **assurance tier** - the work that converts a working library into a buyable
+one - sequenced by credibility impact, not version-tag order:
 
-1. **Endpoint authentication** (v0.1.0 #1). Today there is none: any party can impersonate any
-   server, so an unauthenticated tunnel is a demo, not a deployable product. This is the single
-   biggest blocker and is pulled to the front of the arc.
-2. **Formal verification** (v0.1.0; Lafourcade influence, see [Design Influences](DESIGN_INFLUENCES.md)).
-   Labor, not capital. A machine-checked proof of the CH-KEM composition is the highest credibility
-   gain per dollar and the clearest differentiator versus other Go PQ libraries.
-3. **Standards-conformant hybrid combiner interop** (v1.0.0; see Design Influences 2.8). Removes the
-   bespoke-island liability by mapping the combiner to a published proof and enabling an interop profile.
-4. **Third-party audit + real FIPS 140-3 validation** (v1.0.0 prerequisites). The capital-gated
-   commercialization gate; sequenced after auth and formal verification make it worth paying for.
+1. **Standards-conformance and interop** (see Design Influences 2.8). X-Wing already maps the hybrid to a
+   published, byte-exact combiner; extend that to a documented interop profile and alignment with the IETF
+   PQ-hybrid / TLS / Noise PQ directions, so the library conforms and interoperates rather than only
+   implementing. Standards drive adoption and erase the last of the bespoke-island liability.
+2. **Formal verification** (Lafourcade influence, see [Design Influences](DESIGN_INFLUENCES.md)). Labor,
+   not capital. A machine-checked proof of the CH-KEM composition is the highest credibility gain per
+   dollar and the clearest differentiator versus other Go PQ libraries; it also de-risks the paid audit.
+3. **Third-party security audit** (commercialization gate). Buyers buy audited crypto, not implemented
+   crypto. Sequenced after (1) and (2) make the audit cheaper and its findings stronger.
+4. **Real FIPS 140-3 validation** (capital-gated). The build mode plus POST/CST self-tests already exist;
+   this is the actual CMVP validation path that unlocks the government and regulated-enterprise segment.
 
-These sit explicitly *ahead of* the enterprise tooling tier (config management, HSM glue, Helm/Terraform),
-which is table-stakes packaging rather than a valuation multiplier.
+Deferred and option-priced *behind* this arc: **CH-KEM v2 HQC diversification** (see Research Items). It
+adds cryptographic family diversity for the high-assurance segment, but only adds value if the HQC
+primitive is itself from a trusted, audited source, so it converts only when circl ships `kem/hqc` or a
+pure-Go HQC clears an audit. Shipping it via CGO or hand-rolled code-based crypto would spend trust rather
+than build it.
+
+These sit explicitly *ahead of* the adoption/packaging tier - language bindings, data-plane performance,
+deployment tooling, enterprise glue (config management, HSM, Helm/Terraform), and compatibility with the
+current versions of mainstream VPN transport protocols. That tier drives adoption once the assurance work
+makes the library trustworthy, but it is table-stakes packaging rather than a standalone valuation multiplier.
 
 ### Completed Features
 - [x] CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)
