@@ -27,8 +27,8 @@ func dialDgramAuthOpts(t *testing.T, seed uint64, drop, dup, reorder float64, se
 	epB.requireStaticAuth = requireAuth
 	epA.pinnedServerKey = clientPin
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
-		ep.rtoInitial = 2 * time.Millisecond
-		ep.rtoMax = 100 * time.Millisecond
+		ep.rtoInitial = 5 * time.Millisecond
+		ep.rtoMax = 250 * time.Millisecond
 	}
 	go epA.Serve()
 	go epB.Serve()
@@ -172,8 +172,8 @@ func dialDgramPSK(t *testing.T, seed uint64, serverPSK, serverID, clientPSK, cli
 	epB.psk, epB.pskIdentity = serverPSK, serverID
 	epA.psk, epA.pskIdentity = clientPSK, clientID
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
-		ep.rtoInitial = 2 * time.Millisecond
-		ep.rtoMax = 100 * time.Millisecond
+		ep.rtoInitial = 5 * time.Millisecond
+		ep.rtoMax = 250 * time.Millisecond
 	}
 	go epA.Serve()
 	go epB.Serve()
@@ -268,8 +268,8 @@ func TestDgramRequirePSKTable(t *testing.T) {
 		epB.pskLookup, epB.requirePSK = table, true
 		epA.psk, epA.pskIdentity = clientKey, []byte(clientID)
 		for _, ep := range []*DatagramEndpoint{epA, epB} {
-			ep.rtoInitial = 2 * time.Millisecond
-			ep.rtoMax = 100 * time.Millisecond
+			ep.rtoInitial = 5 * time.Millisecond
+			ep.rtoMax = 250 * time.Millisecond
 		}
 		go epA.Serve()
 		go epB.Serve()
