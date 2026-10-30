@@ -185,8 +185,8 @@ func runE2E(t *testing.T, seed uint64, drop, dup, reorder float64) {
 	epA := mustEndpoint(t, connA)
 	epB := mustEndpoint(t, connB)
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
-		ep.rtoInitial = 2 * time.Millisecond
-		ep.rtoMax = 20 * time.Millisecond
+		ep.rtoInitial = 5 * time.Millisecond
+		ep.rtoMax = 250 * time.Millisecond
 	}
 	go epA.Serve()
 	go epB.Serve()
@@ -242,8 +242,8 @@ func TestDgramHandshakeCookieRoundTrip(t *testing.T) {
 	epB := mustEndpoint(t, connB)
 	epB.cookiePressureHighWater = 0 // responder always demands a cookie
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
-		ep.rtoInitial = 2 * time.Millisecond
-		ep.rtoMax = 20 * time.Millisecond
+		ep.rtoInitial = 5 * time.Millisecond
+		ep.rtoMax = 250 * time.Millisecond
 	}
 	go epA.Serve()
 	go epB.Serve()
@@ -318,8 +318,8 @@ func runTargetedLoss(t *testing.T, msg protocol.MessageType, fromDialer bool) {
 	epA := mustEndpoint(t, connA)
 	epB := mustEndpoint(t, connB)
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
-		ep.rtoInitial = 2 * time.Millisecond
-		ep.rtoMax = 20 * time.Millisecond
+		ep.rtoInitial = 5 * time.Millisecond
+		ep.rtoMax = 250 * time.Millisecond
 	}
 	go epA.Serve()
 	go epB.Serve()

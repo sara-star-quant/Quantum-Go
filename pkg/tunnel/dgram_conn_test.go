@@ -21,8 +21,8 @@ func dgramPair(t *testing.T, seed uint64, drop, dup, reorder float64) (client, s
 	epA = mustEndpoint(t, connA)
 	epB = mustEndpoint(t, connB)
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
-		ep.rtoInitial = 2 * time.Millisecond
-		ep.rtoMax = 20 * time.Millisecond
+		ep.rtoInitial = 5 * time.Millisecond
+		ep.rtoMax = 250 * time.Millisecond
 	}
 	go epA.Serve()
 	go epB.Serve()
