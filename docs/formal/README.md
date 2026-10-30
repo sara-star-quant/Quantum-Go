@@ -79,7 +79,14 @@ models - the path-filtered CI will not catch protocol drift on its own.
 ## Coverage map
 
 Proven now: session-key secrecy, hybrid security, forward secrecy, injective server authentication
-(static-key-pinned mode), for protocol version 5.0.
+(static-key-pinned mode), for protocol version 6.0.
+
+Protocol 6.0 merged ServerHello and ServerFinished into one flight. The server-authentication
+model already abstracts the handshake to one server MAC over the transcript, so it covers the
+merged flight unchanged: a client accepts only after verifying a ServerFinished that only the
+holder of the pinned static key can produce. Not modeled: ClientFinished (the responder's key
+confirmation), PSK mutual authentication, and the RequirePSK dummy-fold behavior. Those are covered
+by the Go tests and are the next models to add.
 
 Planned (extends the suite as drop-in `*.pv` files): PSK mutual-authentication mode; an explicit
 HelloRetryRequest / suite-negotiation process modeling downgrade as a distinct query; the

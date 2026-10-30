@@ -14,7 +14,7 @@ ver=$(docker run --rm "$IMG" -help 2>&1 | head -1)
 {
   echo "Quantum-Go formal verification results"
   echo "Tool: $ver"
-  echo "Protocol version verified: 5.0"
+  echo "Protocol version verified: 6.0"
   echo
 } > "$RESULTS"
 
