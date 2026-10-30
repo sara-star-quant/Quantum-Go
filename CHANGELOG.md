@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased][]
 
 ### Fixed
+- **Datagram data that beats ClientFinished is kept, not dropped**: with the one-round-trip handshake the initiator sends data right after ClientFinished, so a reordered or lost ClientFinished let data reach a responder that was not keyed yet. The responder now holds up to 4 such datagrams per handshake and replays them once ClientFinished keys it. Targeted loss tests cover a lost ClientFinished, ServerFinished, and ServerHello end to end.
+- **ClientFinished and other handshake records go out in one write**: the length prefix and body shared two writes, so they could land in two TCP segments.
 - **Datagram rekey now also fires on epoch age**: the datagram path rekeyed on packet count only, so a slow long-lived session never renewed its keys. The initiator now also rekeys once the current epoch is a session lifetime old (3600 s), matching the stream path.
 
 ### Changed

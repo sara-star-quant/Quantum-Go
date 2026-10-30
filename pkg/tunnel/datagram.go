@@ -63,6 +63,14 @@ type datagramSession struct {
 	// it. Access only via currentPeerAddr/setPeerAddr.
 	peerAddr atomic.Pointer[net.Addr]
 
+	// early holds a few data datagrams that arrive before the responder has verified
+	// ClientFinished (reordering, or a lost ClientFinished that the retransmitted server
+	// flight is still recovering). They are unauthenticated until the keys exist, so the
+	// buffer is small and bounded; flushEarly replays them through the normal data path.
+	earlyMu   sync.Mutex
+	early     []earlyDatagram
+	earlyDone bool
+
 	// Rekey transport state. The initiator (handshake RoleInitiator) drives rekey
 	// from a goroutine and reads RekeyResponse bodies off rekeyInbox; the responder
 	// answers reactively on the receive loop and caches its sealed response frames
@@ -99,6 +107,46 @@ func (ds *datagramSession) beginRekey() bool { return ds.rekeyActive.CompareAndS
 
 // endRekey releases the initiator rekey slot.
 func (ds *datagramSession) endRekey() { ds.rekeyActive.Store(false) }
+
+// earlyDatagramCap bounds the pre-establishment data datagrams held per handshake. The
+// worst-case pre-auth cost is the half-open cap times this many datagrams of at most
+// DatagramMTU bytes.
+const earlyDatagramCap = 4
+
+// earlyDatagram is a data datagram received before its session was keyed.
+type earlyDatagram struct {
+	data []byte
+	src  net.Addr
+}
+
+// stashEarly buffers data for replay once the session is keyed. It reports false when
+// the buffer was already flushed (the session is keyed; the caller processes the
+// datagram normally) and true when the datagram was consumed, stored or dropped.
+func (ds *datagramSession) stashEarly(data []byte, src net.Addr) bool {
+	ds.earlyMu.Lock()
+	defer ds.earlyMu.Unlock()
+	if ds.earlyDone {
+		return false
+	}
+	if len(ds.early) < earlyDatagramCap && len(data) <= constants.DatagramMTU {
+		ds.early = append(ds.early, earlyDatagram{data: append([]byte(nil), data...), src: src})
+	}
+	return true
+}
+
+// flushEarly replays the buffered datagrams through the data path now that the
+// session is keyed, and stops further buffering. Datagrams that fail authentication
+// are dropped there like any other.
+func (e *DatagramEndpoint) flushEarly(ds *datagramSession) {
+	ds.earlyMu.Lock()
+	pending := ds.early
+	ds.early = nil
+	ds.earlyDone = true
+	ds.earlyMu.Unlock()
+	for _, p := range pending {
+		_ = e.routeDatagram(p.src, p.data)
+	}
+}
 
 // dataInboxCap buffers decrypted application datagrams between the receive loop
 // and the DatagramConn reader. The receive loop delivers non-blocking, so a slow
@@ -739,8 +787,15 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 			return perr
 		}
 		ds := e.registry.lookup(hdr.RecvIndex)
-		if ds == nil || ds.session == nil {
-			return nil // unknown index / not yet established: drop (no state created)
+		if ds == nil {
+			return nil // unknown index: drop (no state created)
+		}
+		if ds.session == nil {
+			// Not yet keyed: hold a few datagrams for replay at establishment. If the
+			// buffer was already flushed the session is keyed now, so fall through.
+			if ds.stashEarly(data, src) || ds.session == nil {
+				return nil
+			}
 		}
 		// peek -> authenticate -> commit. Admissible cheaply rejects obvious
 		// replays and too-old sequences before the AEAD Open, so replayed captured

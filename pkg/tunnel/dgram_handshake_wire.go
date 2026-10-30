@@ -307,6 +307,7 @@ func (l *handshakeLoop) maybeSurface() {
 	l.ds.peerIndex = l.peerIndex
 	l.ep.registry.removeSource(l.src.String())
 	l.ep.registry.releaseHalfOpen(l.src.String())
+	l.ep.flushEarly(l.ds)
 	if l.established != nil {
 		l.established()
 	}
