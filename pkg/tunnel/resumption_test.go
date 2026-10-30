@@ -119,7 +119,9 @@ func TestSessionResumptionFallbackInvalidTicket(t *testing.T) {
 	if err := InitiatorHandshake(clientSession, c1); err != nil {
 		t.Fatalf("Initial handshake failed: %v", err)
 	}
-	<-errChan
+	if err := <-errChan; err != nil {
+		t.Fatalf("Responder handshake failed: %v", err)
+	}
 
 	tmKey := bytes.Repeat([]byte{0x99}, 32)
 	tm, _ := NewTicketManager(tmKey, time.Hour)
@@ -167,7 +169,9 @@ func TestSessionResumptionExpiredTicket(t *testing.T) {
 	if err := InitiatorHandshake(clientSession, c1); err != nil {
 		t.Fatalf("Initial handshake failed: %v", err)
 	}
-	<-errChan
+	if err := <-errChan; err != nil {
+		t.Fatalf("Responder handshake failed: %v", err)
+	}
 
 	tmKey := bytes.Repeat([]byte{0x99}, 32)
 	// Very short lifetime
@@ -213,7 +217,9 @@ func TestSessionResumptionFallbackNoTicketManager(t *testing.T) {
 	if err := InitiatorHandshake(clientSession, c1); err != nil {
 		t.Fatalf("Initial handshake failed: %v", err)
 	}
-	<-errChan
+	if err := <-errChan; err != nil {
+		t.Fatalf("Responder handshake failed: %v", err)
+	}
 
 	tmKey := bytes.Repeat([]byte{0x99}, 32)
 	tm, _ := NewTicketManager(tmKey, time.Hour)
@@ -261,7 +267,9 @@ func TestResumptionForwardSecrecy(t *testing.T) {
 	if err := InitiatorHandshake(clientSession, c1); err != nil {
 		t.Fatalf("Initial handshake failed: %v", err)
 	}
-	<-errChan
+	if err := <-errChan; err != nil {
+		t.Fatalf("Responder handshake failed: %v", err)
+	}
 
 	tmKey := bytes.Repeat([]byte{0x99}, 32)
 	tm, _ := NewTicketManager(tmKey, time.Hour)
