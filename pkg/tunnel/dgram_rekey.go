@@ -31,8 +31,10 @@ var errRekeyTimeout = errors.New("tunnel: datagram rekey timed out")
 // DatagramSeal) so the rotation completes before the key budget is exhausted.
 const datagramRekeyHighWater = constants.MaxPacketsBeforeRekey * 9 / 10
 
-// datagramRekeyDue reports whether the current epoch has sealed enough datagrams to
-// warrant a background rekey.
+// datagramRekeyDue reports whether the current epoch has sealed enough datagrams, or
+// has been live long enough, to warrant a background rekey. The time bound matches the
+// stream path's session lifetime, so a slow link that never reaches the packet bound
+// still renews its keys.
 func (s *Session) datagramRekeyDue(seq uint64) bool {
 	s.mu.RLock()
 	cur := s.dgramEpochs.cur
@@ -40,7 +42,8 @@ func (s *Session) datagramRekeyDue(seq uint64) bool {
 	if cur == nil {
 		return false
 	}
-	return seq-cur.startSeq >= datagramRekeyHighWater
+	return seq-cur.startSeq >= datagramRekeyHighWater ||
+		time.Since(cur.startedAt) >= time.Duration(constants.MaxSessionDurationSeconds)*time.Second
 }
 
 // --- Session rekey crypto (authenticated control messages) ---

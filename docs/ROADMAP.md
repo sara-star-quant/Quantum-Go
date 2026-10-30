@@ -396,12 +396,12 @@ items #2 (nonce session binding) and #5 (replay window expansion) natively for U
 - [x] Endpoint + index demux + accept channel
 - [x] Reliable handshake (fragmented PQ flights, retransmission/backoff, flight cache)
 - [x] 1024-bit multi-word replay window
-- [ ] Per-session derived nonce prefix + datagram key init
-- [ ] Epoch-keyed cipher selection on the datagram recv path
-- [ ] Encrypted DATA send/recv + public `DatagramConn` (`Send`/`Recv`/`Close`/`Accept`)
-- [ ] Authenticated CLOSE (AEAD-verified before teardown)
-- [ ] Datagram rekey transport (reliable RekeyInit/Response over the lossy channel)
-- [ ] Idle-timeout reaper
+- [x] Per-session derived nonce prefix + datagram key init
+- [x] Epoch-keyed cipher selection on the datagram recv path
+- [x] Encrypted DATA send/recv + public `DatagramConn` (`Send`/`Recv`/`Close`/`Accept`)
+- [x] Authenticated CLOSE (AEAD-verified before teardown)
+- [x] Datagram rekey transport (reliable RekeyInit/Response over the lossy channel)
+- [x] Idle-timeout reaper
 - [ ] Fault-injection test suite + loopback throughput baseline
 
 ### Phase 1b - Performance

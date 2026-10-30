@@ -23,6 +23,7 @@ type datagramEpoch struct {
 	sendCipher  *crypto.AEAD
 	recvCipher  *crypto.AEAD
 	startSeq    uint64    // send sequence at which this epoch became current
+	startedAt   time.Time // wall time at which this epoch became current
 	retireAfter time.Time // zero for the current epoch; set when demoted to prev
 }
 
@@ -76,7 +77,7 @@ func (s *Session) InitializeDatagramKeys(masterSecret []byte, cipherSuite consta
 	s.sendCipher = sendCipher
 	s.recvCipher = recvCipher
 	s.dgramEpochs = &datagramEpochState{
-		cur: &datagramEpoch{epoch: 0, sendCipher: sendCipher, recvCipher: recvCipher, startSeq: 0},
+		cur: &datagramEpoch{epoch: 0, sendCipher: sendCipher, recvCipher: recvCipher, startSeq: 0, startedAt: time.Now()},
 	}
 	s.dgramReplay = NewDatagramReplayWindow()
 	s.lastActivityNanos.Store(time.Now().UnixNano())
@@ -232,7 +233,7 @@ func (s *Session) AdvanceDatagramEpoch(newSecret []byte) (uint8, error) {
 	old.retireAfter = time.Now().Add(time.Duration(constants.DatagramPrevEpochRetainSeconds) * time.Second)
 	newEpoch := old.epoch + 1
 	s.dgramEpochs.prev = old
-	s.dgramEpochs.cur = &datagramEpoch{epoch: newEpoch, sendCipher: send, recvCipher: recv, startSeq: s.sendSeq.Load()}
+	s.dgramEpochs.cur = &datagramEpoch{epoch: newEpoch, sendCipher: send, recvCipher: recv, startSeq: s.sendSeq.Load(), startedAt: time.Now()}
 
 	// Adopt the new secret as the master secret for any subsequent rekey ratchet.
 	s.masterSecret = make([]byte, len(newSecret))
