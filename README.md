@@ -139,6 +139,8 @@ receive on Linux, and optional fixed-size handshake padding.
 | ChaCha20-Poly1305 cipher (raw AEAD) | ~0.7 GB/s |
 | Handshakes/sec (stream/TCP, full CH-KEM, sequential) | ~1,450 (~670 µs each) |
 | Handshakes/sec (datagram/UDP, full CH-KEM, sequential) | ~1,300 (~760 µs each) |
+| Time until the client can send data (stream, protocol 6.0) | 1 RTT + ~0.4 ms crypto (was 2 RTT): 22 ms at 20 ms RTT, 102 ms at 100 ms, 502 ms at 500 ms (was 44, 204, 1004) |
+| Time until the server can read client data (stream) | 1.5 RTT + ~0.4 ms crypto (unchanged): 33 ms at 20 ms RTT, 153 ms at 100 ms |
 | Endpoint auth handshake cost (opt-in) | static-key ~+40% (one extra CH-KEM leg); PSK negligible (one KDF fold); data plane unaffected |
 | Stream per-record overhead | 16 B AEAD (tag only; nonce derived, not transmitted, was 28) + 13 B frame header (type, length, seq) = 29 B total (was 41) |
 | Single-tunnel throughput (stream/TCP, AES-GCM, end-to-end) | ~690 MB/s (5.5 Gb/s), sustained across rekeys |
