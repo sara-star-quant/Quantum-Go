@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+- **Per-client PSKs and `RequirePSK`**: a server can hold one pre-shared key per client identity (`TransportConfig.PSKLookup`, datagram `WithPSKLookup`) and admit only clients that hold one (`RequirePSK`, `WithRequirePSK`). A missing or unknown identity is not refused early: the server folds a random key, so the handshake fails at the Finished check exactly like a wrong key, and a prober cannot tell the two apart. Symmetric only, no wire change. `RequirePSK` without a key or lookup fails closed with `ErrPSKMisconfigured`.
+
 ### Fixed
 - **Datagram data that beats ClientFinished is kept, not dropped**: with the one-round-trip handshake the initiator sends data right after ClientFinished, so a reordered or lost ClientFinished let data reach a responder that was not keyed yet. The responder now holds up to 4 such datagrams per handshake and replays them once ClientFinished keys it. Targeted loss tests cover a lost ClientFinished, ServerFinished, and ServerHello end to end.
 - **ClientFinished and other handshake records go out in one write**: the length prefix and body shared two writes, so they could land in two TCP segments.

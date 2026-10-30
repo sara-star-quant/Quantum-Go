@@ -102,6 +102,8 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, ds *datagramSession, fir
 	session.RequireStaticAuth = e.requireStaticAuth
 	session.PSK = e.psk
 	session.PSKIdentity = e.pskIdentity
+	session.PSKLookup = e.pskLookup
+	session.RequirePSK = e.requirePSK
 	idx, err := e.registry.add(ds)
 	if err != nil {
 		e.registry.removeSource(src.String())

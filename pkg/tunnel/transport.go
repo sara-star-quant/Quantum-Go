@@ -90,6 +90,25 @@ type TransportConfig struct {
 	// PSKIdentity is the label that selects the PSK; the client advertises it and
 	// the server matches it. Required and non-empty when PSK is set.
 	PSKIdentity []byte
+
+	// PSKLookup, when set on a server (Listen), holds one PSK per client identity: it
+	// returns the PSKSize-byte key for an identity, or nil for an unknown one. It
+	// takes precedence over PSK and PSKIdentity on the server.
+	PSKLookup func(identity []byte) []byte
+
+	// RequirePSK, when set on a server (Listen), admits only clients that hold a PSK
+	// the server knows. It requires PSK or PSKLookup. Unknown identities fail at the
+	// Finished check, indistinguishable from a wrong key. Default false admits clients
+	// without a PSK alongside those with one.
+	RequirePSK bool
+}
+
+// validateRequirePSK reports a server set to require a PSK that has none to check.
+func validateRequirePSK(require bool, psk []byte, lookup func([]byte) []byte) error {
+	if require && psk == nil && lookup == nil {
+		return qerrors.ErrPSKMisconfigured
+	}
+	return nil
 }
 
 // validatePSK checks a PSK/identity pair: either both unset, or a PSKSize key
@@ -771,6 +790,9 @@ func (l *Listener) createSession() (*Session, error) {
 	if err := validatePSK(l.config.PSK, l.config.PSKIdentity); err != nil {
 		return nil, err
 	}
+	if err := validateRequirePSK(l.config.RequirePSK, l.config.PSK, l.config.PSKLookup); err != nil {
+		return nil, err
+	}
 	session, err := NewSession(RoleResponder)
 	if err != nil {
 		return nil, err
@@ -783,6 +805,8 @@ func (l *Listener) createSession() (*Session, error) {
 	session.RequireStaticAuth = l.config.RequireStaticAuth
 	session.PSK = l.config.PSK
 	session.PSKIdentity = l.config.PSKIdentity
+	session.PSKLookup = l.config.PSKLookup
+	session.RequirePSK = l.config.RequirePSK
 	return session, nil
 }
 

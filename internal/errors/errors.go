@@ -95,6 +95,10 @@ var (
 	// authentication without holding a static identity to prove.
 	ErrStaticAuthMisconfigured = errors.New("protocol: require static auth set without a static key pair")
 
+	// ErrPSKMisconfigured indicates a server is set to require a PSK without holding
+	// any PSK or PSK lookup to check clients against.
+	ErrPSKMisconfigured = errors.New("protocol: require PSK set without a PSK or PSK lookup")
+
 	// ErrInvalidPSK indicates a PSK configuration is malformed: the key must be
 	// PSKSize bytes and the identity must be non-empty and within MaxPSKIdentitySize.
 	ErrInvalidPSK = errors.New("protocol: PSK must be 32 bytes with a non-empty identity")

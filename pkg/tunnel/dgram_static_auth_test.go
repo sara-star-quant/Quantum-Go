@@ -240,3 +240,50 @@ func TestDgramPSKInvalidConfig(t *testing.T) {
 		t.Fatalf("short PSK: got %v, want ErrInvalidPSK", err)
 	}
 }
+
+func TestDgramRequirePSKMisconfigured(t *testing.T) {
+	// WithRequirePSK with no PSK and no lookup must fail construction.
+	connA, _ := memPipe(1, 0, 0, 0)
+	_, err := NewDatagramEndpoint(connA, WithRequirePSK())
+	if !errors.Is(err, qerrors.ErrPSKMisconfigured) {
+		t.Fatalf("got %v, want ErrPSKMisconfigured", err)
+	}
+}
+
+// TestDgramRequirePSKTable admits the client whose identity is in the table and
+// rejects one that is not, both against a RequirePSK responder.
+func TestDgramRequirePSKTable(t *testing.T) {
+	keyA := bytes.Repeat([]byte{0x0A}, 32)
+	table := func(id []byte) []byte {
+		if string(id) == "edge-a" {
+			return keyA
+		}
+		return nil
+	}
+	run := func(seed uint64, clientID string, clientKey []byte) (client *Session, dialErr error) {
+		connA, connB := memPipe(seed, 0, 0, 0)
+		epA := mustEndpoint(t, connA)
+		epB := mustEndpoint(t, connB)
+		epB.pskLookup, epB.requirePSK = table, true
+		epA.psk, epA.pskIdentity = clientKey, []byte(clientID)
+		for _, ep := range []*DatagramEndpoint{epA, epB} {
+			ep.rtoInitial = 2 * time.Millisecond
+			ep.rtoMax = 20 * time.Millisecond
+		}
+		go epA.Serve()
+		go epB.Serve()
+		defer func() { _ = epA.Close(); _ = epB.Close() }()
+		c, err := DialDatagram(epA, connB.addr)
+		if err != nil {
+			return nil, err
+		}
+		return c.Session(), nil
+	}
+
+	if c, err := run(21, "edge-a", keyA); err != nil || c == nil {
+		t.Fatalf("known identity rejected: %v", err)
+	}
+	if _, err := run(22, "edge-z", keyA); err == nil {
+		t.Fatal("unknown identity admitted by a RequirePSK responder")
+	}
+}

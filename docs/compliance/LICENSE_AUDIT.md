@@ -40,7 +40,24 @@ No third-party code is copied into the repository (no vendor directory, no copie
 
 Deliberately not used: RKEM / Rebar (patent risk), Dagger KEM (not standardized), and papers published under non-derivative terms (for example ePrint 2026/1581, CC BY-NC-ND).
 
+## Patent research from public sources
+
+Method: query the IETF Datatracker IPR database (`/api/v1/ipr/iprdocrel/`, control query on RFC 6386 returns 2 disclosures, so the zero results below are meaningful) for the specifications each shipped mechanism is based on, plus NIST's published position on ML-KEM. Date: 2026-10-30. This reads public disclosures only; it is not a freedom-to-operate opinion.
+
+| Mechanism | Basis | IETF IPR disclosures |
+|---|---|---|
+| Pre-shared key folding and per-identity PSKs | RFC 8446 s2.2, RFC 9258, RFC 8784 | none |
+| ChaCha20-Poly1305, HKDF, X25519 | RFC 7539 / 8439, RFC 5869, RFC 7748 | none |
+| Hybrid KEM combiner (X-Wing) | draft-connolly-cfrg-xwing-kem, draft-ietf-tls-hybrid-design | none |
+| ML-KEM in TLS | draft-ietf-tls-mlkem, draft-ietf-tls-ecdhe-mlkem | one general statement (#7227) by an IETF participant, holder listed as "Unknown", no identified claim |
+| ML-KEM (FIPS 203) | NIST | NIST states it holds royalty-free patent licenses covering implementers of ML-KEM as published; commentators note the field of use is narrow, so deviating from ML-KEM is outside it |
+
+Consequences for the design:
+- Keep ML-KEM exactly as FIPS 203 specifies it. No compressed or modified variants.
+- Authentication additions stay symmetric (PSK) and follow public RFC mechanisms until a patent opinion covers KEM-based client authentication.
+- Do not build on constructions from PQShield (Rebar / reinforced KEM) or on papers published under non-derivative terms.
+
 ## Residual items
 
-- Patent status of ML-KEM, X-Wing, and any KEMTLS-style design is not checked here. Get counsel's opinion before shipping a new design built on a paper.
+- Public disclosures are checked above; no counsel review has happened. Get an opinion before shipping a KEMTLS-style or other paper-derived design.
 - The container image bundles Alpine (busybox is GPL-2.0, musl is MIT) as a separate component; it is distributed as an aggregate, not linked with Quantum-Go.

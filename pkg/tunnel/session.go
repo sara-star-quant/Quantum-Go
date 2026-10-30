@@ -120,6 +120,17 @@ type Session struct {
 	// matching PSK. Set on both peers alongside PSK.
 	PSKIdentity []byte
 
+	// PSKLookup lets a responder hold one PSK per client identity. It returns the
+	// PSKSize-byte key for an identity, or nil if the identity is unknown. It takes
+	// precedence over PSK/PSKIdentity on the responder.
+	PSKLookup func(identity []byte) []byte
+
+	// RequirePSK makes a responder admit only clients that prove a PSK it knows. An
+	// absent or unknown identity is not rejected early: the handshake folds a random
+	// dummy key and fails at the Finished check, so a prober cannot tell an unknown
+	// identity from a wrong key by response or timing.
+	RequirePSK bool
+
 	// Master secret derived from CH-KEM
 	masterSecret []byte
 

@@ -91,6 +91,10 @@ type Handshake struct {
 	// so foldPSKSecret mixes session.PSK into the master secret before key derivation.
 	foldPSK bool
 
+	// pskKey is the key foldPSKSecret mixes in: the client's configured PSK, or on the
+	// server the looked-up key (a random dummy under RequirePSK when none matched).
+	pskKey []byte
+
 	// Handshake ciphers (derived from shared secret)
 	sendCipher *crypto.AEAD
 	recvCipher *crypto.AEAD
@@ -202,6 +206,7 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 	if h.session.PSK != nil {
 		msg.PSKIdentity = h.session.PSKIdentity
 		h.foldPSK = true
+		h.pskKey = h.session.PSK
 	}
 
 	data, err := h.codec.EncodeClientHello(msg)
@@ -544,9 +549,19 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	// PSK mutual authentication: fold our PSK only when the client advertised the
 	// matching identity. An unknown or absent identity means no fold, so a client
 	// that expected a PSK fails closed at the Finished MAC (no identity oracle).
-	if h.session.PSK != nil && len(msg.PSKIdentity) > 0 &&
-		bytes.Equal(msg.PSKIdentity, h.session.PSKIdentity) {
+	if key := h.responderPSK(msg.PSKIdentity); key != nil {
 		h.foldPSK = true
+		h.pskKey = key
+	} else if h.session.RequirePSK {
+		// No PSK for this client. Fold a random key rather than rejecting, so the
+		// handshake proceeds at the same cost and fails at the Finished check, exactly
+		// like a client holding the wrong key: no identity oracle by response or timing.
+		dummy, err := crypto.SecureRandomBytes(constants.PSKSize)
+		if err != nil {
+			return err
+		}
+		h.foldPSK = true
+		h.pskKey = dummy
 	}
 
 	// Select cipher suite (first mutually supported)
@@ -757,6 +772,25 @@ func (h *Handshake) foldStaticSecret() error {
 	return nil
 }
 
+// responderPSK returns the PSK for the identity a client advertised, or nil when the
+// client sent none or the responder holds no matching key. A PSKLookup takes
+// precedence over the single configured PSK.
+func (h *Handshake) responderPSK(identity []byte) []byte {
+	if len(identity) == 0 {
+		return nil
+	}
+	if h.session.PSKLookup != nil {
+		if key := h.session.PSKLookup(identity); len(key) == constants.PSKSize {
+			return key
+		}
+		return nil
+	}
+	if h.session.PSK != nil && bytes.Equal(identity, h.session.PSKIdentity) {
+		return h.session.PSK
+	}
+	return nil
+}
+
 // foldPSKSecret mixes the pre-shared key into the master secret for mutual
 // authentication, after any static fold and before key derivation. A no-op unless
 // both peers agreed on the PSK. The ephemeral secret stays a mandatory input, so
@@ -766,7 +800,7 @@ func (h *Handshake) foldPSKSecret() error {
 	if !h.foldPSK {
 		return nil
 	}
-	mixed, err := crypto.DerivePSKSecret(h.sharedSecret, h.session.PSK)
+	mixed, err := crypto.DerivePSKSecret(h.sharedSecret, h.pskKey)
 	if err != nil {
 		return err
 	}

@@ -462,6 +462,11 @@ type DatagramEndpoint struct {
 	psk         []byte
 	pskIdentity []byte
 
+	// pskLookup and requirePSK mirror TransportConfig.PSKLookup / RequirePSK for the
+	// responder, set by WithPSKLookup and WithRequirePSK.
+	pskLookup  func(identity []byte) []byte
+	requirePSK bool
+
 	closeOnce sync.Once
 	done      chan struct{}
 }
@@ -538,6 +543,21 @@ func WithPSK(identity, key []byte) DatagramEndpointOption {
 	}
 }
 
+// WithPSKLookup lets a listening endpoint hold one PSK per client identity: lookup
+// returns the constants.PSKSize-byte key for an identity, or nil if unknown. It takes
+// precedence over WithPSK on the responder.
+func WithPSKLookup(lookup func(identity []byte) []byte) DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.pskLookup = lookup }
+}
+
+// WithRequirePSK makes the responder admit only initiators that hold a PSK it knows.
+// It requires WithPSK or WithPSKLookup; otherwise construction fails with
+// ErrPSKMisconfigured. An unknown identity fails at the Finished check, the same as a
+// wrong key.
+func WithRequirePSK() DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.requirePSK = true }
+}
+
 // WithPinnedServerKey makes DialDatagram require the server to prove possession of
 // the given static public key; a wrong, absent, or stripped key fails the handshake
 // with ErrServerKeyMismatch. Unset, the initiator does not authenticate the server.
@@ -594,6 +614,9 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 		return nil, qerrors.ErrStaticAuthMisconfigured
 	}
 	if err := validatePSK(e.psk, e.pskIdentity); err != nil {
+		return nil, err
+	}
+	if err := validateRequirePSK(e.requirePSK, e.psk, e.pskLookup); err != nil {
 		return nil, err
 	}
 	// Resolve the half-open ceiling after opts: autoscale with core count unless an

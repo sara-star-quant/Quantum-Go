@@ -192,7 +192,10 @@ sequence number and is not transmitted.
   matching private key derives the same secret; a wrong pin fails closed at the Finished MAC.
 - **Pre-shared key (mutual).** When both peers hold a PSK and the client advertises the matching identity,
   the PSK folds via `"CH-KEM-Tunnel-PSK"`. An unknown or absent identity means no fold, so a client that
-  expected a PSK fails closed at the Finished MAC with no identity oracle.
+  expected a PSK fails closed at the Finished MAC with no identity oracle. A responder may keep one PSK per
+  client identity (a lookup) and may require a PSK. Under require, a client with no identity or an unknown one
+  is not refused early: the responder folds a random key of the same size, so the handshake costs the same and
+  fails at the Finished MAC, indistinguishable by response or timing from a client holding the wrong key.
 
 Both folds occur before key derivation and the Finished MAC, so they authenticate the whole handshake.
 

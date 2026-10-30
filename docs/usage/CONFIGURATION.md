@@ -42,9 +42,13 @@ serverCfg.RequireStaticAuth = true           // needs StaticKeyPair set
 // Authenticates both directions; composes with static-key pinning.
 serverCfg.PSK, serverCfg.PSKIdentity = psk, []byte("edge-01")
 clientCfg.PSK, clientCfg.PSKIdentity = psk, []byte("edge-01")
+
+// One PSK per client, and admit only clients that hold one (server side).
+serverCfg.PSKLookup = func(id []byte) []byte { return keys[string(id)] } // nil = unknown
+serverCfg.RequirePSK = true                  // needs PSK or PSKLookup set
 ```
 
-Datagram endpoints use options instead: `tunnel.WithStaticIdentity(kp)`, `tunnel.WithPinnedServerKey(pub)`, `tunnel.WithRequireStaticAuth()`, and `tunnel.WithPSK(identity, key)`.
+Datagram endpoints use options instead: `tunnel.WithStaticIdentity(kp)`, `tunnel.WithPinnedServerKey(pub)`, `tunnel.WithRequireStaticAuth()`, `tunnel.WithPSK(identity, key)`, `tunnel.WithPSKLookup(fn)`, and `tunnel.WithRequirePSK()`.
 
 ### Rate Limiting (v0.0.6+)
 
