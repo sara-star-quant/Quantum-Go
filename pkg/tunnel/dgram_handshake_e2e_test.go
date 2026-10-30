@@ -467,4 +467,20 @@ func TestDgramRedialSameSourceNoStall(t *testing.T) {
 			t.Fatalf("dial %d took %v: stalled on a retransmit timeout", i, d)
 		}
 	}
+
+	// Every handshake finished, so the responder must hold no half-open slot and no
+	// in-progress source entry.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		epB.registry.mu.Lock()
+		half, srcs := epB.registry.halfOpenTotal, len(epB.registry.bySource)
+		epB.registry.mu.Unlock()
+		if half == 0 && srcs == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("leaked responder state after redials: halfOpen=%d bySource=%d", half, srcs)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

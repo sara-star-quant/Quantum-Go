@@ -378,6 +378,13 @@ func (r *connRegistry) addSource(source string, s *datagramSession) {
 	r.bySource[source] = s
 }
 
+// sourceOwner reports whether ds is still the in-progress responder for source.
+func (r *connRegistry) sourceOwner(source string, ds *datagramSession) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.bySource[source] == ds
+}
+
 // removeSource drops the source mapping (on establishment or teardown). It is
 // idempotent.
 func (r *connRegistry) removeSource(source string) {

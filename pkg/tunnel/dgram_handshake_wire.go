@@ -81,6 +81,12 @@ func (e *DatagramEndpoint) deliverHandshake(src net.Addr, h protocol.DatagramHan
 	if !won {
 		if reserved != nil { // an existing responder owns this source: route the retransmit
 			trySend(reserved.inbox, in)
+			// The owner may have finished and drained its inbox between the lookup and
+			// the send. Dispatch again so the hello is not stranded; a duplicate lands
+			// on the new responder as a retransmit.
+			if !e.registry.sourceOwner(src.String(), reserved) {
+				e.deliverHandshake(src, h, msg)
+			}
 		}
 		return // reserved == nil means the per-source cap is reached: drop
 	}
