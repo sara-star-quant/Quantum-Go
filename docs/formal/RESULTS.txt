@@ -1,6 +1,6 @@
 Quantum-Go formal verification results
 Tool: Proverif 2.05. Cryptographic protocol verifier, by Bruno Blanchet, Vincent Cheval, and Marc Sylvestre
-Protocol version verified: 5.0
+Protocol version verified: 6.0
 
 === chkem_auth.pv ===
 RESULT inj-event(ClientAccept(sp,t)) ==> inj-event(ServerRunning(sp,t)) is true.
