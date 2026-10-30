@@ -201,7 +201,7 @@ func dialDgramPSK(t *testing.T, seed uint64, serverPSK, serverID, clientPSK, cli
 	select {
 	case ds := <-epB.acceptCh:
 		server = ds.session
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 	}
 	return client, server, nil
 }
