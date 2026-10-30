@@ -2,6 +2,7 @@ package benchmark
 
 import (
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -77,6 +78,57 @@ func BenchmarkHandshakeLatency(b *testing.B) {
 			}
 			b.ReportMetric(float64(clientTotal.Microseconds())/float64(b.N)/1000, "client-ms")
 			b.ReportMetric(float64(serverTotal.Microseconds())/float64(b.N)/1000, "server-ms")
+		})
+	}
+}
+
+// delayPacketConn delays every outgoing datagram by a fixed one-way latency.
+type delayPacketConn struct {
+	net.PacketConn
+	latency time.Duration
+}
+
+func (c *delayPacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
+	buf := append([]byte(nil), p...)
+	time.AfterFunc(c.latency, func() { _, _ = c.PacketConn.WriteTo(buf, addr) })
+	return len(p), nil
+}
+
+func newDelayEndpoint(b *testing.B, latency time.Duration) (*tunnel.DatagramEndpoint, net.Addr) {
+	b.Helper()
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		b.Fatal(err)
+	}
+	ep, err := tunnel.NewDatagramEndpoint(&delayPacketConn{PacketConn: pc, latency: latency})
+	if err != nil {
+		b.Fatal(err)
+	}
+	go ep.Serve()
+	return ep, pc.LocalAddr()
+}
+
+// BenchmarkDatagramHandshakeLatency measures the datagram handshake over loopback
+// UDP with a fixed round-trip time and no loss. client-ms is DialDatagram return
+// time: about 1 RTT plus crypto.
+func BenchmarkDatagramHandshakeLatency(b *testing.B) {
+	for _, rtt := range []time.Duration{0, 20 * time.Millisecond, 100 * time.Millisecond} {
+		b.Run(fmt.Sprintf("rtt=%s", rtt), func(b *testing.B) {
+			var total time.Duration
+			for i := 0; i < b.N; i++ {
+				srv, srvAddr := newDelayEndpoint(b, rtt/2)
+				cli, _ := newDelayEndpoint(b, rtt/2)
+				start := time.Now()
+				conn, err := tunnel.DialDatagram(cli, srvAddr)
+				if err != nil {
+					b.Fatal(err)
+				}
+				total += time.Since(start)
+				_ = conn
+				_ = cli.Close()
+				_ = srv.Close()
+			}
+			b.ReportMetric(float64(total.Microseconds())/float64(b.N)/1000, "client-ms")
 		})
 	}
 }

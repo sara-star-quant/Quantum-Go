@@ -42,6 +42,12 @@ type dgramHandshake struct {
 	prev protocol.MessageType
 	// cached is the last outbound flight produced, replayed on a retransmit.
 	cached []hsMessage
+	// earlyFinished holds a ServerFinished that arrived before its ServerHello
+	// finished reassembling. The two travel as one flight, so a reordered network
+	// delivers them swapped; replaying it after ServerHello saves a retransmit
+	// timeout. Unauthenticated, so at most one message is held and a bad one is
+	// dropped like any other.
+	earlyFinished []byte
 }
 
 // newDgramHandshake builds an FSM for session. The initiator must call start() to
@@ -87,6 +93,9 @@ func (d *dgramHandshake) onMessage(typ protocol.MessageType, body []byte) (out [
 		// re-send the ClientHello. A duplicate HRR (hrrDone) falls through to the
 		// retransmit case below and replays the cached retried ClientHello.
 		return d.advance(typ, body)
+	case d.role == RoleInitiator && typ == protocol.MessageTypeServerFinished && d.expecting == protocol.MessageTypeServerHello:
+		d.earlyFinished = append(d.earlyFinished[:0], body...)
+		return nil, false
 	case d.role == RoleInitiator && typ == protocol.MessageTypeServerHello && typ == d.prev:
 		// A repeated ServerHello while awaiting ServerFinished: the cached flight is
 		// still the ClientHello, whose retransmit timer is already armed. Replaying it
@@ -113,6 +122,10 @@ func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out []h
 		}
 		d.prev = typ
 		d.expecting = protocol.MessageTypeServerFinished
+		if early := d.earlyFinished; early != nil {
+			d.earlyFinished = nil
+			return d.advance(protocol.MessageTypeServerFinished, early)
+		}
 		return nil, false
 
 	case d.role == RoleInitiator && typ == protocol.MessageTypeServerFinished:

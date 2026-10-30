@@ -198,3 +198,25 @@ func TestDgramHandshakeFSMUnexpectedDropped(t *testing.T) {
 		t.Fatal("unexpected message changed responder state")
 	}
 }
+
+// TestDgramHandshakeFSMReorderedFlight verifies a ServerFinished that arrives before
+// the ServerHello completes the handshake once the ServerHello lands, with no
+// retransmit.
+func TestDgramHandshakeFSMReorderedFlight(t *testing.T) {
+	initiator, responder := newFSMPair(t)
+
+	chs, _ := initiator.start()
+	flight, _ := responder.onMessage(chs[0].typ, chs[0].body)
+	sh, sf := serverFlight(t, flight)
+
+	if out, done := initiator.onMessage(sf.typ, sf.body); out != nil || done {
+		t.Fatalf("early ServerFinished = %v, done=%v; want nil, false", out, done)
+	}
+	cf, done := initiator.onMessage(sh.typ, sh.body)
+	if len(cf) != 1 || cf[0].typ != protocol.MessageTypeClientFinished || !done {
+		t.Fatalf("ServerHello after early ServerFinished = %v, done=%v; want ClientFinished, true", cf, done)
+	}
+	if _, done := responder.onMessage(cf[0].typ, cf[0].body); !done {
+		t.Fatal("responder did not complete")
+	}
+}

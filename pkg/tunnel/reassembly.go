@@ -47,7 +47,7 @@ type reasmKey struct {
 type fragmentBuffer struct {
 	total     int
 	buf       []byte
-	covered   []bool // per-byte coverage; tolerates overlapping retransmits
+	covered   []uint64 // per-byte coverage bitset; tolerates overlapping retransmits
 	coveredN  int
 	createdAt time.Time
 }
@@ -117,7 +117,7 @@ func (r *Reassembler) Add(source string, h protocol.DatagramHandshakeHeader, fra
 		fb = &fragmentBuffer{
 			total:     total,
 			buf:       make([]byte, total),
-			covered:   make([]bool, total),
+			covered:   make([]uint64, (total+63)/64),
 			createdAt: r.now(),
 		}
 		bufs[key] = fb
@@ -129,8 +129,8 @@ func (r *Reassembler) Add(source string, h protocol.DatagramHandshakeHeader, fra
 	off := int(h.FragOffset)
 	copy(fb.buf[off:off+len(fragment)], fragment)
 	for i := off; i < off+len(fragment); i++ {
-		if !fb.covered[i] {
-			fb.covered[i] = true
+		if fb.covered[i>>6]&(1<<(i&63)) == 0 {
+			fb.covered[i>>6] |= 1 << (i & 63)
 			fb.coveredN++
 		}
 	}
