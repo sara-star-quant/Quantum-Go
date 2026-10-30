@@ -9,9 +9,14 @@ permissions:
   contents: write
 
 jobs:
+  license-scan:
+    name: License Scan
+    uses: ./.github/workflows/license-scan.yml
+
   release:
     name: Create Release
     runs-on: ubuntu-latest
+    needs: license-scan
 
     steps:
     - name: Checkout code
@@ -24,6 +29,12 @@ jobs:
       with:
         go-version: '1.26.x'
         cache: true
+
+    - name: Download license scan result
+      uses: actions/download-artifact@v8
+      with:
+        name: license-scan
+        path: scan
 
     - name: Get version from tag
       id: get_version
@@ -77,6 +88,7 @@ jobs:
           bin/release/*.tar.gz
           bin/release/*.zip
           bin/release/checksums-sha256.txt
+          scan/scancode.json
         body_path: release_notes.md
         draft: false
         prerelease: false

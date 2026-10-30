@@ -100,6 +100,20 @@ Explain the problem this commit solves and why the change is needed.
 Fixes #123
 ```
 
+### Developer Certificate of Origin
+
+Contributions are accepted under the project license (Apache-2.0) and need a sign-off that certifies the [Developer Certificate of Origin](https://developercertificate.org). Add it with `git commit -s`, which appends `Signed-off-by: Your Name <you@example.com>` using your commit email. A CI check fails a pull request from an outside contributor whose commits lack a matching sign-off. The maintainer's own commits and dependency-bot bumps are exempt.
+
+### Provenance and AI assistance
+
+You are responsible for every line you submit, however it was written.
+
+- Do not copy code, text, test vectors, or figures from a source whose license is incompatible with Apache-2.0, and do not paste from papers: implement published designs from their description and cite them in `docs/DESIGN_INFLUENCES.md`.
+- Treat output from AI coding tools like code from any other source. Read it, make sure you understand it, and do not submit anything that reproduces licensed code you recognize.
+- Say so in the pull request when a significant part was AI-generated, so reviewers look at provenance as well as correctness.
+- Every release runs a license and copyright scan (`.github/workflows/release.yml`) and fails if shipped code carries a foreign license or copyright holder.
+- Cryptographic changes need a spec or paper reference and known-answer tests, whoever or whatever wrote them.
+
 ## Testing
 
 ### Required Tests

@@ -1,0 +1,37 @@
+name: DCO
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  signoff:
+    name: Signed-off-by
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Require a Developer Certificate of Origin sign-off on outside contributions
+      env:
+        BASE: ${{ github.event.pull_request.base.sha }}
+        HEAD: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -eu
+        fail=0
+        for sha in $(git rev-list --no-merges "$BASE..$HEAD"); do
+          email=$(git show -s --format='%ae' "$sha")
+          case "$email" in
+            # The maintainer holds the copyright and dependabot only bumps versions.
+            pzverkov@users.noreply.github.com|*+pzverkov@users.noreply.github.com|*dependabot*) continue ;;
+          esac
+          if ! git show -s --format='%B' "$sha" | grep -qiE "^Signed-off-by: .+ <$email>\$"; then
+            echo "::error::commit $(git rev-parse --short "$sha") by $email has no matching Signed-off-by (use git commit -s)"
+            fail=1
+          fi
+        done
+        exit $fail

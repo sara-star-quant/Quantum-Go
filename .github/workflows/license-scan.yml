@@ -1,0 +1,45 @@
+name: License Scan
+
+# Reusable: release.yml calls it before publishing. It also runs on every pull request
+# so the release path is exercised long before a tag.
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  license-scan:
+    name: License Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: '3.12'
+
+    - name: Install ScanCode
+      run: pip install scancode-toolkit==32.5.0 pluggy==1.5.0 typecode-libmagic
+
+    - name: Scan repository for licenses and copyrights
+      run: >
+        scancode --license --copyright --package --info
+        --ignore ".git/*" --ignore "THIRD_PARTY_NOTICES.md"
+        --ignore "*check-license-scan.py"
+        --processes 2 --json-pp scancode.json .
+
+    - name: Fail on a foreign license or copyright in shipped code
+      run: python3 scripts/check-license-scan.py scancode.json
+
+    - name: Keep the scan result
+      uses: actions/upload-artifact@v7
+      with:
+        name: license-scan
+        path: scancode.json

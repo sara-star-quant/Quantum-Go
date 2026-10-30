@@ -57,6 +57,25 @@ Consequences for the design:
 - Authentication additions stay symmetric (PSK) and follow public RFC mechanisms until a patent opinion covers KEM-based client authentication.
 - Do not build on constructions from PQShield (Rebar / reinforced KEM) or on papers published under non-derivative terms.
 
+## Scanner result
+
+ScanCode Toolkit 32.5.0 (Apache-2.0) scanned all 312 files in the repository (licenses, copyrights, package manifests) on 2026-10-30.
+
+- No Go source or script carries a third-party license text or copyright. The only copyright holder detected is the project author.
+- The other licenses detected are mentions in docs (this audit record, the changelog, the contribution guide), not license texts embedded in code.
+- ScanCode matches license text. It does not detect snippet-level similarity to other code, so it does not answer the question of AI-generated code that resembles licensed code. That risk is covered by review, the provenance rules in `CONTRIBUTING.md`, and known-answer tests for the crypto. A snippet-matching service (for example ScanOSS) could be added if the project wants it; it sends code fingerprints to an external service, so it is not enabled.
+
+Every release now runs the scan (`license-scan` job in `.github/workflows/release.yml`), fails the release if shipped code carries a foreign license or copyright holder (`scripts/check-license-scan.py`), and attaches `scancode.json` to the GitHub release. A planted GPL header in a test copy makes the check fail.
+
+## Other risks
+
+| Risk | Status |
+|---|---|
+| Name | Searched public sources on 2026-10-30: no trademark registration or filing found for "Quantum-Go" or "QuantumGo". A commercial service called QuantumVPN uses a different name. A web search cannot confirm registration status; check USPTO, EUIPO, and WIPO Global Brand Database before relying on the name as a brand. |
+| Contributor chain | Contributions need a DCO sign-off (`CONTRIBUTING.md`); the `DCO` workflow fails outside pull requests without one. No contributor agreement. |
+| Copyright holder | The notice names the project author personally. Confirm whether the author or an employing company owns the work before relying on that. |
+| Liability | Apache-2.0 disclaims warranty and limits liability (sections 7 and 8). |
+
 ## Residual items
 
 - Public disclosures are checked above; no counsel review has happened. Get an opinion before shipping a KEMTLS-style or other paper-derived design.
