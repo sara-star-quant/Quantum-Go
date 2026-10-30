@@ -141,6 +141,7 @@ receive on Linux, and optional fixed-size handshake padding.
 | Handshakes/sec (datagram/UDP, full CH-KEM, sequential) | ~1,300 (~760 µs each) |
 | Time until the client can send data (stream, protocol 6.0) | 1 RTT + ~0.4 ms crypto (was 2 RTT): 22 ms at 20 ms RTT, 102 ms at 100 ms, 502 ms at 500 ms (was 44, 204, 1004) |
 | Time until the server can read client data (stream) | 1.5 RTT + ~0.4 ms crypto (unchanged): 33 ms at 20 ms RTT, 153 ms at 100 ms |
+| Time until the client can send data (datagram, no loss) | 1 RTT + ~1.6 ms crypto and socket time: 23 ms at 20 ms RTT, 115 ms at 100 ms. A reordered server flight no longer costs a 500 ms retransmit timer |
 | Endpoint auth handshake cost (opt-in) | static-key ~+40% (one extra CH-KEM leg); PSK negligible (one KDF fold); data plane unaffected |
 | Stream per-record overhead | 16 B AEAD (tag only; nonce derived, not transmitted, was 28) + 13 B frame header (type, length, seq) = 29 B total (was 41) |
 | Single-tunnel throughput (stream/TCP, AES-GCM, end-to-end) | ~690 MB/s (5.5 Gb/s), sustained across rekeys |
@@ -187,6 +188,12 @@ independently measured; run the benchmark to verify):
 | Cloud instance (c6i.xlarge) | 3-5 GB/s |
 | Mid-range server (Xeon Silver) | 4-7 GB/s |
 | Enterprise (Xeon Platinum / EPYC) | 8-12 GB/s |
+
+Handshake latency is round-trip bound, so faster hardware does not change the RTT
+terms above. It only shrinks the crypto part (ML-KEM-1024 plus X25519, no AES
+involved): expect roughly 0.3-0.8 ms per handshake on a current server core, with
+throughput scaling near-linearly across cores since handshakes are independent.
+This is an estimate, not a measurement.
 
 Run `quantum-tunnel bench --handshakes N --datagram-handshakes N --throughput` on your target hardware. See [CLI Reference](docs/usage/CLI.md#benchmark-mode).
 
