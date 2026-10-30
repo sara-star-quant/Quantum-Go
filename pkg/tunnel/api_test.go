@@ -254,8 +254,15 @@ func TestMultipleClients(t *testing.T) {
 
 	wg.Wait()
 
-	// Give a bit of time for all server goroutines to process
-	time.Sleep(200 * time.Millisecond)
+	// Wait for the server goroutines to process, up to a generous bound for slow runners
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		mu.Lock()
+		n := len(receivedMessages)
+		mu.Unlock()
+		if n == numClients {
+			break
+		}
+	}
 
 	close(errors)
 

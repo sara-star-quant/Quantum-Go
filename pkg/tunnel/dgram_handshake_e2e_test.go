@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net"
+	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -458,7 +460,11 @@ func TestDgramRedialSameSourceNoStall(t *testing.T) {
 	defer func() { _ = epA.Close() }()
 	defer func() { _ = epB.Close() }()
 
-	for i := 0; i < 300; i++ {
+	dials := 300
+	if v, err := strconv.Atoi(os.Getenv("QGO_SOAK_DIALS")); err == nil && v > 0 {
+		dials = v // longer soak run, set by the bench workflow
+	}
+	for i := 0; i < dials; i++ {
 		start := time.Now()
 		if _, err := DialDatagram(epA, connB.addr); err != nil {
 			t.Fatalf("dial %d: %v", i, err)
