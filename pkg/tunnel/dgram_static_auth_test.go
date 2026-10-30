@@ -54,11 +54,12 @@ func dialDgramAuthOpts(t *testing.T, seed uint64, drop, dup, reorder float64, se
 		t.Fatal("dial did not resolve")
 	}
 
-	// On success the responder surfaced its session before the dial returned.
+	// The dial returns after one round trip; the responder surfaces once it verifies
+	// ClientFinished, which can trail the dial under load.
 	select {
 	case ds := <-epB.acceptCh:
 		server = ds.session
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 	}
 	return client, server, nil
 }
