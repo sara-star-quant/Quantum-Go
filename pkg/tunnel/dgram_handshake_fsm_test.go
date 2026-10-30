@@ -21,45 +21,61 @@ func newFSMPair(t *testing.T) (initiator, responder *dgramHandshake) {
 	return newDgramHandshake(ci), newDgramHandshake(ri)
 }
 
+// serverFlight returns the responder's ServerHello and ServerFinished from its flight.
+func serverFlight(t *testing.T, flight []hsMessage) (sh, sf hsMessage) {
+	t.Helper()
+	if len(flight) != 2 || flight[0].typ != protocol.MessageTypeServerHello ||
+		flight[1].typ != protocol.MessageTypeServerFinished {
+		t.Fatalf("responder flight = %v; want ServerHello, ServerFinished", flight)
+	}
+	return flight[0], flight[1]
+}
+
 // TestDgramHandshakeFSMRoundTrip drives a full handshake by passing each FSM's
-// output straight into the peer, no transport. Reaching Complete on the initiator
-// cryptographically proves key agreement: ProcessServerFinished verifies a MAC
-// computed over the shared secret and transcript.
+// output straight into the peer, no transport. The initiator completes on
+// ServerFinished (one round trip) and the responder on ClientFinished. Reaching
+// Complete on both cryptographically proves key agreement: each Finished MAC covers
+// the shared secret and the transcript.
 func TestDgramHandshakeFSMRoundTrip(t *testing.T) {
 	initiator, responder := newFSMPair(t)
 
-	ch, err := initiator.start()
+	chs, err := initiator.start()
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	if ch.typ != protocol.MessageTypeClientHello {
-		t.Fatalf("start produced %v, want ClientHello", ch.typ)
+	if len(chs) != 1 || chs[0].typ != protocol.MessageTypeClientHello {
+		t.Fatalf("start produced %v, want ClientHello", chs)
+	}
+	ch := chs[0]
+
+	flight, done := responder.onMessage(ch.typ, ch.body)
+	if done {
+		t.Fatal("responder complete after ClientHello")
+	}
+	sh, sf := serverFlight(t, flight)
+	if responder.isComplete() {
+		t.Fatal("responder complete before ClientFinished")
 	}
 
-	sh, done := responder.onMessage(ch.typ, ch.body)
-	if sh == nil || sh.typ != protocol.MessageTypeServerHello || done {
-		t.Fatalf("responder(ClientHello) = %v, done=%v; want ServerHello, false", sh, done)
+	out, done := initiator.onMessage(sh.typ, sh.body)
+	if out != nil || done {
+		t.Fatalf("initiator(ServerHello) = %v, done=%v; want nothing, false", out, done)
 	}
 
-	cf, done := initiator.onMessage(sh.typ, sh.body)
-	if cf == nil || cf.typ != protocol.MessageTypeClientFinished || done {
-		t.Fatalf("initiator(ServerHello) = %v, done=%v; want ClientFinished, false", cf, done)
-	}
-
-	sf, done := responder.onMessage(cf.typ, cf.body)
-	if sf == nil || sf.typ != protocol.MessageTypeServerFinished || !done {
-		t.Fatalf("responder(ClientFinished) = %v, done=%v; want ServerFinished, true", sf, done)
-	}
-	if !responder.isComplete() {
-		t.Fatal("responder not complete after sending ServerFinished")
-	}
-
-	out, done := initiator.onMessage(sf.typ, sf.body)
-	if out != nil || !done {
-		t.Fatalf("initiator(ServerFinished) = %v, done=%v; want nil, true", out, done)
+	cf, done := initiator.onMessage(sf.typ, sf.body)
+	if len(cf) != 1 || cf[0].typ != protocol.MessageTypeClientFinished || !done {
+		t.Fatalf("initiator(ServerFinished) = %v, done=%v; want ClientFinished, true", cf, done)
 	}
 	if !initiator.isComplete() {
-		t.Fatal("initiator not complete after receiving ServerFinished")
+		t.Fatal("initiator not complete after sending ClientFinished")
+	}
+
+	out, done = responder.onMessage(cf[0].typ, cf[0].body)
+	if out != nil || !done {
+		t.Fatalf("responder(ClientFinished) = %v, done=%v; want nothing, true", out, done)
+	}
+	if !responder.isComplete() {
+		t.Fatal("responder not complete after ClientFinished")
 	}
 
 	if got := initiator.hs.session.State(); got != SessionStateEstablished {
@@ -71,24 +87,24 @@ func TestDgramHandshakeFSMRoundTrip(t *testing.T) {
 }
 
 // TestDgramHandshakeFSMDuplicateReplay verifies a retransmitted ClientHello, after
-// the responder already answered, replays the byte-identical cached ServerHello
-// without re-running the KEM (re-encapsulation would derive a different secret).
+// the responder already answered, replays the byte-identical server flight without
+// re-running the KEM (re-encapsulation would derive a different secret).
 func TestDgramHandshakeFSMDuplicateReplay(t *testing.T) {
 	initiator, responder := newFSMPair(t)
 
-	ch, _ := initiator.start()
-	sh1, _ := responder.onMessage(ch.typ, ch.body)
-	if sh1 == nil {
-		t.Fatal("no ServerHello on first ClientHello")
-	}
+	chs, _ := initiator.start()
+	ch := chs[0]
+	f1, _ := responder.onMessage(ch.typ, ch.body)
+	sh1, sf1 := serverFlight(t, f1)
 	stateAfter := responder.state()
 
-	sh2, done := responder.onMessage(ch.typ, ch.body) // duplicate ClientHello
+	f2, done := responder.onMessage(ch.typ, ch.body) // duplicate ClientHello
 	if done {
 		t.Fatal("duplicate ClientHello reported complete")
 	}
-	if sh2 == nil || !bytes.Equal(sh1.body, sh2.body) {
-		t.Fatal("duplicate ClientHello did not replay the identical ServerHello")
+	sh2, sf2 := serverFlight(t, f2)
+	if !bytes.Equal(sh1.body, sh2.body) || !bytes.Equal(sf1.body, sf2.body) {
+		t.Fatal("duplicate ClientHello did not replay the identical server flight")
 	}
 	if responder.state() != stateAfter {
 		t.Fatal("duplicate ClientHello advanced responder state")
@@ -101,13 +117,10 @@ func TestDgramHandshakeFSMDuplicateReplay(t *testing.T) {
 func TestDgramHandshakeFSMBadMessageDropped(t *testing.T) {
 	initiator, responder := newFSMPair(t)
 
-	ch, _ := initiator.start()
-	sh, _ := responder.onMessage(ch.typ, ch.body)
-	cf, _ := initiator.onMessage(sh.typ, sh.body)
-	sf, done := responder.onMessage(cf.typ, cf.body)
-	if !done {
-		t.Fatal("responder not complete")
-	}
+	chs, _ := initiator.start()
+	flight, _ := responder.onMessage(chs[0].typ, chs[0].body)
+	sh, sf := serverFlight(t, flight)
+	initiator.onMessage(sh.typ, sh.body)
 
 	tampered := append([]byte(nil), sf.body...)
 	tampered[len(tampered)-1] ^= 0xFF
@@ -119,37 +132,55 @@ func TestDgramHandshakeFSMBadMessageDropped(t *testing.T) {
 		t.Fatal("tampered ServerFinished wrongly completed the handshake")
 	}
 
-	if out, done := initiator.onMessage(sf.typ, sf.body); out != nil || !done {
-		t.Fatalf("genuine ServerFinished after tamper = %v, done=%v; want nil, true", out, done)
+	cf, done := initiator.onMessage(sf.typ, sf.body)
+	if len(cf) != 1 || !done {
+		t.Fatalf("genuine ServerFinished after tamper = %v, done=%v; want ClientFinished, true", cf, done)
 	}
 	if !initiator.isComplete() {
 		t.Fatal("genuine ServerFinished did not complete the handshake")
 	}
 }
 
-// TestDgramHandshakeFSMReplayAfterComplete verifies the responder, after
-// completing, still replays its cached ServerFinished for a retransmitted
-// ClientFinished (recovers a lost final flight) and stays complete.
+// TestDgramHandshakeFSMReplayAfterComplete verifies the initiator, after
+// completing, still replays its cached ClientFinished for a retransmitted
+// ServerFinished (recovers a lost final message) and stays complete.
 func TestDgramHandshakeFSMReplayAfterComplete(t *testing.T) {
 	initiator, responder := newFSMPair(t)
 
-	ch, _ := initiator.start()
-	sh, _ := responder.onMessage(ch.typ, ch.body)
-	cf, _ := initiator.onMessage(sh.typ, sh.body)
-	sf1, done := responder.onMessage(cf.typ, cf.body)
-	if !done || sf1 == nil {
-		t.Fatal("responder did not complete with a ServerFinished")
+	chs, _ := initiator.start()
+	flight, _ := responder.onMessage(chs[0].typ, chs[0].body)
+	sh, sf := serverFlight(t, flight)
+	initiator.onMessage(sh.typ, sh.body)
+	cf1, done := initiator.onMessage(sf.typ, sf.body)
+	if !done || len(cf1) != 1 {
+		t.Fatal("initiator did not complete with a ClientFinished")
 	}
 
-	sf2, done := responder.onMessage(cf.typ, cf.body) // duplicate ClientFinished
+	cf2, done := initiator.onMessage(sf.typ, sf.body) // duplicate ServerFinished
 	if done {
-		t.Fatal("duplicate ClientFinished re-reported completion transition")
+		t.Fatal("duplicate ServerFinished re-reported completion transition")
 	}
-	if sf2 == nil || !bytes.Equal(sf1.body, sf2.body) {
-		t.Fatal("duplicate ClientFinished did not replay the identical ServerFinished")
+	if len(cf2) != 1 || !bytes.Equal(cf1[0].body, cf2[0].body) {
+		t.Fatal("duplicate ServerFinished did not replay the identical ClientFinished")
 	}
-	if !responder.isComplete() {
-		t.Fatal("responder lost completion after replay")
+	if !initiator.isComplete() {
+		t.Fatal("initiator lost completion after replay")
+	}
+}
+
+// TestDgramHandshakeFSMRepeatedServerHelloDropped verifies a repeated ServerHello
+// while the initiator awaits ServerFinished is dropped rather than answered with a
+// ClientHello replay, so a replayed server flight does not trigger a resend storm.
+func TestDgramHandshakeFSMRepeatedServerHelloDropped(t *testing.T) {
+	initiator, responder := newFSMPair(t)
+
+	chs, _ := initiator.start()
+	flight, _ := responder.onMessage(chs[0].typ, chs[0].body)
+	sh, _ := serverFlight(t, flight)
+	initiator.onMessage(sh.typ, sh.body)
+
+	if out, done := initiator.onMessage(sh.typ, sh.body); out != nil || done {
+		t.Fatalf("repeated ServerHello = %v, done=%v; want nil, false", out, done)
 	}
 }
 

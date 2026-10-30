@@ -7,13 +7,29 @@ import (
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
-// fsmStep passes one message into an FSM and returns its reply.
-func fsmStep(t *testing.T, d *dgramHandshake, m *hsMessage) (*hsMessage, bool) {
+// fsmStep passes a flight into an FSM, one message at a time, and returns the last
+// non-empty reply and whether the handshake completed.
+func fsmStep(t *testing.T, d *dgramHandshake, flight []hsMessage) (reply []hsMessage, complete bool) {
 	t.Helper()
-	if m == nil {
-		t.Fatal("nil message fed to FSM")
+	if len(flight) == 0 {
+		t.Fatal("empty flight fed to FSM")
 	}
-	return d.onMessage(m.typ, m.body)
+	for _, m := range flight {
+		out, done := d.onMessage(m.typ, m.body)
+		if out != nil {
+			reply = out
+		}
+		complete = complete || done
+	}
+	return reply, complete
+}
+
+// onlyMsg returns the single message of a one-message flight, or nil.
+func onlyMsg(flight []hsMessage) *hsMessage {
+	if len(flight) != 1 {
+		return nil
+	}
+	return &flight[0]
 }
 
 // TestDatagramHRR drives the datagram handshake FSM through a HelloRetryRequest:
@@ -31,39 +47,35 @@ func TestDatagramHRR(t *testing.T) {
 	}
 
 	hrr, _ := fsmStep(t, server, ch1)
-	if hrr == nil || hrr.typ != protocol.MessageTypeHelloRetryRequest {
+	if m := onlyMsg(hrr); m == nil || m.typ != protocol.MessageTypeHelloRetryRequest {
 		t.Fatalf("responder did not emit HelloRetryRequest, got %+v", hrr)
 	}
 
 	// A lost HRR: the initiator retransmits ClientHello1; the responder must replay
 	// the cached HRR (not reprocess), recovering from the loss.
 	replay, _ := fsmStep(t, server, ch1)
-	if replay == nil || replay.typ != protocol.MessageTypeHelloRetryRequest {
+	if m := onlyMsg(replay); m == nil || m.typ != protocol.MessageTypeHelloRetryRequest {
 		t.Fatalf("responder did not replay HRR on a retransmitted ClientHello1, got %+v", replay)
 	}
 
 	ch2, _ := fsmStep(t, client, hrr)
-	if ch2 == nil || ch2.typ != protocol.MessageTypeClientHello {
+	if m := onlyMsg(ch2); m == nil || m.typ != protocol.MessageTypeClientHello {
 		t.Fatalf("initiator did not emit a retried ClientHello, got %+v", ch2)
 	}
 
-	sh, _ := fsmStep(t, server, ch2)
-	if sh == nil || sh.typ != protocol.MessageTypeServerHello {
-		t.Fatalf("responder did not emit ServerHello after the retry, got %+v", sh)
+	flight, _ := fsmStep(t, server, ch2)
+	if len(flight) != 2 || flight[0].typ != protocol.MessageTypeServerHello ||
+		flight[1].typ != protocol.MessageTypeServerFinished {
+		t.Fatalf("responder did not emit ServerHello+ServerFinished after the retry, got %+v", flight)
 	}
 
-	cf, _ := fsmStep(t, client, sh)
-	if cf == nil || cf.typ != protocol.MessageTypeClientFinished {
-		t.Fatalf("initiator did not emit ClientFinished, got %+v", cf)
+	cf, clientDone := fsmStep(t, client, flight)
+	if m := onlyMsg(cf); m == nil || m.typ != protocol.MessageTypeClientFinished || !clientDone {
+		t.Fatalf("initiator did not complete with ClientFinished, got %+v done=%v", cf, clientDone)
 	}
 
-	sf, serverDone := fsmStep(t, server, cf)
-	if sf == nil || sf.typ != protocol.MessageTypeServerFinished || !serverDone {
-		t.Fatalf("responder did not complete with ServerFinished, got %+v done=%v", sf, serverDone)
-	}
-
-	if _, clientDone := fsmStep(t, client, sf); !clientDone {
-		t.Fatal("initiator did not complete on ServerFinished")
+	if _, serverDone := fsmStep(t, server, cf); !serverDone {
+		t.Fatal("responder did not complete on ClientFinished")
 	}
 
 	if clientSess.kemSuite.ID() != chkem.SuiteCHKEMv1 || serverSess.kemSuite.ID() != chkem.SuiteCHKEMv1 {

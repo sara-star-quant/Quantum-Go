@@ -1,7 +1,7 @@
 # Quantum-Go Wire Protocol Specification
 
 **Status:** Interop profile, descriptive of the current implementation.
-**Wire protocol version:** 5.0
+**Wire protocol version:** 6.0
 **Last updated:** 2026-06-20
 
 This document specifies the Quantum-Go tunnel handshake and KEM negotiation on the wire, so that an
@@ -15,7 +15,7 @@ document.
 
 Two independent version numbers appear and MUST NOT be conflated:
 
-- **Wire protocol version** `protocol.Current = 5.0` (major 5, minor 0). Carried in ClientHello and
+- **Wire protocol version** `protocol.Current = 6.0` (major 6, minor 0). Carried in ClientHello and
   ServerHello. Compatibility is major-only: a peer accepts another peer iff the major versions match. Major
   5 length-prefixes the KEM material so the wire carries suite-dependent key and ciphertext sizes.
 - **KEM combiner version** `0x0002`. A fixed 2-byte tag bound into the CH-KEM-v1 combiner transcript for
@@ -114,9 +114,14 @@ initiator (client)                          responder (server)
                          <--------           HelloRetryRequest    (optional, suite mismatch)
   ClientHello (retry)    -------->
                          <--------           ServerHello
+                         <--------           ServerFinished       (encrypted, same flight)
   ClientFinished         -------->           (encrypted)
-                         <--------           ServerFinished       (encrypted)
 ```
+
+The server sends ServerHello and ServerFinished as one flight, so the initiator derives the handshake keys,
+verifies ServerFinished, and is keyed after a single round trip. It sends ClientFinished next and may follow
+it with application data. The responder is keyed once it verifies ClientFinished, which is its key
+confirmation.
 
 Message types: ClientHello 0x01, ServerHello 0x02, ClientFinished 0x03, ServerFinished 0x04,
 HelloRetryRequest 0x05.
@@ -131,7 +136,7 @@ reassembled (see `docs/datagram-transport.md`).
 
 The ClientHello carries the `KEMSuite` the client's key share uses, plus `KEMSuites`, the full list of
 suites the client supports (in preference order). The KEM public key, the optional static-auth ciphertext,
-the ServerHello ciphertext, and the rekey public key are each 2-byte length-prefixed (protocol 5.0), so the
+the ServerHello ciphertext, and the rekey public key are each 2-byte length-prefixed (protocol 5.0 and later), so the
 wire carries suite-dependent sizes.
 
 If the responder does not support the client's `KEMSuite`, it replies with a HelloRetryRequest naming a
@@ -151,12 +156,12 @@ The suite is therefore bound both by the explicit echo and by the transcript.
 ### 5.3 Transcript and Finished
 
 The transcript is the concatenation of the handshake messages in order: the framed ClientHello(s) and
-ServerHello, then the plaintext Finished messages as they are produced (Section 5.1), with the
+ServerHello, then the plaintext Finished messages in the order ServerFinished, ClientFinished (Section 5.1), with the
 HelloRetryRequest substitution of Section 5.2 when a retry occurs.
 
 ```
-client_verify_data = KDF( "CH-KEM-Tunnel-ClientFinished", [ master_secret, transcript_through_ServerHello ], 32 )
-server_verify_data = KDF( "CH-KEM-Tunnel-ServerFinished", [ master_secret, transcript_through_ClientFinished ], 32 )
+server_verify_data = KDF( "CH-KEM-Tunnel-ServerFinished", [ master_secret, transcript_through_ServerHello ], 32 )
+client_verify_data = KDF( "CH-KEM-Tunnel-ClientFinished", [ master_secret, transcript_through_ServerFinished ], 32 )
 ```
 
 Each peer recomputes and compares the other's `verify_data` in constant time. A mismatch aborts the

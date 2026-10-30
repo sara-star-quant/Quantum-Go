@@ -176,16 +176,18 @@ Initiator                              Responder
     │  • Session ID (16B)                  │
     │  • CH-KEM ciphertext (1600B)         │
     │  • Selected cipher suite             │
+    │<──────── ServerFinished ─────────────│  (same flight)
+    │  • Encrypted(verify_data)            │
+    │  • verify_data = KDF(K, transcript   │
+    │    through ServerHello)              │
     │                                      │
     │  [Both derive shared secret K]       │
+    │  [Client verifies, is keyed: 1 RTT]  │
     │                                      │
     │───────── ClientFinished ────────────>│
     │  • Encrypted(verify_data)            │
-    │  • verify_data = KDF(K, transcript)  │
-    │                                      │
-    │<──────── ServerFinished ─────────────│
-    │  • Encrypted(verify_data)            │
-    │  • verify_data = KDF(K, transcript)  │
+    │  • verify_data = KDF(K, transcript   │
+    │    through ServerFinished)           │
     │                                      │
     │═══════ Tunnel Established ═══════════│
 ```

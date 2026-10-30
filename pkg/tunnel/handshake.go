@@ -55,8 +55,12 @@ const (
 	HandshakeStateClientHelloSent
 	// HandshakeStateServerHelloSent indicates ServerHello was sent (responder).
 	HandshakeStateServerHelloSent
-	// HandshakeStateClientFinishedSent indicates ClientFinished was sent.
-	HandshakeStateClientFinishedSent
+	// HandshakeStateServerHelloReceived indicates ServerHello was processed (initiator).
+	HandshakeStateServerHelloReceived
+	// HandshakeStateServerFinishedSent indicates ServerFinished was sent (responder).
+	HandshakeStateServerFinishedSent
+	// HandshakeStateServerFinishedReceived indicates ServerFinished verified (initiator).
+	HandshakeStateServerFinishedReceived
 	// HandshakeStateComplete indicates the handshake completed successfully.
 	HandshakeStateComplete
 	// HandshakeStateFailed indicates the handshake failed.
@@ -354,12 +358,20 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 	}
 
 	// Derive handshake keys
-	return h.deriveHandshakeKeys()
+	if err := h.deriveHandshakeKeys(); err != nil {
+		return err
+	}
+
+	h.state = HandshakeStateServerHelloReceived
+	return nil
 }
 
-// CreateClientFinished generates the ClientFinished message.
+// CreateClientFinished generates the ClientFinished message. It runs after
+// ProcessServerFinished: the initiator is keyed once it has verified ServerFinished
+// and sends ClientFinished (which may be followed by application data) in the same
+// breath.
 func (h *Handshake) CreateClientFinished() ([]byte, error) {
-	if h.sendCipher == nil {
+	if h.state != HandshakeStateServerFinishedReceived || h.sendCipher == nil {
 		return nil, qerrors.ErrInvalidState
 	}
 
@@ -386,17 +398,23 @@ func (h *Handshake) CreateClientFinished() ([]byte, error) {
 		return nil, err
 	}
 
-	// Add plaintext to transcript (before encryption)
-	h.transcript.Write(plaintext)
+	// Initialize session with traffic keys
+	if err := h.initializeSessionKeys(); err != nil {
+		return nil, err
+	}
 
-	h.state = HandshakeStateClientFinishedSent
+	h.state = HandshakeStateComplete
+
+	// Cleanup
+	h.cleanup()
 
 	return ciphertext, nil
 }
 
-// ProcessServerFinished processes the ServerFinished message (initiator).
+// ProcessServerFinished processes the ServerFinished message (initiator). It follows
+// ServerHello directly; ServerFinished covers the transcript through ServerHello.
 func (h *Handshake) ProcessServerFinished(data []byte) error {
-	if h.state != HandshakeStateClientFinishedSent {
+	if h.state != HandshakeStateServerHelloReceived || h.recvCipher == nil {
 		return qerrors.ErrInvalidState
 	}
 
@@ -427,15 +445,10 @@ func (h *Handshake) ProcessServerFinished(data []byte) error {
 		return qerrors.NewProtocolError("handshake", qerrors.ErrAuthenticationFailed)
 	}
 
-	// Initialize session with traffic keys
-	if err := h.initializeSessionKeys(); err != nil {
-		return err
-	}
+	// Add plaintext to transcript: ClientFinished covers it.
+	h.transcript.Write(plaintext)
 
-	h.state = HandshakeStateComplete
-
-	// Cleanup
-	h.cleanup()
+	h.state = HandshakeStateServerFinishedReceived
 
 	return nil
 }
@@ -643,7 +656,7 @@ func (h *Handshake) CreateServerHello() ([]byte, error) {
 
 // ProcessClientFinished processes the ClientFinished message (responder).
 func (h *Handshake) ProcessClientFinished(data []byte) error {
-	if h.state != HandshakeStateServerHelloSent {
+	if h.state != HandshakeStateServerFinishedSent {
 		return qerrors.ErrInvalidState
 	}
 
@@ -674,15 +687,24 @@ func (h *Handshake) ProcessClientFinished(data []byte) error {
 		return qerrors.NewProtocolError("handshake", qerrors.ErrAuthenticationFailed)
 	}
 
-	// Add plaintext to transcript
-	h.transcript.Write(plaintext)
+	// Initialize session with traffic keys
+	if err := h.initializeSessionKeys(); err != nil {
+		return err
+	}
+
+	h.state = HandshakeStateComplete
+
+	// Cleanup
+	h.cleanup()
 
 	return nil
 }
 
-// CreateServerFinished generates the ServerFinished message.
+// CreateServerFinished generates the ServerFinished message. It follows
+// CreateServerHello in the same flight; verify_data covers the transcript through
+// ServerHello. The responder is keyed only once it verifies ClientFinished.
 func (h *Handshake) CreateServerFinished() ([]byte, error) {
-	if h.sendCipher == nil {
+	if h.state != HandshakeStateServerHelloSent || h.sendCipher == nil {
 		return nil, qerrors.ErrInvalidState
 	}
 
@@ -708,15 +730,10 @@ func (h *Handshake) CreateServerFinished() ([]byte, error) {
 		return nil, err
 	}
 
-	// Initialize session with traffic keys
-	if err := h.initializeSessionKeys(); err != nil {
-		return nil, err
-	}
+	// Add plaintext to transcript: ClientFinished covers it.
+	h.transcript.Write(plaintext)
 
-	h.state = HandshakeStateComplete
-
-	// Cleanup
-	h.cleanup()
+	h.state = HandshakeStateServerFinishedSent
 
 	return ciphertext, nil
 }
@@ -881,6 +898,13 @@ func (h *Handshake) IsComplete() bool {
 	return h.state == HandshakeStateComplete
 }
 
+// encryptedRecord returns ciphertext with its 4-byte big-endian length prefix.
+func encryptedRecord(ciphertext []byte) []byte {
+	rec := make([]byte, 4, 4+len(ciphertext))
+	binary.BigEndian.PutUint32(rec, uint32(len(ciphertext))) // #nosec G115 -- record ciphertext bounded by MaxMessageSize, fits uint32
+	return append(rec, ciphertext...)
+}
+
 // writeEncryptedRecord writes an encrypted record with length framing.
 // Format: [4-byte big-endian length][ciphertext]
 func writeEncryptedRecord(w io.Writer, ciphertext []byte) error {
@@ -994,8 +1018,57 @@ func responderExchangeHellos(h *Handshake, rw io.ReadWriter) error {
 	if err != nil {
 		return err
 	}
-	_, err = rw.Write(serverHello)
+	serverFinished, err := h.CreateServerFinished()
+	if err != nil {
+		return err
+	}
+	// One flight: ServerHello (plaintext frame) then ServerFinished (length-framed
+	// encrypted record), written together so the client needs a single round trip.
+	flight := append(serverHello, encryptedRecord(serverFinished)...)
+	_, err = rw.Write(flight)
 	return err
+}
+
+// initiatorFinish reads and verifies the ServerFinished that follows the ServerHello
+// in the same flight, then sends ClientFinished. The client is keyed after one round
+// trip. Past ServerHello a pinned client that fails has almost certainly hit a
+// static-key mismatch: the server could not derive matching handshake keys, so we
+// see an alert or cannot decrypt ServerFinished. Surface that as
+// ErrServerKeyMismatch locally; the wire alert stays generic so a prober learns
+// nothing about the pin.
+func initiatorFinish(h *Handshake, rw io.ReadWriter) error {
+	serverFinished, err := readEncryptedRecord(rw)
+	if err != nil {
+		if h.session.PinnedServerKey != nil {
+			return qerrors.ErrServerKeyMismatch
+		}
+		return err
+	}
+	if err := h.ProcessServerFinished(serverFinished); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+		if h.session.PinnedServerKey != nil {
+			return qerrors.ErrServerKeyMismatch
+		}
+		return err
+	}
+	clientFinished, err := h.CreateClientFinished()
+	if err != nil {
+		return err
+	}
+	return writeEncryptedRecord(rw, clientFinished)
+}
+
+// responderFinish reads and verifies ClientFinished, completing the responder.
+func responderFinish(h *Handshake, rw io.ReadWriter) error {
+	clientFinished, err := readEncryptedRecord(rw)
+	if err != nil {
+		return err
+	}
+	if err := h.ProcessClientFinished(clientFinished); err != nil {
+		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+		return err
+	}
+	return nil
 }
 
 func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
@@ -1013,37 +1086,7 @@ func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
 			return err
 		}
 
-		// Send ClientFinished (encrypted, with length framing)
-		clientFinished, err := h.CreateClientFinished()
-		if err != nil {
-			return err
-		}
-		if err := writeEncryptedRecord(rw, clientFinished); err != nil {
-			return err
-		}
-
-		// Receive ServerFinished (encrypted, with length framing). Past this point
-		// a pinned client that fails has almost certainly hit a static-key
-		// mismatch: the server could not derive matching handshake keys, so it
-		// rejected our ClientFinished and we see an alert or a Finished mismatch.
-		// Surface that as ErrServerKeyMismatch locally; the wire alert stays
-		// generic so a prober learns nothing about the pin.
-		serverFinished, err := readEncryptedRecord(rw)
-		if err != nil {
-			if h.session.PinnedServerKey != nil {
-				return qerrors.ErrServerKeyMismatch
-			}
-			return err
-		}
-		if err := h.ProcessServerFinished(serverFinished); err != nil {
-			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
-			if h.session.PinnedServerKey != nil {
-				return qerrors.ErrServerKeyMismatch
-			}
-			return err
-		}
-
-		return nil
+		return initiatorFinish(h, rw)
 	}()
 
 	if observer != nil {
@@ -1074,27 +1117,12 @@ func ResponderHandshake(session *Session, rw io.ReadWriter) error {
 	err := func() error {
 		h := NewHandshake(session)
 
-		// Receive ClientHello (with an optional HelloRetryRequest) and send ServerHello.
+		// Receive ClientHello (with an optional HelloRetryRequest), send the
+		// ServerHello + ServerFinished flight, then verify ClientFinished.
 		if err := responderExchangeHellos(h, rw); err != nil {
 			return err
 		}
-
-		// Receive ClientFinished (encrypted, with length framing)
-		clientFinished, err := readEncryptedRecord(rw)
-		if err != nil {
-			return err
-		}
-		if err := h.ProcessClientFinished(clientFinished); err != nil {
-			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
-			return err
-		}
-
-		// Send ServerFinished (encrypted, with length framing)
-		serverFinished, err := h.CreateServerFinished()
-		if err != nil {
-			return err
-		}
-		return writeEncryptedRecord(rw, serverFinished)
+		return responderFinish(h, rw)
 	}()
 
 	if observer != nil {
@@ -1131,37 +1159,7 @@ func InitiatorResumptionHandshake(session *Session, rw io.ReadWriter, ticket, se
 			return err
 		}
 
-		// Send ClientFinished (encrypted, with length framing)
-		clientFinished, err := h.CreateClientFinished()
-		if err != nil {
-			return err
-		}
-		if err := writeEncryptedRecord(rw, clientFinished); err != nil {
-			return err
-		}
-
-		// Receive ServerFinished (encrypted, with length framing). Past this point
-		// a pinned client that fails has almost certainly hit a static-key
-		// mismatch: the server could not derive matching handshake keys, so it
-		// rejected our ClientFinished and we see an alert or a Finished mismatch.
-		// Surface that as ErrServerKeyMismatch locally; the wire alert stays
-		// generic so a prober learns nothing about the pin.
-		serverFinished, err := readEncryptedRecord(rw)
-		if err != nil {
-			if h.session.PinnedServerKey != nil {
-				return qerrors.ErrServerKeyMismatch
-			}
-			return err
-		}
-		if err := h.ProcessServerFinished(serverFinished); err != nil {
-			sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
-			if h.session.PinnedServerKey != nil {
-				return qerrors.ErrServerKeyMismatch
-			}
-			return err
-		}
-
-		return nil
+		return initiatorFinish(h, rw)
 	}()
 
 	if observer != nil {
@@ -1186,25 +1184,10 @@ func ResponderResumptionHandshake(session *Session, rw io.ReadWriter, tm *Ticket
 	h := NewHandshake(session)
 	h.SetTicketManager(tm)
 
-	// Receive ClientHello (with an optional HelloRetryRequest) and send ServerHello.
+	// Receive ClientHello (with an optional HelloRetryRequest), send the
+	// ServerHello + ServerFinished flight, then verify ClientFinished.
 	if err := responderExchangeHellos(h, rw); err != nil {
 		return err
 	}
-
-	// Receive ClientFinished (encrypted, with length framing)
-	clientFinished, err := readEncryptedRecord(rw)
-	if err != nil {
-		return err
-	}
-	if err := h.ProcessClientFinished(clientFinished); err != nil {
-		sendHandshakeAlert(rw, h.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
-		return err
-	}
-
-	// Send ServerFinished (encrypted, with length framing)
-	serverFinished, err := h.CreateServerFinished()
-	if err != nil {
-		return err
-	}
-	return writeEncryptedRecord(rw, serverFinished)
+	return responderFinish(h, rw)
 }

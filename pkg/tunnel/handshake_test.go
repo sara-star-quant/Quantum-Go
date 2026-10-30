@@ -204,7 +204,7 @@ func TestHandshakeAuthenticationFailure(t *testing.T) {
 	_ = clientS.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 
 	clientH := NewHandshake(clientS)
-	clientH.state = HandshakeStateClientFinishedSent
+	clientH.state = HandshakeStateServerHelloReceived
 
 	// Mock ciphers for handshake
 	clientH.recvCipher = clientS.recvCipher // Just for testing decryption failure

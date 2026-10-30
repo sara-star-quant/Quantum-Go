@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Changed
+- **One-round-trip handshake (protocol 6.0, wire-incompatible)**: ServerHello and ServerFinished now travel as one server flight, so the initiator is keyed after a single round trip instead of two. `server_verify_data` covers the transcript through ServerHello and `client_verify_data` covers through ServerFinished. The responder is keyed on verifying ClientFinished. On the datagram transport the initiator now lingers to replay a lost ClientFinished, and the responder no longer lingers. A datagram data packet that arrives before the responder has processed ClientFinished is dropped like any other lost datagram. The ClientHello SessionID field is capped at 255 bytes (its one-byte wire length previously truncated larger values silently).
+
 ## [0.0.16][] - 2026-06-20
 
 **Theme:** Assurance and verification. This release adds the evidence that turns a working library into an auditable one: a written wire-protocol specification, published cross-implementation conformance vectors, machine-checked formal security proofs, and an audit-readiness package. There is no wire or default-behavior change; the only new library API is seed-injected encapsulation for deterministic test vectors.

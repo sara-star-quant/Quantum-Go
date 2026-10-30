@@ -213,17 +213,24 @@ const maxHonoredRetries = 3
 
 // run drives the handshake to completion or failure. The initiator sends the
 // first ClientHello; both roles then loop on {inbound, retransmit timer, close},
-// retransmitting on silence and (responder) lingering after completion to answer a
-// retransmitted ClientFinished.
+// retransmitting on silence. The initiator is keyed as soon as it verifies
+// ServerFinished, so run returns then and a background loop keeps answering a
+// retransmitted server flight with the cached ClientFinished until the linger ends.
 func (l *handshakeLoop) run() (*Session, error) {
-	if l.driver.fsm.role == RoleInitiator {
+	initiator := l.driver.fsm.role == RoleInitiator
+	if initiator {
 		msgs, err := l.driver.start()
 		if err != nil {
 			return nil, err
 		}
 		l.send(msgs)
 	}
+	return l.loop(initiator)
+}
 
+// loop services the handshake until the driver is done. With earlyReturn it hands the
+// remaining linger to a goroutine and returns the session the moment it is established.
+func (l *handshakeLoop) loop(earlyReturn bool) (*Session, error) {
 	timer := time.NewTimer(time.Hour)
 	defer timer.Stop()
 
@@ -243,6 +250,12 @@ func (l *handshakeLoop) run() (*Session, error) {
 			return nil, errEndpointClosed
 		}
 		l.maybeSurface()
+		if earlyReturn && l.driver.established() {
+			if l.driver.lingering() {
+				go func() { _, _ = l.loop(false) }()
+			}
+			return l.ds.session, nil
+		}
 	}
 
 	if l.driver.failed() {

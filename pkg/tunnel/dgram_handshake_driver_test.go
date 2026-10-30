@@ -41,7 +41,9 @@ func newDriverPair(t *testing.T) (initiator, responder *dgramDriver) {
 }
 
 // TestDgramHandshakeDriverRoundTrip runs a clean handshake through both drivers
-// and checks both reach an established session.
+// and checks both reach an established session: the initiator after verifying the
+// server flight (it sends ClientFinished and lingers), the responder on receiving
+// ClientFinished (nothing left to send, so it is done at once).
 func TestDgramHandshakeDriverRoundTrip(t *testing.T) {
 	initiator, responder := newDriverPair(t)
 
@@ -49,11 +51,17 @@ func TestDgramHandshakeDriverRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	sh := feed(responder, ch)
-	cf := feed(initiator, sh)
-	sf := feed(responder, cf)
-	if out := feed(initiator, sf); len(out) != 0 {
-		t.Fatalf("initiator emitted %d messages on completion, want 0", len(out))
+	flight := feed(responder, ch)
+	if len(flight) != 2 || flight[0].typ != protocol.MessageTypeServerHello ||
+		flight[1].typ != protocol.MessageTypeServerFinished {
+		t.Fatalf("responder flight = %v, want ServerHello, ServerFinished", flight)
+	}
+	cf := feed(initiator, flight)
+	if len(cf) != 1 || cf[0].typ != protocol.MessageTypeClientFinished {
+		t.Fatalf("initiator emitted %v, want one ClientFinished", cf)
+	}
+	if out := feed(responder, cf); len(out) != 0 {
+		t.Fatalf("responder emitted %d messages on completion, want 0", len(out))
 	}
 
 	if !initiator.established() || !responder.established() {
@@ -64,8 +72,11 @@ func TestDgramHandshakeDriverRoundTrip(t *testing.T) {
 		responder.session().State() != SessionStateEstablished {
 		t.Fatal("sessions not established")
 	}
-	if !initiator.done() {
-		t.Fatal("initiator should be done immediately after establishment")
+	if !responder.done() {
+		t.Fatal("responder should be done immediately after establishment")
+	}
+	if initiator.done() {
+		t.Fatal("initiator should linger to replay a lost ClientFinished")
 	}
 }
 
@@ -119,10 +130,10 @@ func TestDgramHandshakeDriverBackoff(t *testing.T) {
 	}
 }
 
-// TestDgramHandshakeDriverResponderLinger verifies a completed responder replays
-// its cached ServerFinished for a retransmitted ClientFinished, bounded by the
-// replay cap, and stops once the linger window expires.
-func TestDgramHandshakeDriverResponderLinger(t *testing.T) {
+// TestDgramHandshakeDriverInitiatorLinger verifies a completed initiator replays its
+// cached ClientFinished for a retransmitted ServerFinished, bounded by the replay
+// cap, and stops once the linger window expires.
+func TestDgramHandshakeDriverInitiatorLinger(t *testing.T) {
 	ci, _ := NewSession(RoleInitiator)
 	ri, _ := NewSession(RoleResponder)
 	ic := &fakeClock{t: epoch}
@@ -131,59 +142,56 @@ func TestDgramHandshakeDriverResponderLinger(t *testing.T) {
 	responder := newDgramDriver(ri, rc.now)
 
 	ch, _ := initiator.start()
-	sh := feed(responder, ch)
-	cf := feed(initiator, sh)
+	flight := feed(responder, ch)
+	cf := feed(initiator, flight)
 	if len(cf) != 1 || cf[0].typ != protocol.MessageTypeClientFinished {
 		t.Fatalf("expected one ClientFinished, got %v", cf)
 	}
-	sf := feed(responder, cf)
-	if len(sf) != 1 || sf[0].typ != protocol.MessageTypeServerFinished {
-		t.Fatalf("expected one ServerFinished, got %v", sf)
+	if !initiator.established() || initiator.done() {
+		t.Fatal("initiator should be established and lingering")
 	}
-	if !responder.established() || responder.done() {
-		t.Fatal("responder should be established and lingering")
-	}
+	sf := flight[1]
 
-	// Retransmitted ClientFinished replays ServerFinished, up to the cap.
+	// Retransmitted ServerFinished replays ClientFinished, up to the cap.
 	for i := range constants.DatagramHandshakeLingerReplays {
-		out := responder.onInbound(cf[0].typ, cf[0].body)
-		if len(out) != 1 || out[0].typ != protocol.MessageTypeServerFinished {
-			t.Fatalf("linger replay %d = %v, want one ServerFinished", i, out)
+		out := initiator.onInbound(sf.typ, sf.body)
+		if len(out) != 1 || out[0].typ != protocol.MessageTypeClientFinished {
+			t.Fatalf("linger replay %d = %v, want one ClientFinished", i, out)
 		}
 	}
 	// Cap exhausted: no more replays.
-	if out := responder.onInbound(cf[0].typ, cf[0].body); out != nil {
+	if out := initiator.onInbound(sf.typ, sf.body); out != nil {
 		t.Fatalf("replay past cap = %v, want nil", out)
 	}
 
 	// Linger expiry ends the driver.
-	rc.set(responder.nextWake())
-	if out := responder.onTimeout(); out != nil {
+	ic.set(initiator.nextWake())
+	if out := initiator.onTimeout(); out != nil {
 		t.Fatalf("linger-expiry timeout = %v, want nil", out)
 	}
-	if !responder.done() {
-		t.Fatal("responder should be done after linger expiry")
+	if !initiator.done() {
+		t.Fatal("initiator should be done after linger expiry")
 	}
-	if out := responder.onInbound(cf[0].typ, cf[0].body); out != nil {
+	if out := initiator.onInbound(sf.typ, sf.body); out != nil {
 		t.Fatalf("post-linger replay = %v, want nil", out)
 	}
 }
 
 // TestDgramHandshakeDriverDuplicateNoBackoffReset verifies a duplicate ClientHello
-// replays the cached ServerHello without disturbing the responder's own
+// replays the cached server flight without disturbing the responder's own
 // retransmit schedule.
 func TestDgramHandshakeDriverDuplicateNoBackoffReset(t *testing.T) {
 	initiator, responder := newDriverPair(t)
 
 	ch, _ := initiator.start()
-	if out := feed(responder, ch); len(out) != 1 || out[0].typ != protocol.MessageTypeServerHello {
-		t.Fatalf("first ClientHello -> %v, want ServerHello", out)
+	if out := feed(responder, ch); len(out) != 2 || out[0].typ != protocol.MessageTypeServerHello {
+		t.Fatalf("first ClientHello -> %v, want ServerHello+ServerFinished", out)
 	}
 	wakeBefore := responder.nextWake()
 
 	dup := responder.onInbound(ch[0].typ, ch[0].body)
-	if len(dup) != 1 || dup[0].typ != protocol.MessageTypeServerHello {
-		t.Fatalf("duplicate ClientHello -> %v, want replayed ServerHello", dup)
+	if len(dup) != 2 || dup[0].typ != protocol.MessageTypeServerHello {
+		t.Fatalf("duplicate ClientHello -> %v, want replayed ServerHello+ServerFinished", dup)
 	}
 	if !responder.nextWake().Equal(wakeBefore) {
 		t.Fatal("duplicate ClientHello reset the responder retransmit timer")
@@ -224,9 +232,12 @@ func TestDgramHandshakeDriverAdvanceKeepsConfiguredRTO(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	sh := feed(res, ch)
-	if cf := feed(ini, sh); len(cf) != 1 || cf[0].typ != protocol.MessageTypeClientFinished {
-		t.Fatalf("initiator did not advance to ClientFinished: %v", cf)
+	flight := feed(res, ch)
+
+	// Advance the clock so the re-armed timer differs from the one start() set.
+	iclk.set(epoch.Add(2 * time.Millisecond))
+	if out := ini.onInbound(flight[0].typ, flight[0].body); out != nil {
+		t.Fatalf("ServerHello alone produced %v, want nothing", out)
 	}
 
 	got := ini.nextWake().Sub(iclk.now())
@@ -238,43 +249,43 @@ func TestDgramHandshakeDriverAdvanceKeepsConfiguredRTO(t *testing.T) {
 }
 
 // TestDgramHandshakeDriverLingerCoversRetransmitWindow is a regression test for
-// the short-linger bug: a completed responder must keep answering ClientFinished
-// retransmits for the initiator's whole retransmit window, not one RTO, so a lost
-// final ServerFinished is recovered by replay.
+// the short-linger bug: a completed initiator must keep answering server-flight
+// retransmits for the responder's whole retransmit window, not one RTO, so a lost
+// ClientFinished is recovered by replay.
 func TestDgramHandshakeDriverLingerCoversRetransmitWindow(t *testing.T) {
 	const rtoInitial = 5 * time.Millisecond
 	const rtoMax = 50 * time.Millisecond
-	ini, res, _, rclk := newDriverPairRTO(t, rtoInitial, rtoMax)
+	ini, res, iclk, _ := newDriverPairRTO(t, rtoInitial, rtoMax)
 
 	ch, _ := ini.start()
-	sh := feed(res, ch)
-	cf := feed(ini, sh)
-	if sf := feed(res, cf); len(sf) != 1 || sf[0].typ != protocol.MessageTypeServerFinished {
-		t.Fatalf("responder did not complete: %v", sf)
+	flight := feed(res, ch)
+	if cf := feed(ini, flight); len(cf) != 1 || cf[0].typ != protocol.MessageTypeClientFinished {
+		t.Fatalf("initiator did not complete: %v", cf)
 	}
-	if !res.established() {
-		t.Fatal("responder not established")
+	if !ini.established() {
+		t.Fatal("initiator not established")
 	}
 
-	// Linger must span the initiator's full ClientFinished retransmit window
-	// (MaxRetries backoffs capped at rtoMax), well beyond the one-RTO old value.
-	got := res.nextWake().Sub(rclk.now())
+	// Linger must span the responder's full flight retransmit window (MaxRetries
+	// backoffs capped at rtoMax), well beyond the one-RTO old value.
+	got := ini.nextWake().Sub(iclk.now())
 	want := constants.DatagramHandshakeMaxRetries * rtoMax
 	if got != want {
 		t.Fatalf("linger window = %v, want MaxRetries*rtoMax = %v (one rtoMax %v was the buggy value)", got, want, rtoMax)
 	}
 
-	// A ClientFinished arriving late but within the window still replays SF.
-	rclk.set(res.nextWake().Add(-time.Millisecond))
-	if out := res.onInbound(cf[0].typ, cf[0].body); len(out) != 1 || out[0].typ != protocol.MessageTypeServerFinished {
-		t.Fatalf("late-but-in-window ClientFinished did not replay ServerFinished: %v", out)
+	// A ServerFinished arriving late but within the window still replays CF.
+	sf := flight[1]
+	iclk.set(ini.nextWake().Add(-time.Millisecond))
+	if out := ini.onInbound(sf.typ, sf.body); len(out) != 1 || out[0].typ != protocol.MessageTypeClientFinished {
+		t.Fatalf("late-but-in-window ServerFinished did not replay ClientFinished: %v", out)
 	}
 
 	// At the window edge the linger ends.
-	rclk.set(res.nextWake())
-	_ = res.onTimeout()
-	if !res.done() {
-		t.Fatal("responder still lingering after the window expired")
+	iclk.set(ini.nextWake())
+	_ = ini.onTimeout()
+	if !ini.done() {
+		t.Fatal("initiator still lingering after the window expired")
 	}
 }
 
