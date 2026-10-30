@@ -1,0 +1,59 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      soak_dials:
+        description: "Sequential same-source datagram dials for the soak test (0 to skip)"
+        default: "20000"
+  schedule:
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: Bench (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Handshake and latency benchmarks
+        shell: bash
+        run: |
+          go test ./test/benchmark/ -run xxx -benchtime 20x \
+            -bench 'Handshake$|HandshakeStaticAuth|HandshakePSK|HandshakeLatency' | tee bench.txt
+
+      - name: Soak (same-source datagram redials)
+        if: github.event_name == 'schedule' || inputs.soak_dials != '0'
+        shell: bash
+        env:
+          QGO_SOAK_DIALS: ${{ inputs.soak_dials || '5000' }}
+        run: go test ./pkg/tunnel/ -run TestDgramRedialSameSourceNoStall -count=1 -timeout 30m -v | tee soak.txt
+
+      - name: Summary
+        shell: bash
+        run: |
+          {
+            echo "### ${{ matrix.os }} ($(go env GOOS)/$(go env GOARCH), $(go version | cut -d' ' -f3))"
+            echo '```'
+            grep -E '^Benchmark' bench.txt
+            [ -f soak.txt ] && grep -E '^(--- |ok|FAIL)' soak.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: bench-${{ matrix.os }}
+          path: |
+            bench.txt
+            soak.txt
