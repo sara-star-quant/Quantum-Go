@@ -220,11 +220,15 @@ func NewSession(role Role) (*Session, error) {
 		return nil, err
 	}
 
-	// Generate local key pair using the default KEM suite.
+	// Only the initiator sends an ephemeral key share. The responder encapsulates to it
+	// and never reads LocalKeyPair, so skip the keygen there.
 	suite := chkem.DefaultSuite()
-	keyPair, err := suite.GenerateKeyPair()
-	if err != nil {
-		return nil, err
+	var keyPair *chkem.KeyPair
+	if role == RoleInitiator {
+		keyPair, err = suite.GenerateKeyPair()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	s := &Session{
