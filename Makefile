@@ -195,12 +195,14 @@ verify:
 release: clean build-all
 	@echo "Creating release v$(VERSION)..."
 	@mkdir -p $(BIN_DIR)/release
+	@# Every archive carries the license, NOTICE, and third-party license texts
+	@for d in linux darwin windows; do cp LICENSE NOTICE THIRD_PARTY_NOTICES.md $(BIN_DIR)/$$d/; done
 	@# Copy and compress binaries
-	@cd $(BIN_DIR)/linux && tar -czf ../release/$(BINARY_NAME)-$(VERSION)-linux-amd64.tar.gz $(BINARY_NAME)-linux-amd64
-	@cd $(BIN_DIR)/linux && tar -czf ../release/$(BINARY_NAME)-$(VERSION)-linux-arm64.tar.gz $(BINARY_NAME)-linux-arm64
-	@cd $(BIN_DIR)/darwin && tar -czf ../release/$(BINARY_NAME)-$(VERSION)-darwin-amd64.tar.gz $(BINARY_NAME)-darwin-amd64
-	@cd $(BIN_DIR)/darwin && tar -czf ../release/$(BINARY_NAME)-$(VERSION)-darwin-arm64.tar.gz $(BINARY_NAME)-darwin-arm64
-	@cd $(BIN_DIR)/windows && zip -q ../release/$(BINARY_NAME)-$(VERSION)-windows-amd64.zip $(BINARY_NAME)-windows-amd64.exe
+	@cd $(BIN_DIR)/linux && tar -czf ../release/$(BINARY_NAME)-$(VERSION)-linux-amd64.tar.gz $(BINARY_NAME)-linux-amd64 LICENSE NOTICE THIRD_PARTY_NOTICES.md
+	@cd $(BIN_DIR)/linux && tar -czf ../release/$(BINARY_NAME)-$(VERSION)-linux-arm64.tar.gz $(BINARY_NAME)-linux-arm64 LICENSE NOTICE THIRD_PARTY_NOTICES.md
+	@cd $(BIN_DIR)/darwin && tar -czf ../release/$(BINARY_NAME)-$(VERSION)-darwin-amd64.tar.gz $(BINARY_NAME)-darwin-amd64 LICENSE NOTICE THIRD_PARTY_NOTICES.md
+	@cd $(BIN_DIR)/darwin && tar -czf ../release/$(BINARY_NAME)-$(VERSION)-darwin-arm64.tar.gz $(BINARY_NAME)-darwin-arm64 LICENSE NOTICE THIRD_PARTY_NOTICES.md
+	@cd $(BIN_DIR)/windows && zip -q ../release/$(BINARY_NAME)-$(VERSION)-windows-amd64.zip $(BINARY_NAME)-windows-amd64.exe LICENSE NOTICE THIRD_PARTY_NOTICES.md
 	@# Generate checksums
 	@cd $(BIN_DIR)/release && shasum -a 256 *.tar.gz *.zip > checksums-sha256.txt
 	@echo "✓ Release files created in $(BIN_DIR)/release/"

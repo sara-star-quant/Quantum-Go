@@ -42,6 +42,9 @@ RUN addgroup -g 1000 quantum && \
 # Copy binary from builder
 COPY --from=builder /quantum-tunnel /usr/local/bin/quantum-tunnel
 
+# Ship the license, NOTICE, and third-party license texts the binary is built from
+COPY LICENSE NOTICE THIRD_PARTY_NOTICES.md /usr/share/licenses/quantum-go/
+
 # Set ownership
 RUN chown quantum:quantum /usr/local/bin/quantum-tunnel
 
@@ -62,4 +65,4 @@ LABEL org.opencontainers.image.title="Quantum-Go"
 LABEL org.opencontainers.image.description="Quantum-Resistant Tunnel Encryption using CH-KEM (ML-KEM-1024 + X25519)"
 LABEL org.opencontainers.image.url="https://github.com/sara-star-quant/quantum-go"
 LABEL org.opencontainers.image.source="https://github.com/sara-star-quant/quantum-go"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="Apache-2.0"

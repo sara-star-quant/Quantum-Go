@@ -32,6 +32,7 @@ testdata/fuzz/
 docs/
 *.md
 !README.md
+!THIRD_PARTY_NOTICES.md
 
 # CI/CD
 .github/
