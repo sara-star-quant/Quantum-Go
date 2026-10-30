@@ -15,7 +15,7 @@ CODE_SUFFIXES = (".go", ".sh", ".py", ".yml", ".yaml", ".mod")
 CODE_NAMES = ("Makefile", "Dockerfile")
 ALLOWED_LICENSES = {None, "Apache-2.0"}
 MIN_SCORE = 90
-ALLOWED_HOLDERS = ("Petro Zverkov", "Peter Z.")
+ALLOWED_HOLDERS = ("Sara Star Quant LLC", "Petro Zverkov", "Peter Z.")
 
 
 def is_code(path: str) -> bool:
