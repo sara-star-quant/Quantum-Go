@@ -105,3 +105,17 @@ func TestRequirePSKMisconfiguredRejected(t *testing.T) {
 		t.Fatalf("got %v, want ErrPSKMisconfigured", err)
 	}
 }
+
+// TestRequirePSKLookupWrongSizeKey treats a lookup result of the wrong length as an
+// unknown identity: rejected, and with the same error as a wrong key.
+func TestRequirePSKLookupWrongSizeKey(t *testing.T) {
+	table := map[string][]byte{"edge-s": []byte("short"), "edge-a": pskOfByte(0x0A)}
+	clientErr, accepted := runStaticAuthHandshake(t, requirePSKServer(table), pskClient("edge-s", pskOfByte(0x0A)))
+	if clientErr == nil || accepted {
+		t.Fatalf("short stored key admitted: clientErr=%v accepted=%v", clientErr, accepted)
+	}
+	wrongErr, _ := runStaticAuthHandshake(t, requirePSKServer(table), pskClient("edge-a", pskOfByte(0xFF)))
+	if wrongErr == nil || wrongErr.Error() != clientErr.Error() {
+		t.Fatalf("wrong-size key distinguishable from wrong key: %v vs %v", clientErr, wrongErr)
+	}
+}

@@ -295,3 +295,22 @@ func recvWithTimeout(t *testing.T, c *DatagramConn) []byte {
 		return nil
 	}
 }
+
+func TestStashEarlyBoundsAndFlushStops(t *testing.T) {
+	ds := &datagramSession{}
+	for i := 0; i < earlyDatagramCap+3; i++ {
+		if !ds.stashEarly([]byte{byte(i)}, memAddr{name: "p"}) {
+			t.Fatal("stashEarly reported flushed before any flush")
+		}
+	}
+	if len(ds.early) != earlyDatagramCap {
+		t.Fatalf("buffered %d datagrams, want cap %d", len(ds.early), earlyDatagramCap)
+	}
+	if ds.stashEarly(make([]byte, constants.DatagramMTU+1), memAddr{name: "p"}) && len(ds.early) != earlyDatagramCap {
+		t.Fatal("oversize datagram buffered")
+	}
+	ds.earlyDone = true
+	if ds.stashEarly([]byte{1}, memAddr{name: "p"}) {
+		t.Fatal("stashEarly consumed a datagram after flush")
+	}
+}

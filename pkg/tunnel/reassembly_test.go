@@ -130,3 +130,37 @@ func TestReassembler_Timeout(t *testing.T) {
 		t.Fatal("expired reassembly buffer was not evicted")
 	}
 }
+
+func TestReassembler_OverlappingFragmentsAndDrop(t *testing.T) {
+	r := NewReassembler(4, 4096, time.Second)
+	full := make([]byte, 200)
+	for i := range full {
+		full[i] = byte(i)
+	}
+	// Overlap across a 64-bit coverage word boundary, then close the gap.
+	a, b, c := full[0:70], full[60:130], full[130:200]
+	for _, f := range []struct {
+		off  int
+		data []byte
+	}{{0, a}, {60, b}} {
+		if _, done, err := r.Add("s", frag(1, f.off, len(full), f.data), f.data); err != nil || done {
+			t.Fatalf("fragment at %d: done=%v err=%v", f.off, done, err)
+		}
+	}
+	msg, done, err := r.Add("s", frag(1, 130, len(full), c), c)
+	if err != nil || !done || string(msg) != string(full) {
+		t.Fatalf("overlap reassembly: done=%v err=%v equal=%v", done, err, string(msg) == string(full))
+	}
+
+	// Drop discards in-progress state for a source.
+	if _, _, err := r.Add("d", frag(2, 0, len(full), a), a); err != nil {
+		t.Fatal(err)
+	}
+	if r.sourceCount() != 1 {
+		t.Fatalf("sourceCount = %d, want 1", r.sourceCount())
+	}
+	r.Drop("d")
+	if r.sourceCount() != 0 {
+		t.Fatalf("sourceCount after Drop = %d, want 0", r.sourceCount())
+	}
+}
