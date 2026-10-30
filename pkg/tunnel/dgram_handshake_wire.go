@@ -121,7 +121,29 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, ds *datagramSession, fir
 		established: func() { e.surface(ds) },
 	}
 	trySend(ds.inbox, first)
-	go func() { _, _ = l.run() }()
+	go func() {
+		_, _ = l.run()
+		e.redeliverHellos(src, ds)
+	}()
+}
+
+// redeliverHellos re-dispatches ClientHellos left in a finished responder's inbox. A
+// client that redials from the same address right after establishing can have its
+// next ClientHello routed here, to the old session, before that session cleared its
+// source entry. Dropping it would cost the client a full retransmit timeout.
+func (e *DatagramEndpoint) redeliverHellos(src net.Addr, ds *datagramSession) {
+	for {
+		select {
+		case m := <-ds.inbox:
+			if m.typ == protocol.MessageTypeClientHello {
+				h := protocol.DatagramHandshakeHeader{MsgType: m.typ}
+				h.SenderIndex = m.sender
+				e.deliverHandshake(src, h, m.body)
+			}
+		default:
+			return
+		}
+	}
 }
 
 // DialDatagram performs the initiator handshake to dst over ep (whose Serve loop

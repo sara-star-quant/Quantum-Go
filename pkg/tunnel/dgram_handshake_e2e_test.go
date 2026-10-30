@@ -441,3 +441,30 @@ func TestDgramEarlyDataSurvivesLostClientFinished(t *testing.T) {
 		}
 	}
 }
+
+// TestDgramRedialSameSourceNoStall dials repeatedly from one source address and
+// asserts no handshake waits out a retransmit timeout. A ClientHello that races the
+// previous responder's cleanup must be re-dispatched, not dropped.
+func TestDgramRedialSameSourceNoStall(t *testing.T) {
+	connA, connB := memPipe(1, 0, 0, 0)
+	epA := mustEndpoint(t, connA)
+	epB := mustEndpoint(t, connB)
+	for _, ep := range []*DatagramEndpoint{epA, epB} {
+		ep.rtoInitial = 300 * time.Millisecond
+		ep.rtoMax = time.Second
+	}
+	go epA.Serve()
+	go epB.Serve()
+	defer func() { _ = epA.Close() }()
+	defer func() { _ = epB.Close() }()
+
+	for i := 0; i < 300; i++ {
+		start := time.Now()
+		if _, err := DialDatagram(epA, connB.addr); err != nil {
+			t.Fatalf("dial %d: %v", i, err)
+		}
+		if d := time.Since(start); d > 200*time.Millisecond {
+			t.Fatalf("dial %d took %v: stalled on a retransmit timeout", i, d)
+		}
+	}
+}
