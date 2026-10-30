@@ -1,0 +1,56 @@
+(*
+  CH-KEM PSK mutual authentication (symbolic). Load: -lib prelude.
+
+  The client folds a pre-shared key into the master secret. The server accepts the
+  ClientFinished MAC only if it matches a master derived with that key. An identity the
+  server does not know is not refused early: the server folds a fresh random key instead
+  (the RequirePSK behavior), so no MAC the attacker can compute is accepted either.
+  The active Dolev-Yao attacker may open its own sessions with the public identity and
+  inject or modify any message but, lacking the PSK, cannot forge the MAC. Proves
+  agreement: a server acceptance on transcript t implies a genuine client ran on t.
+*)
+
+fun pskMaster(bitstring, bitstring, bitstring): bitstring.  (* eph_ss, psk, transcript *)
+free pskId: bitstring.
+
+event ClientRan(bitstring).
+event ServerAccept(bitstring).
+
+query t: bitstring;
+  inj-event(ServerAccept(t)) ==> inj-event(ClientRan(t)).
+
+event PskDone.
+query event(PskDone).
+
+let clientP(psk: bitstring) =
+  new esk: skey;
+  new nc: bitstring;
+  let ch = (pk(esk), nc, pskId) in
+  out(net, ch);
+  in(net, sh: bitstring);
+  let (ct: bitstring, ns: bitstring) = sh in
+  let ess = adec(ct, esk) in
+  let transcript = TH((ch, sh)) in
+  let master = pskMaster(ess, psk, transcript) in
+  event ClientRan(transcript);
+  out(net, macf(master, clientTag)).
+
+let serverP(psk: bitstring) =
+  in(net, ch: bitstring);
+  let (epk: pkey, nc: bitstring, id: bitstring) = ch in
+  new ess: bitstring;
+  new ns: bitstring;
+  new dummy: bitstring;
+  let key = (if id = pskId then psk else dummy) in
+  let sh = (aenc(epk, ess), ns) in
+  let transcript = TH((ch, sh)) in
+  let master = pskMaster(ess, key, transcript) in
+  out(net, sh);
+  in(net, cfin: bitstring);
+  if cfin = macf(master, clientTag) then
+  event ServerAccept(transcript);
+  event PskDone.
+
+process
+  new psk: bitstring;
+  ( (! clientP(psk)) | (! serverP(psk)) )

@@ -15,6 +15,10 @@ RESULT not attacker(secretMsgA[]) is true.
 RESULT not attacker(secretMsgB[]) is true.
 RESULT not event(DoneH) is false.
 
+=== chkem_psk.pv ===
+RESULT inj-event(ServerAccept(t)) ==> inj-event(ClientRan(t)) is true.
+RESULT not event(PskDone) is false.
+
 === chkem_secrecy.pv ===
 RESULT not attacker(secretMsg[]) is true.
 RESULT not event(Done) is false.
@@ -28,6 +32,11 @@ RESULT not attacker_p1(secretMsg[]) is false.
 
 === negative/hybrid_broken.pv ===
 RESULT not attacker(secretMsgA[]) is false.
+
+=== negative/psk_broken.pv ===
+RESULT inj-event(ServerAccept(t)) ==> inj-event(ClientRan(t)) is false.
+RESULT (even event(ServerAccept(t)) ==> event(ClientRan(t)) is false.)
+RESULT not event(PskDone) is false.
 
 === negative/secrecy_broken.pv ===
 RESULT not attacker(secretMsg[]) is false.

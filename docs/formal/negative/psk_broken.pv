@@ -1,0 +1,48 @@
+(* NEGATIVE: the PSK leaks to the attacker. Mutual authentication MUST fail (the attacker
+   forges the ClientFinished MAC). Load: -lib prelude. *)
+
+fun pskMaster(bitstring, bitstring, bitstring): bitstring.  (* eph_ss, psk, transcript *)
+free pskId: bitstring.
+
+event ClientRan(bitstring).
+event ServerAccept(bitstring).
+
+query t: bitstring;
+  inj-event(ServerAccept(t)) ==> inj-event(ClientRan(t)).
+
+event PskDone.
+query event(PskDone).
+
+let clientP(psk: bitstring) =
+  new esk: skey;
+  new nc: bitstring;
+  let ch = (pk(esk), nc, pskId) in
+  out(net, ch);
+  in(net, sh: bitstring);
+  let (ct: bitstring, ns: bitstring) = sh in
+  let ess = adec(ct, esk) in
+  let transcript = TH((ch, sh)) in
+  let master = pskMaster(ess, psk, transcript) in
+  event ClientRan(transcript);
+  out(net, macf(master, clientTag)).
+
+let serverP(psk: bitstring) =
+  in(net, ch: bitstring);
+  let (epk: pkey, nc: bitstring, id: bitstring) = ch in
+  new ess: bitstring;
+  new ns: bitstring;
+  new dummy: bitstring;
+  let key = (if id = pskId then psk else dummy) in
+  let sh = (aenc(epk, ess), ns) in
+  let transcript = TH((ch, sh)) in
+  let master = pskMaster(ess, key, transcript) in
+  out(net, sh);
+  in(net, cfin: bitstring);
+  if cfin = macf(master, clientTag) then
+  event ServerAccept(transcript);
+  event PskDone.
+
+process
+  new psk: bitstring;
+  out(net, psk);    (* BROKEN: PSK leaked *)
+  ( (! clientP(psk)) | (! serverP(psk)) )
