@@ -1,9 +1,9 @@
 // Package tunnel - dgram_handshake_driver.go adds reliability around the
 // transport-agnostic FSM (dgram_handshake_fsm.go): retransmission with
 // exponential backoff, a retry ceiling that bounds an un-established handshake's
-// lifetime, and role-specific completion (the responder lingers briefly to answer
-// a retransmitted ClientFinished with its cached ServerFinished, recovering a lost
-// final flight).
+// lifetime, and role-specific completion (the initiator lingers briefly to answer
+// a retransmitted ServerHello + ServerFinished flight with its cached
+// ClientFinished, recovering a lost final message).
 //
 // The driver is event-driven and clock-injected so it is testable without sockets
 // or real timers: feed it inbound messages and timer ticks, and it returns the
@@ -39,7 +39,7 @@ type dgramDriver struct {
 
 	// retransmitAt is when to resend the cached flight (zero = disarmed).
 	retransmitAt time.Time
-	// lingerAt is when a completed responder stops answering retransmits
+	// lingerAt is when a completed initiator stops answering retransmits
 	// (zero = not lingering).
 	lingerAt    time.Time
 	replaysLeft int
@@ -84,7 +84,7 @@ func (d *dgramDriver) start() ([]hsMessage, error) {
 		return nil, err
 	}
 	d.armRetransmit()
-	return []hsMessage{*msg}, nil
+	return msg, nil
 }
 
 // onInbound feeds one reassembled handshake message and returns the messages to
@@ -101,10 +101,10 @@ func (d *dgramDriver) onInbound(typ protocol.MessageType, body []byte) []hsMessa
 
 	before := d.fsm.state()
 	out, complete := d.fsm.onMessage(typ, body)
-	if out == nil && !complete {
+	advanced := d.fsm.state() != before
+	if out == nil && !complete && !advanced {
 		return nil // dropped
 	}
-	advanced := d.fsm.state() != before
 
 	if complete {
 		return d.onComplete(out)
@@ -113,7 +113,7 @@ func (d *dgramDriver) onInbound(typ protocol.MessageType, body []byte) []hsMessa
 		d.rto = d.rtoInitial
 		d.retries = 0
 		d.armRetransmit()
-		return []hsMessage{*out}
+		return out // nil when the step produced no message (initiator awaiting ServerFinished)
 	}
 	// Replay: peer retransmitted; resend cached without touching our backoff or
 	// ceiling. During linger this is the recovery path, bounded by the cap.
@@ -123,27 +123,24 @@ func (d *dgramDriver) onInbound(typ protocol.MessageType, body []byte) []hsMessa
 		}
 		d.replaysLeft--
 	}
-	return []hsMessage{*out}
+	return out
 }
 
-// onComplete records establishment and, for the responder, opens the bounded
-// linger window during which a retransmitted ClientFinished is answered with the
-// cached ServerFinished. final is the responder's ServerFinished (nil for the
-// initiator, which sends nothing on completion).
-func (d *dgramDriver) onComplete(final *hsMessage) []hsMessage {
+// onComplete records establishment and, for the initiator, opens the bounded
+// linger window during which a retransmitted server flight is answered with the
+// cached ClientFinished. final is the initiator's ClientFinished (nil for the
+// responder, which sends nothing on completion).
+func (d *dgramDriver) onComplete(final []hsMessage) []hsMessage {
 	d.status = driverEstablished
 	d.retransmitAt = time.Time{}
-	if d.fsm.role == RoleResponder {
-		// Linger long enough to cover the initiator's whole ClientFinished
-		// retransmit window (it backs off up to rtoMax for MaxRetries tries), so a
-		// lost ServerFinished is recovered by replay rather than timing out.
+	if d.fsm.role == RoleInitiator {
+		// Linger long enough to cover the responder's whole flight retransmit window
+		// (it backs off up to rtoMax for MaxRetries tries), so a lost ClientFinished
+		// is recovered by replay rather than timing out.
 		d.lingerAt = d.now().Add(constants.DatagramHandshakeMaxRetries * d.rtoMax)
 		d.replaysLeft = constants.DatagramHandshakeLingerReplays
 	}
-	if final != nil {
-		return []hsMessage{*final}
-	}
-	return nil
+	return final
 }
 
 // onTimeout handles an elapsed timer: it ends an expired linger, or retransmits
@@ -166,9 +163,7 @@ func (d *dgramDriver) onTimeout() []hsMessage {
 		}
 		d.rto = min(d.rto*2, d.rtoMax)
 		d.armRetransmit()
-		if d.fsm.cached != nil {
-			return []hsMessage{*d.fsm.cached}
-		}
+		return d.fsm.cached
 	}
 	return nil
 }
@@ -189,7 +184,7 @@ func (d *dgramDriver) nextWake() time.Time {
 func (d *dgramDriver) armRetransmit() { d.retransmitAt = d.now().Add(d.rto) }
 
 func (d *dgramDriver) lingering() bool {
-	return d.status == driverEstablished && d.fsm.role == RoleResponder && !d.lingerAt.IsZero()
+	return d.status == driverEstablished && d.fsm.role == RoleInitiator && !d.lingerAt.IsZero()
 }
 
 // established reports a successful handshake (the session is keyed).
@@ -212,8 +207,8 @@ func (d *dgramDriver) session() *Session { return d.fsm.hs.session }
 // is terminal or has nothing cached. It does not touch the retransmit backoff or
 // ceiling, so a resend on a RETRY is independent of the loss-timer budget.
 func (d *dgramDriver) cachedFlight() []hsMessage {
-	if d.status != driverRunning || d.fsm.cached == nil {
+	if d.status != driverRunning {
 		return nil
 	}
-	return []hsMessage{*d.fsm.cached}
+	return d.fsm.cached
 }

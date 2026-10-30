@@ -8,7 +8,8 @@
 //
 // This file holds no sockets, timers, fragmentation, or sequence numbers; those
 // belong to the driver (dgram_handshake_driver.go) and the endpoint wiring
-// (datagram.go). Each transition produces exactly one handshake message.
+// (datagram.go). A transition produces zero, one, or (the responder's
+// ServerHello + ServerFinished) two handshake messages: the flight.
 package tunnel
 
 import (
@@ -39,8 +40,8 @@ type dgramHandshake struct {
 	// prev is the most recently processed inbound type; a repeat of it is a
 	// retransmit and replays cached.
 	prev protocol.MessageType
-	// cached is the last outbound message produced, replayed on a retransmit.
-	cached *hsMessage
+	// cached is the last outbound flight produced, replayed on a retransmit.
+	cached []hsMessage
 }
 
 // newDgramHandshake builds an FSM for session. The initiator must call start() to
@@ -60,12 +61,12 @@ func newDgramHandshake(session *Session) *dgramHandshake {
 
 // start emits the initiator's ClientHello and arms the FSM to expect a
 // ServerHello. It is a no-op error for the responder.
-func (d *dgramHandshake) start() (*hsMessage, error) {
+func (d *dgramHandshake) start() ([]hsMessage, error) {
 	body, err := d.hs.CreateClientHello()
 	if err != nil {
 		return nil, err
 	}
-	d.cached = &hsMessage{typ: protocol.MessageTypeClientHello, body: body}
+	d.cached = []hsMessage{{typ: protocol.MessageTypeClientHello, body: body}}
 	d.expecting = protocol.MessageTypeServerHello
 	return d.cached, nil
 }
@@ -76,7 +77,7 @@ func (d *dgramHandshake) start() (*hsMessage, error) {
 // builder error on the expected type (malformed/forged/decap failure), is dropped
 // (nil, false) so the genuine retransmit can still complete it. A repeat of the
 // last processed message replays the cached outbound.
-func (d *dgramHandshake) onMessage(typ protocol.MessageType, body []byte) (out *hsMessage, complete bool) {
+func (d *dgramHandshake) onMessage(typ protocol.MessageType, body []byte) (out []hsMessage, complete bool) {
 	switch {
 	case typ != 0 && typ == d.expecting:
 		return d.advance(typ, body)
@@ -86,6 +87,11 @@ func (d *dgramHandshake) onMessage(typ protocol.MessageType, body []byte) (out *
 		// re-send the ClientHello. A duplicate HRR (hrrDone) falls through to the
 		// retransmit case below and replays the cached retried ClientHello.
 		return d.advance(typ, body)
+	case d.role == RoleInitiator && typ == protocol.MessageTypeServerHello && typ == d.prev:
+		// A repeated ServerHello while awaiting ServerFinished: the cached flight is
+		// still the ClientHello, whose retransmit timer is already armed. Replaying it
+		// here would answer every flight replay with another ClientHello.
+		return nil, false
 	case typ != 0 && typ == d.prev && d.cached != nil:
 		return d.cached, false // retransmit: replay last flight, no re-invocation
 	default:
@@ -97,26 +103,28 @@ func (d *dgramHandshake) onMessage(typ protocol.MessageType, body []byte) (out *
 // outbound, prev, and expecting only when every builder call succeeds; on any
 // builder error it leaves all FSM state untouched and drops, so a later genuine
 // retransmit retries the same transition.
-func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out *hsMessage, complete bool) {
+func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out []hsMessage, complete bool) {
 	switch {
 	case d.role == RoleInitiator && typ == protocol.MessageTypeServerHello:
+		// No reply yet: ServerFinished follows in the same flight. The cached flight
+		// stays the ClientHello so a lost ServerFinished is recovered by resending it.
 		if err := d.hs.ProcessServerHello(body); err != nil {
 			return nil, false
 		}
-		reply, err := d.hs.CreateClientFinished()
-		if err != nil {
-			return nil, false
-		}
-		d.commit(typ, &hsMessage{typ: protocol.MessageTypeClientFinished, body: reply}, protocol.MessageTypeServerFinished)
-		return d.cached, false
+		d.prev = typ
+		d.expecting = protocol.MessageTypeServerFinished
+		return nil, false
 
 	case d.role == RoleInitiator && typ == protocol.MessageTypeServerFinished:
 		if err := d.hs.ProcessServerFinished(body); err != nil {
 			return nil, false
 		}
-		d.prev = typ
-		d.expecting = 0 // no further inbound
-		return nil, true
+		reply, err := d.hs.CreateClientFinished() // keys the initiator
+		if err != nil {
+			return nil, false
+		}
+		d.commit(typ, []hsMessage{{typ: protocol.MessageTypeClientFinished, body: reply}}, 0)
+		return d.cached, true
 
 	case d.role == RoleInitiator && typ == protocol.MessageTypeHelloRetryRequest:
 		if err := d.hs.ProcessHelloRetryRequest(body); err != nil {
@@ -126,7 +134,7 @@ func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out *hs
 		if err != nil {
 			return nil, false
 		}
-		d.commit(typ, &hsMessage{typ: protocol.MessageTypeClientHello, body: reply}, protocol.MessageTypeServerHello)
+		d.commit(typ, []hsMessage{{typ: protocol.MessageTypeClientHello, body: reply}}, protocol.MessageTypeServerHello)
 		return d.cached, false
 
 	case d.role == RoleResponder && typ == protocol.MessageTypeClientHello:
@@ -134,7 +142,7 @@ func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out *hs
 		// is a retransmit of a lost HRR: replay the cached HRR rather than reprocess
 		// (the retransmit and the genuine retried hello share the ClientHello type, so
 		// distinguish them by content).
-		if d.hs.hrrDone && d.cached != nil && d.cached.typ == protocol.MessageTypeHelloRetryRequest &&
+		if d.hs.hrrDone && len(d.cached) == 1 && d.cached[0].typ == protocol.MessageTypeHelloRetryRequest &&
 			bytes.Equal(body, d.hs.firstClientHello) {
 			return d.cached, false
 		}
@@ -147,26 +155,31 @@ func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out *hs
 				return nil, false
 			}
 			// Stay expecting a ClientHello (the client's retried hello in our suite).
-			d.commit(typ, &hsMessage{typ: protocol.MessageTypeHelloRetryRequest, body: hrr}, protocol.MessageTypeClientHello)
+			d.commit(typ, []hsMessage{{typ: protocol.MessageTypeHelloRetryRequest, body: hrr}}, protocol.MessageTypeClientHello)
 			return d.cached, false
 		}
-		reply, err := d.hs.CreateServerHello()
+		hello, err := d.hs.CreateServerHello()
 		if err != nil {
 			return nil, false
 		}
-		d.commit(typ, &hsMessage{typ: protocol.MessageTypeServerHello, body: reply}, protocol.MessageTypeClientFinished)
+		finished, err := d.hs.CreateServerFinished()
+		if err != nil {
+			return nil, false
+		}
+		d.commit(typ, []hsMessage{
+			{typ: protocol.MessageTypeServerHello, body: hello},
+			{typ: protocol.MessageTypeServerFinished, body: finished},
+		}, protocol.MessageTypeClientFinished)
 		return d.cached, false
 
 	case d.role == RoleResponder && typ == protocol.MessageTypeClientFinished:
+		// Verifying ClientFinished keys the responder. It has nothing left to send.
 		if err := d.hs.ProcessClientFinished(body); err != nil {
 			return nil, false
 		}
-		reply, err := d.hs.CreateServerFinished()
-		if err != nil {
-			return nil, false
-		}
-		d.commit(typ, &hsMessage{typ: protocol.MessageTypeServerFinished, body: reply}, 0)
-		return d.cached, true
+		d.prev = typ
+		d.expecting = 0
+		return nil, true
 
 	default:
 		return nil, false
@@ -175,7 +188,7 @@ func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out *hs
 
 // commit records a successful transition: the inbound just processed (prev), the
 // new outbound to cache and replay, and the next inbound to expect.
-func (d *dgramHandshake) commit(processed protocol.MessageType, out *hsMessage, next protocol.MessageType) {
+func (d *dgramHandshake) commit(processed protocol.MessageType, out []hsMessage, next protocol.MessageType) {
 	d.prev = processed
 	d.cached = out
 	d.expecting = next

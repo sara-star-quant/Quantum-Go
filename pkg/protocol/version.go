@@ -17,12 +17,14 @@ type Version struct {
 	Minor uint8
 }
 
-// Current is the current protocol version. Major 5 length-prefixes the KEM material
-// (public keys and ciphertexts) on the wire so it can carry suite-dependent sizes
-// (CH-KEM-v1's 1600 bytes, X-Wing's smaller key share, and future suites). It builds
-// on the Major 4 KEM-suite negotiation; both 4.0 and 5.0 are pre-release. IsCompatible
-// is major-only, so a 4.x and a 5.0 peer reject a mismatch cleanly at the handshake.
-var Current = Version{Major: 5, Minor: 0}
+// Current is the current protocol version. Major 6 merges ServerHello and
+// ServerFinished into one server flight, so the initiator is keyed after a single
+// round trip: server_verify_data covers the transcript through ServerHello and
+// ClientFinished covers through ServerFinished. It builds on Major 5, which
+// length-prefixes the KEM material (public keys and ciphertexts) so it can carry
+// suite-dependent sizes. Earlier majors are pre-release. IsCompatible is major-only,
+// so a 5.x and a 6.0 peer reject a mismatch cleanly at the handshake.
+var Current = Version{Major: 6, Minor: 0}
 
 // Bytes returns the version as a 2-byte value.
 func (v Version) Bytes() []byte {

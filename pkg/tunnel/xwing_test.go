@@ -71,20 +71,16 @@ func TestXWingHandshakeDatagram(t *testing.T) {
 	if err != nil {
 		t.Fatalf("client start: %v", err)
 	}
-	sh, _ := fsmStep(t, server, ch)
-	if sh == nil || sh.typ != protocol.MessageTypeServerHello {
-		t.Fatalf("responder did not emit ServerHello, got %+v", sh)
+	flight, _ := fsmStep(t, server, ch)
+	if len(flight) != 2 || flight[0].typ != protocol.MessageTypeServerHello {
+		t.Fatalf("responder did not emit ServerHello+ServerFinished, got %+v", flight)
 	}
-	cf, _ := fsmStep(t, client, sh)
-	if cf == nil || cf.typ != protocol.MessageTypeClientFinished {
-		t.Fatalf("initiator did not emit ClientFinished, got %+v", cf)
+	cf, clientDone := fsmStep(t, client, flight)
+	if m := onlyMsg(cf); m == nil || m.typ != protocol.MessageTypeClientFinished || !clientDone {
+		t.Fatalf("initiator did not complete with ClientFinished, got %+v done=%v", cf, clientDone)
 	}
-	sf, serverDone := fsmStep(t, server, cf)
-	if sf == nil || sf.typ != protocol.MessageTypeServerFinished || !serverDone {
-		t.Fatalf("responder did not complete, got %+v done=%v", sf, serverDone)
-	}
-	if _, clientDone := fsmStep(t, client, sf); !clientDone {
-		t.Fatal("initiator did not complete")
+	if _, serverDone := fsmStep(t, server, cf); !serverDone {
+		t.Fatal("responder did not complete")
 	}
 	if client.hs.session.kemSuite.ID() != chkem.SuiteXWing || server.hs.session.kemSuite.ID() != chkem.SuiteXWing {
 		t.Error("datagram handshake did not negotiate X-Wing")

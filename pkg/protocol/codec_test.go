@@ -105,6 +105,39 @@ func TestClientHelloWithSessionID(t *testing.T) {
 	}
 }
 
+// TestClientHelloSessionIDLimit pins the SessionID bound to the one-byte wire length:
+// 255 bytes round-trips, 256 is rejected instead of silently truncating.
+func TestClientHelloSessionIDLimit(t *testing.T) {
+	codec := protocol.NewCodec()
+	kp, _ := chkem.GenerateKeyPair()
+
+	hello := func(n int) *protocol.ClientHello {
+		return &protocol.ClientHello{
+			Version:        protocol.Current,
+			Random:         make([]byte, 32),
+			SessionID:      bytes.Repeat([]byte{0xAB}, n),
+			CHKEMPublicKey: kp.PublicKey().Bytes(),
+			CipherSuites:   []constants.CipherSuite{constants.CipherSuiteAES256GCM},
+		}
+	}
+
+	encoded, err := codec.EncodeClientHello(hello(255))
+	if err != nil {
+		t.Fatalf("255-byte SessionID rejected: %v", err)
+	}
+	decoded, err := codec.DecodeClientHello(encoded)
+	if err != nil {
+		t.Fatalf("DecodeClientHello: %v", err)
+	}
+	if len(decoded.SessionID) != 255 {
+		t.Fatalf("decoded SessionID len = %d, want 255", len(decoded.SessionID))
+	}
+
+	if _, err := codec.EncodeClientHello(hello(256)); err == nil {
+		t.Fatal("256-byte SessionID encoded; it would truncate on the wire")
+	}
+}
+
 func TestDecodeClientHelloInvalidInputs(t *testing.T) {
 	codec := protocol.NewCodec()
 

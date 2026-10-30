@@ -678,7 +678,7 @@ Techniques adapted from published PQ cryptography research. See [Design Influenc
 | Two-tier rekey cadence (KDF ratchet + full KEM) | v0.0.11 | Rosenpass (Varner et al.) |
 | CPA-only ephemeral KEM for lightweight rekey | v0.0.11 | Kudelski/Stebila-Mosca |
 | Formal verification in ProVerif/Tamarin | v0.1.0 | Lafourcade et al. USENIX Sec '25 |
-| 3-message handshake optimization | v1.0.0+ | Schwabe et al. IEEE S&P '21 |
+| 3-message handshake optimization (done, protocol 6.0) | Unreleased | Schwabe et al. IEEE S&P '21 |
 | Stateless responder / DoS resilience cookie | v1.0.0+ | Rosenpass biscuit pattern |
 | Standardized hybrid KEM combiner (interop + proof reuse) | v1.0.0 | X-Wing (Barbosa et al. '24), CFRG hybrid-KEM |
 

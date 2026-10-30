@@ -107,8 +107,17 @@ func driveHRR(t *testing.T, mutateCH1 func([]byte)) error {
 	if err != nil {
 		t.Fatalf("CreateServerHello: %v", err)
 	}
+	sf, err := server.CreateServerFinished()
+	if err != nil {
+		t.Fatalf("CreateServerFinished: %v", err)
+	}
 	if err := client.ProcessServerHello(sh); err != nil {
 		t.Fatalf("client ProcessServerHello: %v", err)
+	}
+	// A transcript mismatch (tampered ClientHello1) surfaces as soon as a Finished
+	// is verified: first ServerFinished at the client, then ClientFinished at the server.
+	if err := client.ProcessServerFinished(sf); err != nil {
+		return err
 	}
 	cf, err := client.CreateClientFinished()
 	if err != nil {

@@ -68,9 +68,9 @@ The protocol draws on the shared knowledge base of post-quantum cryptography res
 
 **Concept:** KEM-based handshakes can reduce round trips by merging server response messages, since KEMs (unlike interactive DH) allow the responder to encapsulate in a single message.
 
-**Our adaptation:** 3-message handshake variant merging ServerHello and ServerFinished (planned for v1.0.0+).
+**Our adaptation:** 3-message handshake variant merging ServerHello and ServerFinished into one server flight (protocol 6.0). The client is keyed after one round trip.
 
-**Difference:** Schwabe's PQ-WireGuard maintains WireGuard's Noise IK 2-message pattern. Our optimization targets the TLS 1.3-structured 4-message handshake, reducing it to 3 messages while preserving explicit key confirmation via Finished messages.
+**Difference:** Schwabe's PQ-WireGuard maintains WireGuard's Noise IK 2-message pattern. Our optimization targets the TLS 1.3-structured 4-message handshake, reducing it to 3 flights while preserving explicit key confirmation via Finished messages.
 
 ### 2.7 Stateless Responder Concepts
 

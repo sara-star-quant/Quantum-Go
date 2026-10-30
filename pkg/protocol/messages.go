@@ -23,6 +23,10 @@ import (
 )
 
 // MessageType identifies the type of protocol message.
+// maxSessionIDLen bounds the SessionID field (it carries a resumption ticket in a
+// ClientHello). The wire length is one byte, so a longer value would truncate silently.
+const maxSessionIDLen = 255
+
 type MessageType uint8
 
 // Protocol message types for handshake, tunnel, and error signaling.
@@ -263,7 +267,7 @@ func (m *ClientHello) Validate() error {
 	if len(m.CHKEMPublicKey) == 0 {
 		return qerrors.ErrInvalidPublicKey
 	}
-	if len(m.SessionID) > 2048 {
+	if len(m.SessionID) > maxSessionIDLen {
 		return qerrors.ErrInvalidMessage
 	}
 	if len(m.CipherSuites) == 0 {
@@ -288,7 +292,7 @@ func (m *ServerHello) Validate() error {
 	if len(m.Random) != 32 {
 		return qerrors.ErrInvalidMessage
 	}
-	if len(m.SessionID) > 2048 {
+	if len(m.SessionID) > maxSessionIDLen {
 		return qerrors.ErrInvalidMessage
 	}
 	// The ciphertext must be present; the negotiated KEM suite validates its exact
