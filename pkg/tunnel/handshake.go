@@ -905,17 +905,11 @@ func encryptedRecord(ciphertext []byte) []byte {
 	return append(rec, ciphertext...)
 }
 
-// writeEncryptedRecord writes an encrypted record with length framing.
+// writeEncryptedRecord writes an encrypted record with length framing in a single
+// write, so the length prefix and body share one segment.
 // Format: [4-byte big-endian length][ciphertext]
 func writeEncryptedRecord(w io.Writer, ciphertext []byte) error {
-	// Write length prefix
-	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(ciphertext))) // #nosec G115 -- record ciphertext bounded by MaxMessageSize, fits uint32
-	if _, err := w.Write(lenBuf); err != nil {
-		return err
-	}
-	// Write ciphertext
-	_, err := w.Write(ciphertext)
+	_, err := w.Write(encryptedRecord(ciphertext))
 	return err
 }
 

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
 // memAddr is a stable in-memory packet address.
@@ -29,6 +31,28 @@ type faultModel struct {
 	rng                   *rand.Rand
 	dropP, dupP, reorderP float64
 	held                  []byte // a single packet held back to reorder with the next
+
+	// dropFirst, if non-zero, drops exactly the first handshake datagram of this
+	// message type (a targeted loss for recovery tests).
+	dropFirst   protocol.MessageType
+	dropFirstOK bool
+}
+
+// isFirstOfDropType reports whether data is the first datagram of the targeted
+// handshake message type, and marks the target consumed.
+func (f *faultModel) isFirstOfDropType(data []byte) bool {
+	if f.dropFirst == 0 || f.dropFirstOK {
+		return false
+	}
+	if ft, err := protocol.PeekDatagramType(data); err != nil || ft != protocol.DatagramFrameHandshake {
+		return false
+	}
+	h, _, err := protocol.ParseDatagramHandshake(data)
+	if err != nil || h.MsgType != f.dropFirst {
+		return false
+	}
+	f.dropFirstOK = true
+	return true
 }
 
 func newFaultModel(seed uint64, drop, dup, reorder float64) *faultModel {
@@ -44,7 +68,7 @@ func (f *faultModel) emit(peer *memPacketConn, data []byte, src net.Addr) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	if f.rng.Float64() < f.dropP {
+	if f.isFirstOfDropType(data) || f.rng.Float64() < f.dropP {
 		return // lost
 	}
 	if f.held == nil && f.rng.Float64() < f.reorderP {
@@ -275,5 +299,145 @@ func assertDataRoundTrip(t *testing.T, from, to *Session) {
 	}
 	if !bytes.Equal(got, plaintext) {
 		t.Fatalf("round-trip mismatch: got %q want %q", got, plaintext)
+	}
+}
+
+// runTargetedLoss runs one handshake where the dialer's or responder's send path
+// drops exactly the first datagram of msg, then checks both sides still establish
+// and exchange data. fromDialer selects which side's sends are cut.
+func runTargetedLoss(t *testing.T, msg protocol.MessageType, fromDialer bool) {
+	t.Helper()
+	connA, connB := memPipe(1, 0, 0, 0)
+	if fromDialer {
+		connA.fault.dropFirst = msg
+	} else {
+		connB.fault.dropFirst = msg
+	}
+	epA := mustEndpoint(t, connA)
+	epB := mustEndpoint(t, connB)
+	for _, ep := range []*DatagramEndpoint{epA, epB} {
+		ep.rtoInitial = 2 * time.Millisecond
+		ep.rtoMax = 20 * time.Millisecond
+	}
+	go epA.Serve()
+	go epB.Serve()
+	defer func() { _ = epA.Close() }()
+	defer func() { _ = epB.Close() }()
+
+	dialCh := make(chan *DatagramConn, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		c, err := DialDatagram(epA, connB.addr)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		dialCh <- c
+	}()
+
+	var server *Session
+	select {
+	case ds := <-epB.acceptCh:
+		server = ds.session
+	case <-time.After(5 * time.Second):
+		t.Fatalf("responder did not surface a session after losing %v", msg)
+	}
+	var client *Session
+	select {
+	case c := <-dialCh:
+		client = c.Session()
+	case err := <-errCh:
+		t.Fatalf("dial after losing %v: %v", msg, err)
+	case <-time.After(5 * time.Second):
+		t.Fatalf("dial did not complete after losing %v", msg)
+	}
+	if connA.fault.dropFirst != 0 && !connA.fault.dropFirstOK || connB.fault.dropFirst != 0 && !connB.fault.dropFirstOK {
+		t.Fatalf("the targeted %v datagram was never sent, so nothing was lost", msg)
+	}
+	assertDataRoundTrip(t, client, server)
+	assertDataRoundTrip(t, server, client)
+}
+
+// TestDgramHandshakeLostClientFinished drops the dialer's first ClientFinished. The
+// responder never completes until its retransmitted server flight makes the lingering
+// initiator replay the cached ClientFinished.
+func TestDgramHandshakeLostClientFinished(t *testing.T) {
+	runTargetedLoss(t, protocol.MessageTypeClientFinished, true)
+}
+
+// TestDgramHandshakeLostServerFinished drops the responder's first ServerFinished. The
+// initiator stays unkeyed, retransmits its ClientHello, and the responder replays the
+// cached flight.
+func TestDgramHandshakeLostServerFinished(t *testing.T) {
+	runTargetedLoss(t, protocol.MessageTypeServerFinished, false)
+}
+
+// TestDgramHandshakeLostServerHello drops the responder's first ServerHello; the rest
+// of the flight (ServerFinished) arrives first and is dropped as out of order until
+// the replayed flight delivers both in order.
+func TestDgramHandshakeLostServerHello(t *testing.T) {
+	runTargetedLoss(t, protocol.MessageTypeServerHello, false)
+}
+
+// TestDgramEarlyDataSurvivesLostClientFinished loses the dialer's first ClientFinished
+// and has the dialer send application data the moment its dial returns, so the data
+// reaches the responder before the responder is keyed. The responder must hold those
+// datagrams and deliver them, in order, once the replayed ClientFinished keys it.
+func TestDgramEarlyDataSurvivesLostClientFinished(t *testing.T) {
+	connA, connB := memPipe(1, 0, 0, 0)
+	connA.fault.dropFirst = protocol.MessageTypeClientFinished
+	epA := mustEndpoint(t, connA)
+	epB := mustEndpoint(t, connB)
+	for _, ep := range []*DatagramEndpoint{epA, epB} {
+		ep.rtoInitial = 50 * time.Millisecond // slow replay so the data races ahead of it
+		ep.rtoMax = 200 * time.Millisecond
+	}
+	go epA.Serve()
+	go epB.Serve()
+	defer func() { _ = epA.Close() }()
+	defer func() { _ = epB.Close() }()
+
+	client, err := DialDatagram(epA, connB.addr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	want := [][]byte{[]byte("early-0"), []byte("early-1"), []byte("early-2")}
+	for _, m := range want {
+		if err := client.Send(m); err != nil {
+			t.Fatalf("send: %v", err)
+		}
+	}
+
+	type accepted struct {
+		conn *DatagramConn
+		err  error
+	}
+	accCh := make(chan accepted, 1)
+	go func() {
+		c, err := epB.Accept()
+		accCh <- accepted{c, err}
+	}()
+	var server *DatagramConn
+	select {
+	case a := <-accCh:
+		if a.err != nil {
+			t.Fatalf("accept: %v", a.err)
+		}
+		server = a.conn
+	case <-time.After(5 * time.Second):
+		t.Fatal("responder did not surface a session")
+	}
+
+	for i, m := range want {
+		got := make(chan []byte, 1)
+		go func() { b, _ := server.Recv(); got <- b }()
+		select {
+		case b := <-got:
+			if !bytes.Equal(b, m) {
+				t.Fatalf("datagram %d = %q, want %q", i, b, m)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("early datagram %d (%q) was lost", i, m)
+		}
 	}
 }
