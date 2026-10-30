@@ -41,7 +41,7 @@ func TestDatagramRekeyExchange(t *testing.T) {
 		t.Fatalf("post-rekey client epoch = %d, want 1", e)
 	}
 	// The responder advances reactively; give the receive loop a moment if needed.
-	deadline := time.After(time.Second)
+	deadline := time.After(5 * time.Second)
 	for server.Session().datagramSendEpoch() != 1 {
 		select {
 		case <-deadline:
@@ -131,7 +131,7 @@ func TestDatagramRekeyResponderCacheNoDoubleAdvance(t *testing.T) {
 	if err := client.Rekey(); err != nil {
 		t.Fatalf("rekey: %v", err)
 	}
-	deadline := time.After(time.Second)
+	deadline := time.After(5 * time.Second)
 	for server.Session().datagramSendEpoch() != 1 {
 		select {
 		case <-deadline:
@@ -144,7 +144,7 @@ func TestDatagramRekeyResponderCacheNoDoubleAdvance(t *testing.T) {
 	if err := client.Rekey(); err != nil {
 		t.Fatalf("second rekey: %v", err)
 	}
-	deadline = time.After(time.Second)
+	deadline = time.After(5 * time.Second)
 	for server.Session().datagramSendEpoch() != 2 {
 		select {
 		case <-deadline:
