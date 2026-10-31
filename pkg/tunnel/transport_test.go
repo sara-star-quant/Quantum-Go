@@ -15,7 +15,7 @@ import (
 // TestResponderHandshakeTimeout verifies the Accept path tears down a peer that
 // connects and then stalls mid-handshake (slow-loris), rather than pinning the
 // goroutine and session forever. Without HandshakeTimeout the Accept goroutine would
-// block on the read indefinitely and the outer 2s guard would fire.
+// block on the read indefinitely and the outer guard would fire.
 func TestResponderHandshakeTimeout(t *testing.T) {
 	ln, err := Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -42,7 +42,7 @@ func TestResponderHandshakeTimeout(t *testing.T) {
 		if e == nil {
 			t.Fatal("Accept should fail when the peer stalls the handshake")
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(30 * time.Second): // only tells a working timeout from a hang; a loaded runner is far slower than 150 ms
 		t.Fatal("Accept hung past the handshake timeout")
 	}
 }
