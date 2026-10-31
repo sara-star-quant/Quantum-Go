@@ -31,17 +31,26 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      # Race detection and coverage are platform independent, so run them once on Linux.
+      # macOS and Windows run the plain suite to cover their own socket and file paths.
       - name: Run tests with coverage
+        if: matrix.os == 'ubuntu-latest'
         run: |
           go test ./... -race -coverprofile=coverage.out -covermode=atomic
 
+      - name: Run tests
+        if: matrix.os != 'ubuntu-latest'
+        run: go test ./...
+
       - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
         with:
           files: coverage.out
           fail_ci_if_error: false
 
       - name: Upload Coverage Artifact
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: coverage-${{ matrix.os }}
