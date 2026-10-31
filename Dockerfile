@@ -2,7 +2,7 @@
 # Produces minimal Docker image with quantum-tunnel binary
 
 # Build stage
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make
@@ -30,7 +30,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     ./cmd/quantum-tunnel
 
 # Final stage
-FROM alpine:latest
+FROM alpine:latest@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 
 # Install ca-certificates for HTTPS
 RUN apk --no-cache add ca-certificates

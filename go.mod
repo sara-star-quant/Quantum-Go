@@ -1,14 +1,14 @@
 module github.com/sara-star-quant/quantum-go
 
-go 1.26.0
+go 1.26.10
 
 require (
 	github.com/cloudflare/circl v1.6.3
 	go.opentelemetry.io/otel v1.42.0
 	go.opentelemetry.io/otel/trace v1.42.0
-	golang.org/x/crypto v0.52.0
-	golang.org/x/net v0.55.0
-	golang.org/x/sys v0.45.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/net v0.62.0
+	golang.org/x/sys v0.49.0
 )
 
 require (
