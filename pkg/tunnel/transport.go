@@ -707,19 +707,96 @@ type Listener struct {
 
 	ipLimiter        *IPRateLimiter
 	handshakeLimiter *HandshakeLimiter
+
+	startOnce sync.Once
+	results   chan acceptResult
+	stopped   chan struct{} // closed when the underlying listener stops accepting
+	closing   chan struct{} // closed by Close
+	closeOnce sync.Once
+	pending   chan struct{}
+	acceptErr error
 }
 
-// Accept waits for and returns the next tunnel connection.
-func (l *Listener) Accept() (*Tunnel, error) {
-	conn, err := l.listener.Accept()
-	if err != nil {
-		return nil, err
-	}
+// maxPendingHandshakes bounds the connections that are mid-handshake or waiting for
+// Accept at once. Connections beyond it are closed on arrival, so a flood of slow
+// peers cannot grow memory or goroutines without limit.
+const maxPendingHandshakes = 1024
 
+// acceptResult is one finished handshake: a tunnel, or the reason it failed.
+type acceptResult struct {
+	tunnel *Tunnel
+	err    error
+}
+
+// Accept waits for and returns the next tunnel connection. Handshakes run in their
+// own goroutines, so one stalled peer does not delay the others. A connection that
+// fails its rate-limit check or handshake is reported as an error from Accept, in
+// the order it finished.
+func (l *Listener) Accept() (*Tunnel, error) {
+	l.startOnce.Do(l.startAcceptLoop)
+	select {
+	case r := <-l.results:
+		return r.tunnel, r.err
+	case <-l.stopped:
+		// Deliver anything that finished before the listener stopped.
+		select {
+		case r := <-l.results:
+			return r.tunnel, r.err
+		default:
+		}
+		return nil, l.acceptErr
+	}
+}
+
+func (l *Listener) startAcceptLoop() {
+	l.results = make(chan acceptResult, 64)
+	l.stopped = make(chan struct{})
+	l.closing = make(chan struct{})
+	l.pending = make(chan struct{}, maxPendingHandshakes)
+	go l.acceptLoop()
+}
+
+// acceptLoop accepts raw connections and hands each to its own handshake goroutine.
+func (l *Listener) acceptLoop() {
+	for {
+		conn, err := l.listener.Accept()
+		if err != nil {
+			l.acceptErr = err
+			close(l.stopped)
+			return
+		}
+		select {
+		case l.pending <- struct{}{}:
+		default:
+			_ = conn.Close() // too many connections in flight: shed load
+			continue
+		}
+		go func() {
+			t, err := l.handshakeConn(conn)
+			l.deliver(acceptResult{tunnel: t, err: err})
+			<-l.pending
+		}()
+	}
+}
+
+// deliver hands a result to Accept, or discards it if the listener is closing.
+func (l *Listener) deliver(r acceptResult) {
+	select {
+	case l.results <- r:
+	case <-l.closing:
+		if r.tunnel != nil {
+			_ = r.tunnel.Close()
+		}
+	}
+}
+
+// handshakeConn runs the rate-limit checks and the responder handshake on one
+// accepted connection.
+func (l *Listener) handshakeConn(conn net.Conn) (*Tunnel, error) {
 	remoteIP := extractRemoteIP(conn)
 
 	// Check IP rate limit
-	conn, err = l.checkIPRateLimit(conn, remoteIP)
+	conn, err := l.checkIPRateLimit(conn, remoteIP)
 	if err != nil {
 		return nil, err
 	}
@@ -857,6 +934,8 @@ func newRateLimitError(desc string) error {
 
 // Close closes the listener.
 func (l *Listener) Close() error {
+	l.startOnce.Do(l.startAcceptLoop) // so closing is always initialised
+	l.closeOnce.Do(func() { close(l.closing) })
 	return l.listener.Close()
 }
 

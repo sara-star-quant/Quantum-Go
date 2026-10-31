@@ -3,6 +3,7 @@ package tunnel_test
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -451,5 +452,75 @@ func TestListenInvalidNetwork(t *testing.T) {
 	_, err := tunnel.Listen("invalid", "127.0.0.1:0")
 	if err == nil {
 		t.Error("Expected error for invalid network type, got nil")
+	}
+}
+
+// TestAcceptNotBlockedByStalledPeer connects a peer that never speaks, then a good
+// client. Accept must return the good tunnel without waiting out the stalled
+// peer's handshake timeout.
+func TestAcceptNotBlockedByStalledPeer(t *testing.T) {
+	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+	defer func() { _ = listener.Close() }()
+
+	stalled, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("stalled dial: %v", err)
+	}
+	defer func() { _ = stalled.Close() }()
+
+	type result struct {
+		tun *tunnel.Tunnel
+		err error
+	}
+	got := make(chan result, 1)
+	go func() {
+		tun, err := listener.Accept()
+		got <- result{tun, err}
+	}()
+
+	time.Sleep(50 * time.Millisecond) // let the stalled connection reach the server first
+	client, err := tunnel.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("good dial: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	select {
+	case r := <-got:
+		if r.err != nil {
+			t.Fatalf("Accept: %v", r.err)
+		}
+		_ = r.tun.Close()
+	case <-time.After(5 * time.Second):
+		t.Fatal("Accept blocked behind a stalled peer")
+	}
+}
+
+// TestAcceptAfterCloseReturnsError checks Accept unblocks with an error on Close.
+func TestAcceptAfterCloseReturnsError(t *testing.T) {
+	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := listener.Accept()
+		done <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+	_ = listener.Close()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Accept returned nil error after Close")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Accept did not unblock on Close")
+	}
+	if _, err := listener.Accept(); err == nil {
+		t.Fatal("second Accept after Close returned nil error")
 	}
 }
