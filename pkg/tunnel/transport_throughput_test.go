@@ -72,7 +72,17 @@ func benchStreamPair(b *testing.B) (sender, receiver *Transport, cleanup func())
 // per-record throughput and allocations - the receive loop reuses one buffer across
 // records, so allocations stay flat as the record rate climbs.
 func BenchmarkStreamReceiveSmallRecords(b *testing.B) {
-	for _, size := range []int{64, 256, 1024} {
+	benchStreamRecords(b, []int{64, 256, 1024})
+}
+
+// BenchmarkStreamReceiveLargeRecords is the same flood with bulk-transfer record sizes,
+// the case the single-tunnel throughput figure describes.
+func BenchmarkStreamReceiveLargeRecords(b *testing.B) {
+	benchStreamRecords(b, []int{16 << 10, 60 << 10})
+}
+
+func benchStreamRecords(b *testing.B, sizes []int) {
+	for _, size := range sizes {
 		b.Run(fmt.Sprintf("record=%dB", size), func(b *testing.B) {
 			sender, receiver, cleanup := benchStreamPair(b)
 			defer cleanup()

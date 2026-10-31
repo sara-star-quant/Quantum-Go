@@ -42,6 +42,10 @@ AES-256-GCM seals at about 2.5 GB/s per core and ChaCha20-Poly1305 at about 0.7 
 
 The datagram data path is syscall-bound, not crypto-bound: the isolated send path runs at about 3 GB/s on a laptop, so throughput is set by the send and receive system calls. Two features attack that cost.
 
+### Where stream time goes
+
+A CPU profile of 60 KB records over loopback TCP (`BenchmarkStreamReceiveLargeRecords`) shows 52 to 65% of CPU in `read` and `write` system calls, about 1% in AES-GCM, and about 6% in background GC. Each record allocates roughly 3.2 times its payload (sealed ciphertext, the wrapping frame, and the plaintext returned to the caller). Sealing straight into a reusable frame buffer, as the datagram path does, could remove two of those copies, but the expected gain is a few percent on a path that is limited by system calls, so it has not been done. Small records (64 B to 1 KB) cost about 8 allocations each and are dominated by the per-record read.
+
 ### Datagram goodput, single flow (CI runners, Linux)
 
 Delivered goodput over loopback: the benchmark flow-controls the sender so drops are never counted, and measures seal, send, kernel, receive loop, demux, AEAD open and delivery.
