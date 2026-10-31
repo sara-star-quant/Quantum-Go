@@ -14,6 +14,7 @@
 package tunnel
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"net"
@@ -177,6 +178,59 @@ type connRegistry struct {
 	halfOpen      map[string]int              // source identity -> count of un-established sessions
 	halfOpenTotal int                         // sum of halfOpen across all sources (cookie-pressure signal)
 	maxHalfOpen   int                         // hard ceiling on halfOpenTotal; reserveSource drops new sources at it
+
+	// recentHellos remembers ClientHellos whose handshake finished, so a late
+	// byte-identical duplicate is dropped instead of building a second responder.
+	recentHellos map[[sha256.Size]byte]time.Time
+}
+
+// recentHelloTTL covers the initiator's whole retransmit window, so any stale
+// duplicate of a finished handshake's ClientHello arrives inside it.
+const recentHelloTTL = constants.DatagramHandshakeMaxRetries * constants.DatagramHandshakeMaxTimeoutMillis * time.Millisecond
+
+// maxRecentHellos bounds the cache. When full it stops recording, which only
+// brings back the old behaviour of building a throwaway responder.
+const maxRecentHellos = 4096
+
+func helloKey(source string, body []byte) [sha256.Size]byte {
+	h := sha256.New()
+	_, _ = h.Write([]byte(source))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write(body)
+	var k [sha256.Size]byte
+	h.Sum(k[:0])
+	return k
+}
+
+// noteEstablished records the ClientHello of a finished handshake.
+func (r *connRegistry) noteEstablished(source string, hello []byte, now time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.recentHellos) >= maxRecentHellos {
+		for k, exp := range r.recentHellos {
+			if now.After(exp) {
+				delete(r.recentHellos, k)
+			}
+		}
+		if len(r.recentHellos) >= maxRecentHellos {
+			return
+		}
+	}
+	r.recentHellos[helloKey(source, hello)] = now.Add(recentHelloTTL)
+}
+
+// wasEstablished reports whether hello is a stale duplicate of a ClientHello whose
+// handshake already finished.
+func (r *connRegistry) wasEstablished(source string, hello []byte, now time.Time) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	k := helloKey(source, hello)
+	exp, ok := r.recentHellos[k]
+	if ok && now.After(exp) {
+		delete(r.recentHellos, k)
+		return false
+	}
+	return ok
 }
 
 func newConnRegistry(maxHalfOpen int) *connRegistry {
@@ -185,6 +239,8 @@ func newConnRegistry(maxHalfOpen int) *connRegistry {
 		bySource:    make(map[string]*datagramSession),
 		halfOpen:    make(map[string]int),
 		maxHalfOpen: maxHalfOpen,
+
+		recentHellos: make(map[[sha256.Size]byte]time.Time),
 	}
 }
 

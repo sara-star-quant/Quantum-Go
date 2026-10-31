@@ -38,6 +38,9 @@ type faultModel struct {
 	// message type (a targeted loss for recovery tests).
 	dropFirst   protocol.MessageType
 	dropFirstOK bool
+
+	// tap, if set, sees every datagram sent (for tests that capture traffic).
+	tap func(data []byte)
 }
 
 // isFirstOfDropType reports whether data is the first datagram of the targeted
@@ -70,6 +73,9 @@ func (f *faultModel) emit(peer *memPacketConn, data []byte, src net.Addr) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	if f.tap != nil {
+		f.tap(data)
+	}
 	if f.isFirstOfDropType(data) || f.rng.Float64() < f.dropP {
 		return // lost
 	}
@@ -491,5 +497,84 @@ func TestDgramRedialSameSourceNoStall(t *testing.T) {
 			t.Fatalf("leaked responder state after redials: halfOpen=%d bySource=%d", half, srcs)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestDgramStaleClientHelloDoesNotBuildResponder replays a finished handshake's
+// ClientHello datagrams at the responder. They must be dropped, not start a second
+// responder session.
+func TestDgramStaleClientHelloDoesNotBuildResponder(t *testing.T) {
+	connA, connB := memPipe(1, 0, 0, 0)
+	var mu sync.Mutex
+	var hello [][]byte
+	connA.fault.tap = func(data []byte) {
+		if h, _, err := protocol.ParseDatagramHandshake(data); err == nil && h.MsgType == protocol.MessageTypeClientHello {
+			mu.Lock()
+			hello = append(hello, append([]byte(nil), data...))
+			mu.Unlock()
+		}
+	}
+	epA := mustEndpoint(t, connA)
+	epB := mustEndpoint(t, connB)
+	for _, ep := range []*DatagramEndpoint{epA, epB} {
+		ep.rtoInitial = 5 * time.Millisecond
+		ep.rtoMax = 50 * time.Millisecond
+		ep.maxRetries = 40
+	}
+	go epA.Serve()
+	go epB.Serve()
+	defer func() { _ = epA.Close() }()
+	defer func() { _ = epB.Close() }()
+
+	if _, err := DialDatagram(epA, connB.addr); err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	select {
+	case <-epB.acceptCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("responder did not surface a session")
+	}
+
+	mu.Lock()
+	captured := append([][]byte(nil), hello...)
+	mu.Unlock()
+	if len(captured) == 0 {
+		t.Fatal("no ClientHello datagrams captured")
+	}
+	epB.registry.mu.Lock()
+	before := len(epB.registry.byIndex)
+	epB.registry.mu.Unlock()
+
+	for _, d := range captured {
+		_ = epB.routeDatagram(connA.addr, d)
+	}
+	time.Sleep(100 * time.Millisecond) // a ghost responder would register by now
+
+	epB.registry.mu.Lock()
+	after, srcs, half := len(epB.registry.byIndex), len(epB.registry.bySource), epB.registry.halfOpenTotal
+	epB.registry.mu.Unlock()
+	if after != before || srcs != 0 || half != 0 {
+		t.Fatalf("stale ClientHello built a responder: sessions %d->%d, bySource=%d, halfOpen=%d", before, after, srcs, half)
+	}
+}
+
+func TestRecentHelloCacheExpiresAndBounds(t *testing.T) {
+	r := newConnRegistry(8)
+	now := time.Now()
+	r.noteEstablished("a", []byte("hello"), now)
+	if !r.wasEstablished("a", []byte("hello"), now.Add(time.Second)) {
+		t.Fatal("recorded hello not recognised")
+	}
+	if r.wasEstablished("b", []byte("hello"), now) || r.wasEstablished("a", []byte("other"), now) {
+		t.Fatal("different source or body matched")
+	}
+	if r.wasEstablished("a", []byte("hello"), now.Add(recentHelloTTL+time.Second)) {
+		t.Fatal("expired hello still matched")
+	}
+	for i := 0; i < maxRecentHellos+10; i++ {
+		r.noteEstablished("s", []byte{byte(i), byte(i >> 8)}, now)
+	}
+	if len(r.recentHellos) > maxRecentHellos {
+		t.Fatalf("cache grew past its bound: %d", len(r.recentHellos))
 	}
 }

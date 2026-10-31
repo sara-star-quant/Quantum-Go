@@ -61,6 +61,9 @@ func (e *DatagramEndpoint) deliverHandshake(src net.Addr, h protocol.DatagramHan
 	if h.MsgType != protocol.MessageTypeClientHello {
 		return
 	}
+	if e.registry.wasEstablished(src.String(), msg, time.Now()) {
+		return // stale duplicate of a handshake that already finished
+	}
 	// Atomically resolve the bootstrap under one registry lock: route to an existing
 	// in-progress responder, or build and install a fresh session and start one, or
 	// drop at the cap. reserveSource registers the session in bySource as it claims the
@@ -118,13 +121,16 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, ds *datagramSession, fir
 	}
 
 	l := &handshakeLoop{
-		ep:          e,
-		ds:          ds,
-		src:         src,
-		driver:      e.newDriver(session),
-		localIndex:  idx,
-		peerIndex:   first.sender, // the initiator's index, echoed as RecvIndex in our replies
-		established: func() { e.surface(ds) },
+		ep:         e,
+		ds:         ds,
+		src:        src,
+		driver:     e.newDriver(session),
+		localIndex: idx,
+		peerIndex:  first.sender, // the initiator's index, echoed as RecvIndex in our replies
+		established: func() {
+			e.registry.noteEstablished(src.String(), first.body, time.Now())
+			e.surface(ds)
+		},
 	}
 	trySend(ds.inbox, first)
 	go func() {
