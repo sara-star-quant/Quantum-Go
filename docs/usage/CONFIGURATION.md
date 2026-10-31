@@ -63,6 +63,10 @@ config.RateLimit.HandshakeRateLimit = 5.0
 
 // Burst allowance for handshakes
 config.RateLimit.HandshakeBurst = 10
+
+// Connections allowed mid-handshake or waiting for Accept at once (default 1024).
+// Beyond this, new connections are closed on arrival.
+config.MaxPendingHandshakes = 256
 ```
 
 ### Observability
@@ -97,9 +101,8 @@ config.RateLimitObserver = rateObserver
 
 ## Session Resumption
 
-Quantum-Go automatically supports secure session resumption using encrypted tickets.
+Resumption is a low-level building block, not an automatic feature. `Dial`, `Listen` and the datagram transport do not issue or use tickets.
 
-- **Mechanism**: RFC 5077-style tickets.
-- **Trigger**: Following a successful full handshake, the server issues a ticket.
-- **Benefit**: Abbreviated handshake skips the heavy CH-KEM exchange while maintaining forward secrecy.
-- **Client Side**: Handled automatically if the client reuses the `Session` context or ticket cache (future feature).
+- **What exists**: `TicketManager` encrypts and decrypts tickets, `Session.ExportTicket` and `Session.Resume` produce and consume them, and `InitiatorResumptionHandshake` / `ResponderResumptionHandshake` run a resumed handshake over a stream you manage yourself.
+- **What a resumed handshake does**: it mixes the ticket secret with a fresh CH-KEM exchange, so forward secrecy is kept. It still performs the key exchange, so it is not faster than a full handshake.
+- **What is missing**: no message makes the server hand a ticket to the client after a full handshake, there is no client-side ticket cache, and tickets are not yet bound to the issuing server's identity. Treat tickets as an experimental API.

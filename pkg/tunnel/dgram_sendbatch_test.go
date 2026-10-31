@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -152,5 +153,78 @@ func TestSendBatchCountsAndSequences(t *testing.T) {
 	}
 	if d := s.BytesSent.Load() - bytesBefore; d != 450 {
 		t.Errorf("BytesSent advanced by %d, want 450", d)
+	}
+}
+
+// TestSendAndSendBatchAreConcurrencySafe drives Send and SendBatch from several
+// goroutines at once. Under the race detector the shared frame buffers would be
+// flagged without the send lock, and every payload must arrive intact exactly once.
+func TestSendAndSendBatchAreConcurrencySafe(t *testing.T) {
+	for _, offload := range []bool{false, true} {
+		t.Run(fmt.Sprintf("offload=%v", offload), func(t *testing.T) {
+			var opts []DatagramEndpointOption
+			if offload {
+				opts = append(opts, WithDatagramOffload())
+			}
+			client, server, stop := dialEstablished(t, opts...)
+			defer stop()
+			col := startCollector(server)
+
+			const senders, perSender = 4, 40
+			var sent atomic.Int64
+			throttle := func() { // keep in-flight datagrams below the receive queue
+				for sent.Load()-int64(col.count()) > 24 {
+					time.Sleep(200 * time.Microsecond)
+				}
+			}
+			payload := func(id, n int) []byte {
+				p := make([]byte, 50+n%7)
+				p[0], p[1] = byte(id), byte(n)
+				return p
+			}
+
+			var wg sync.WaitGroup
+			for id := 0; id < senders; id++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for n := 0; n < perSender; n++ {
+						throttle()
+						var err error
+						if id%2 == 0 {
+							err = client.Send(payload(id, n))
+							sent.Add(1)
+						} else {
+							err = client.SendBatch([][]byte{payload(id, n)})
+							sent.Add(1)
+						}
+						if err != nil {
+							t.Errorf("sender %d: %v", id, err)
+							return
+						}
+					}
+				}()
+			}
+			wg.Wait()
+
+			total := senders * perSender
+			if !col.waitFor(total) {
+				t.Fatalf("received %d payloads, want %d", col.count(), total)
+			}
+			col.mu.Lock()
+			defer col.mu.Unlock()
+			seen := map[[2]byte]int{}
+			for _, p := range col.got {
+				seen[[2]byte{p[0], p[1]}]++
+			}
+			if len(seen) != total {
+				t.Fatalf("%d distinct payloads arrived, want %d", len(seen), total)
+			}
+			for k, c := range seen {
+				if c != 1 {
+					t.Fatalf("payload %v arrived %d times", k, c)
+				}
+			}
+		})
 	}
 }
