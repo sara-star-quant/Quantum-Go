@@ -155,7 +155,7 @@ across sockets lifts it about 1.6x, from ~355 MB/s (1 socket) to ~565 MB/s (8
 sockets). The scaling is sublinear here because the loopback path and the benchmark's
 own senders share the same 8 cores; a many-core host with real NIC receive queues has
 more headroom. The single-flow path remains syscall-bound (~280 MB/s, ~2.2 Gb/s), so
-the next per-flow lever is `UDP_SEGMENT`/`UDP_GRO` offload (see "Out of scope" below).
+the per-flow lever is `UDP_SEGMENT`/`UDP_GRO` offload (`WithDatagramOffload` with `SendBatch`).
 
 ```go
 ep, err := tunnel.ListenDatagram("udp", "0.0.0.0:51820")
@@ -175,7 +175,7 @@ go ep.Serve()
   datagrams' worth of bytes and the receive loop re-splits them, cutting receive
   syscalls on a busy flow. Off by default and Linux-only; a no-op on other platforms,
   non-UDP conns, or kernels without `UDP_GRO`. It grows the per-socket receive buffers
-  (each must hold a coalesced burst). Send-side `UDP_SEGMENT` (GSO) is not yet wired.
+  (each must hold a coalesced burst). With the option on, `DatagramConn.SendBatch` also uses send-side `UDP_SEGMENT` (GSO): runs of equal-size datagrams go out in one syscall, with a fallback to plain sends if the kernel or NIC refuses. Measured gains are in [PERFORMANCE.md](PERFORMANCE.md).
 
 ### High-assurance deployment example
 
@@ -196,6 +196,6 @@ BSI/FIPS profile; for FIPS 140-3 build mode see [FIPS.md](FIPS.md).
 
 ## Out of scope (future)
 
-Send-side `UDP_SEGMENT` (GSO) offload, PMTU discovery, multipath, and a parallel
+PMTU discovery, multipath, and a parallel
 per-datagram crypto pipeline (revisited after the current baseline is measured).
 Receive-side `UDP_GRO` is available behind `WithDatagramOffload()` (see above).
