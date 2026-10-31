@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.17][] - 2026-10-31
+
+**Theme:** Speed and server robustness. Protocol 6.0 merges the server's two handshake messages so a client is keyed after one round trip on both transports, the datagram transport gains batched sends with UDP segmentation offload, and several server-side stalls and blocking paths are removed. Protocol 6.0 is wire-incompatible with 5.x peers, which reject the mismatch cleanly at the handshake. Releases are now signed with cosign and carry a build-provenance attestation.
+
 ### Added
 - **Per-client PSKs and `RequirePSK`**: a server can hold one pre-shared key per client identity (`TransportConfig.PSKLookup`, datagram `WithPSKLookup`) and admit only clients that hold one (`RequirePSK`, `WithRequirePSK`). A missing or unknown identity is not refused early: the server folds a random key, so the handshake fails at the Finished check exactly like a wrong key, and a prober cannot tell the two apart. Symmetric only, no wire change. `RequirePSK` without a key or lookup fails closed with `ErrPSKMisconfigured`.
 - **`DatagramConn.SendBatch` and UDP segmentation offload**: sends several datagrams at once. With `WithDatagramOffload()` on Linux, runs of equal-size datagrams go out in a single syscall using `UDP_SEGMENT`, and the receive side coalesces them with `UDP_GRO`. Sizes, sequence numbers and the wire format are unchanged. A kernel or NIC that refuses segmentation falls back to plain sends with no loss. Measured single-flow goodput on Linux CI runners: 701 MB/s on x86-64 and 528 MB/s on arm64, against 196 and 304 MB/s for one `Send` per datagram.
@@ -382,7 +386,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.16...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.17...HEAD
+[0.0.17]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.16...v0.0.17
 [0.0.16]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.15...v0.0.16
 [0.0.15]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.14...v0.0.15
 [0.0.14]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.13...v0.0.14
