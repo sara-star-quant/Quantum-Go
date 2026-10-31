@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.18][] - 2026-10-31
+
+**Theme:** Correctness and discoverability. This release fixes a data race on the datagram session pointer and two health checks that never checked anything, makes concurrent sends safe and the stream accept limit configurable, and makes the package pages on pkg.go.dev readable: one clear synopsis per package, runnable examples, a corrected Quick Start and a sourced comparison guide. There is no wire change.
+
 ### Added
 - **`TransportConfig.MaxPendingHandshakes`**: the number of stream connections a `Listener` holds mid-handshake or waiting for `Accept` at once is configurable (default 1024, as before). Connections beyond it are closed on arrival.
+- **Runnable examples and package documentation**: `go doc` and pkg.go.dev now show one clear synopsis for each package (several packages previously concatenated per-file comments, so `pkg/tunnel` was described as "datagram.go is the connectionless UDP/datagram transport endpoint"), and runnable `Example` functions for the stream tunnel, `SendBatch` and `chkem`.
+- **`docs/COMPARISON.md`**: Quantum-Go next to WireGuard, Rosenpass, NordVPN and Mullvad, IKEv2 with RFC 9370 and hybrid TLS, with a source for every claim about another project, a section on where Quantum-Go is behind, and guidance on when to choose what. Measured performance moved to `docs/PERFORMANCE.md` and the README is a short front page.
+- **More fuzz targets and a stress check for tests**: fuzzing for the fragment reassembler, the endpoint's whole datagram receive path and the HelloRetryRequest, Finished, rekey and data-header decoders, and a CI job that re-runs added or edited tests shuffled, under CPU load, with the race detector and the `fips` tag.
 
 ### Fixed
 - **`MemoryCheck` and `ConnectivityCheck` health checks now check something**: both were placeholders that always returned nil, so a readiness endpoint using them reported healthy even with the heap over its limit or the peer unreachable. `MemoryCheck` now fails when the heap in use exceeds the threshold, and `ConnectivityCheck` fails when a TCP connection cannot be opened within the timeout.
@@ -397,7 +404,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.17...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.18...HEAD
+[0.0.18]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.16...v0.0.17
 [0.0.16]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.15...v0.0.16
 [0.0.15]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.14...v0.0.15

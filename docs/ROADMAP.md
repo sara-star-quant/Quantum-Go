@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: v0.0.17
+## Current Status: v0.0.18
 
 > **Direction (Q3 2026).** v0.0.17 ships protocol 6.0 (a one-round-trip handshake), batched datagram sends with
 > UDP segmentation offload, per-client PSKs, and signed, attested releases. The **assurance tier** is well underway: a written wire-protocol specification,
