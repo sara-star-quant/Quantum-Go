@@ -7,14 +7,26 @@
 
 ## Current Status: v0.0.18
 
-> **Direction (Q3 2026).** v0.0.17 ships protocol 6.0 (a one-round-trip handshake), batched datagram sends with
-> UDP segmentation offload, per-client PSKs, and signed, attested releases. The **assurance tier** is well underway: a written wire-protocol specification,
-> published cross-implementation conformance vectors, and machine-checked ProVerif security proofs have
-> landed (v0.0.16), and an audit-readiness package with a govulncheck supply-chain gate is in place. The
-> remaining assurance work is a **third-party audit** and **real FIPS 140-3 / CMVP validation**. This sits
-> on crypto-agility (negotiated suites + X-Wing, protocol 5.0) and endpoint authentication from earlier
-> releases. HQC code-based diversification (CH-KEM v2) stays deferred and option-priced on a trusted HQC
-> primitive (circl `kem/hqc` or an audited pure-Go port), behind the assurance work.
+> **Direction (Q4 2026).** Protocol 6.0 (one-round-trip handshake), batched datagram sends with UDP
+> offload, per-client PSKs and signed, attested releases have shipped (v0.0.17 and v0.0.18). The
+> **assurance tier** is well underway: a written wire specification, published conformance vectors,
+> machine-checked ProVerif proofs and an audit-readiness package are in place. What remains is a
+> **third-party audit** and **real FIPS 140-3 / CMVP validation**, plus a test-depth push (tamper sweeps,
+> fault-injection and end-to-end suites, see the open issues). HQC code-based diversification (CH-KEM v2)
+> stays deferred behind that work until a trusted HQC primitive exists (circl `kem/hqc` or an audited
+> pure-Go port).
+
+### Next up
+
+Tracked as GitHub issues, in this order:
+
+1. Test depth to about 95% library coverage: handshake error paths, a suite x authentication x transport
+   x cipher matrix, untested public options, stream and pool fault injection, datagram rekey lifecycle,
+   crypto fault injection.
+2. Path-MTU discovery for the datagram transport.
+3. A second independent implementation checked against the conformance vectors.
+4. A decision on the experimental resumption API: wire it into `Dial` and `Listen`, or remove it.
+5. Third-party audit and FIPS 140-3 validation (owner-driven, not an open task).
 
 ## Strategic Priorities (valuation-driven)
 
@@ -246,6 +258,9 @@ Required for FIPS 140-3 validation.
 ---
 
 ## Upcoming Releases
+
+> v0.0.10 through v0.0.18 have shipped; [CHANGELOG.md](../CHANGELOG.md) is the record of what each contained. The sections
+> below are the original plans and are kept for context, so some items shown as upcoming are done or were reshaped.
 
 ### v0.0.10 - Cryptographic Protocol Hardening
 
@@ -526,13 +541,13 @@ pinning (stream path) now closes it for the pinned-server case; the rest follows
 - [ ] All v0.0.6-v0.0.11 features complete
 - [ ] Third-party security audit completed
 - [ ] Security audit findings remediated
-- [ ] Performance benchmarks published
+- [x] Performance benchmarks published
 - [ ] API stability guarantee (semantic versioning)
 - [ ] Migration guide from pre-release versions
 
 #### Release Artifacts
-- [ ] Signed binaries for Linux, macOS, Windows
-- [ ] Docker images (multi-arch)
+- [x] Signed binaries for Linux, macOS, Windows
+- [x] Docker images (multi-arch)
 - [ ] Package manager releases (Homebrew, APT, etc.)
 - [ ] Go module stable release
 
