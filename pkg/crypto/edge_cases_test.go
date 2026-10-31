@@ -25,6 +25,9 @@ func TestAEADRejectsBadKeyAndSuite(t *testing.T) {
 
 func TestAEADTamperAndMisuse(t *testing.T) {
 	for _, suite := range []constants.CipherSuite{constants.CipherSuiteAES256GCM, constants.CipherSuiteChaCha20Poly1305} {
+		if FIPSMode() && !suite.IsFIPSApproved() {
+			continue // refused in FIPS mode by design
+		}
 		a, err := NewAEAD(suite, testKey(7))
 		if err != nil {
 			t.Fatalf("suite %v: %v", suite, err)
