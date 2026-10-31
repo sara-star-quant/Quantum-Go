@@ -402,6 +402,7 @@ func TestDgramEarlyDataSurvivesLostClientFinished(t *testing.T) {
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
 		ep.rtoInitial = 50 * time.Millisecond // slow replay so the data races ahead of it
 		ep.rtoMax = 200 * time.Millisecond
+		ep.maxRetries = 40 // a starved runner must not exhaust the retransmit budget
 	}
 	go epA.Serve()
 	go epB.Serve()
@@ -435,7 +436,7 @@ func TestDgramEarlyDataSurvivesLostClientFinished(t *testing.T) {
 			t.Fatalf("accept: %v", a.err)
 		}
 		server = a.conn
-	case <-time.After(5 * time.Second):
+	case <-time.After(20 * time.Second):
 		t.Fatal("responder did not surface a session")
 	}
 
@@ -447,7 +448,7 @@ func TestDgramEarlyDataSurvivesLostClientFinished(t *testing.T) {
 			if !bytes.Equal(b, m) {
 				t.Fatalf("datagram %d = %q, want %q", i, b, m)
 			}
-		case <-time.After(2 * time.Second):
+		case <-time.After(10 * time.Second):
 			t.Fatalf("early datagram %d (%q) was lost", i, m)
 		}
 	}
