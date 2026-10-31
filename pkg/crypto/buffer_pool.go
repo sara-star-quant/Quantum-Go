@@ -3,6 +3,7 @@
 // This file (buffer_pool.go) provides buffer pooling to reduce memory allocations
 // during encryption/decryption, which is critical for high-throughput scenarios.
 // The pool uses size classes optimized for typical AEAD operations.
+
 package crypto
 
 import (

@@ -17,6 +17,7 @@
 // It is computationally infeasible to distinguish (A, As + e) from uniform random.
 //
 // Security Level: NIST Category 5 (equivalent to AES-256 against quantum adversaries)
+
 package crypto
 
 import (

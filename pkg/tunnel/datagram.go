@@ -11,6 +11,7 @@
 // This file provides the endpoint shell and the connection-index registry. The
 // reliable handshake state machine (dgram_handshake.go) and the epoch-keyed data
 // path (Session datagram methods) plug into the routing seams marked below.
+
 package tunnel
 
 import (

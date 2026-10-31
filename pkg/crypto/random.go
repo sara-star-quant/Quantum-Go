@@ -4,6 +4,7 @@
 //
 // Security Note: All random number generation uses crypto/rand which provides
 // cryptographically secure random bytes from the operating system's CSPRNG.
+
 package crypto
 
 import (

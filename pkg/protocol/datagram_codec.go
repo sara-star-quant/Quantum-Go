@@ -39,6 +39,7 @@
 //	    messages that exceed the datagram MTU (the PQ Hellos are ~1.6 KB).
 //	  - CookieLen/Cookie are reserved for a future stateless-retry/cookie
 //	    (anti-DoS) hardening; CookieLen is 0 today, so adding it needs no wire change.
+
 package protocol
 
 import (

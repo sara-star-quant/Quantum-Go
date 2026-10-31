@@ -5,6 +5,7 @@
 //
 // This file is compiled when the "fips" build tag is NOT specified.
 // In standard mode, all supported algorithms are available.
+
 package crypto
 
 // FIPSMode reports whether the binary was built in FIPS mode.

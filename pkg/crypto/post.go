@@ -16,6 +16,7 @@
 // In FIPS mode, POST failures cause a panic to prevent use of potentially
 // compromised cryptographic implementations. In standard mode, failures are
 // logged but do not prevent operation.
+
 package crypto
 
 import (

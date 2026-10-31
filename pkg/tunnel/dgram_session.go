@@ -4,6 +4,7 @@
 // cipher by an explicit per-frame epoch, and never touches the stream
 // sendCipher/recvCipher promote/discard logic. The only shared state it reads is
 // the master secret and the sequence counter.
+
 package tunnel
 
 import (

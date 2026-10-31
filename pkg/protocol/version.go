@@ -7,6 +7,7 @@
 //   - Forward secrecy through ephemeral keys
 //   - Replay protection through sequence numbers
 //   - Session rekeying for long-lived connections
+
 package protocol
 
 import "github.com/sara-star-quant/quantum-go/internal/constants"

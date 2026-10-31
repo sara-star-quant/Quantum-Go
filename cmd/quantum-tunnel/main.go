@@ -1,3 +1,6 @@
+// Command quantum-tunnel is a demo, key generation and benchmark tool for the
+// Quantum-Go library: it runs example tunnels, creates server identities with keygen,
+// and measures handshake and throughput performance.
 package main
 
 import (

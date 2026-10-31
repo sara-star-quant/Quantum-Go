@@ -4,6 +4,7 @@
 // by reusing buffers across operations. This is especially beneficial in
 // high-throughput scenarios where frequent message encoding/decoding would
 // otherwise cause significant GC pressure.
+
 package protocol
 
 import (

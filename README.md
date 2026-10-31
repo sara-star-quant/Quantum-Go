@@ -13,24 +13,35 @@
 ---
 
 
-## Overview
+**Post-quantum encryption for your Go network code. Keyed in one round trip. Familiar `Dial` and `Listen`.**
 
-Quantum-Go is a research-grade (pre-1.0) tunnel **encryption library** for Go. It encrypts and authenticates bytes over a `net.Conn` or a UDP socket using a **Cascaded Hybrid KEM (CH-KEM)** that combines:
+Traffic an attacker records today can be decrypted later by a quantum computer. Quantum-Go closes that gap now: a **hybrid ML-KEM-1024 + X25519** handshake, so an attacker has to break both algorithms to read a session. You keep your protocol and your sockets; the library encrypts and authenticates the bytes.
 
-- **ML-KEM-1024** (NIST FIPS 203): post-quantum lattice-based key encapsulation
-- **X25519** (RFC 7748): classical elliptic-curve Diffie-Hellman
-- **SHAKE-256** (NIST FIPS 202): key derivation
+## What you get
 
-The session is secure if either algorithm is. It is a library, not a VPN client: see [Scope](docs/SCOPE.md) for what it does and does not do.
+- **Speed to first byte.** The client sends data after **1 round trip** on both transports: 21 ms on a 20 ms link, 101 ms on a 100 ms link. The handshake costs 340 to 610 µs of CPU for both sides.
+- **Throughput.** About **690 MB/s** on a single stream tunnel. On Linux, batched datagram sends with UDP offload reach **701 MB/s** (x86-64) and **528 MB/s** (arm64) per flow, up to 3.6 times a plain send.
+- **Top-tier post-quantum security.** ML-KEM-1024 is NIST security level 5. Prefer smaller handshakes? Switch to the X-Wing suite (ML-KEM-768 + X25519).
+- **Two transports, one API.** TCP, and a connectionless UDP transport with retransmission, reliable rekey, anti-DoS cookies and roaming across IP changes.
+- **Authentication you control.** Pin your server's key, or issue each client its own pre-shared key. A client with no key looks the same as one with a wrong key.
+- **Proof, not promises.** Machine-checked ProVerif models, published conformance vectors, fuzzed parsers, a written wire specification, and releases signed with cosign and attested.
+- **A licence you can ship.** Apache-2.0 with an express patent grant, a licence scan on every release, and full third-party notices.
 
-## Highlights
+How it stacks up against WireGuard, Rosenpass, IKEv2 and hybrid TLS, including where it loses: [docs/COMPARISON.md](docs/COMPARISON.md).
 
-- **One round trip to a keyed client.** The 6.0 handshake lets the client send data after 1 RTT, on both the stream and datagram transports (about 21 ms on a 20 ms link).
-- **Two transports.** TCP/stream, and a connectionless UDP/datagram transport with fragmented handshake, retransmission, reliable rekey, anti-DoS cookies and authenticated roaming.
-- **Fast data plane.** About 690 MB/s on one stream tunnel. Datagrams reach 528 to 701 MB/s per flow on Linux with batching and UDP offload.
-- **Endpoint authentication, opt-in.** Static-key server pinning, and per-client pre-shared keys for mutual authentication.
-- **Pluggable KEM suites.** CH-KEM-v1 by default, or X-Wing (ML-KEM-768 plus X25519) for smaller handshakes.
-- **Verified and hardened.** ProVerif models of secrecy, hybrid security, forward secrecy and authentication; fuzzing; FIPS 140-3 build mode; release workflow with cosign signatures and build-provenance attestation.
+## Who it is for
+
+- You build a Go service, agent, relay or edge component and want quantum-resistant transport **without running a VPN daemon, a kernel module or root**.
+- You need an auditable protocol: a spec, proofs and test vectors you can hand to a reviewer.
+
+## Who it is not for
+
+- You want a VPN client with a TUN device, routing, DNS handling and a kill-switch. This is a library; see [Scope](docs/SCOPE.md).
+- You need a FIPS 140-3 *validated* module today. The library ships a FIPS build mode with self-tests, but it is not validated.
+
+## The honest part
+
+Quantum-Go is **pre-1.0 and research-grade**, and it has **not had a third-party audit**. Its handshake is about ten times larger than WireGuard's because ML-KEM-1024 is large. That is the price of security level 5, and the reason the smaller X-Wing suite exists.
 
 ## Quick start
 
@@ -104,6 +115,7 @@ Measured on CI runners and a laptop; full tables, methodology and reproduction s
 | [Configuration](docs/usage/CONFIGURATION.md) | Timeouts, rate limiting, sessions, authentication |
 | [CLI reference](docs/usage/CLI.md) | `quantum-tunnel` demos, key generation and benchmarks |
 | [Performance](docs/PERFORMANCE.md) | Measured latency, handshake cost and throughput |
+| [Comparison](docs/COMPARISON.md) | Quantum-Go next to WireGuard, Rosenpass, IKEv2 and hybrid TLS |
 | [Datagram transport](docs/datagram-transport.md) and [DoS defences](docs/datagram-dos.md) | UDP transport design and limits |
 | [Architecture](docs/technical/ARCHITECTURE.md) | CH-KEM protocol and security design |
 | [Protocol specification](docs/PROTOCOL.md) | Wire handshake, KEM negotiation, key schedule |

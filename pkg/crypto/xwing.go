@@ -3,6 +3,7 @@
 // to cloudflare/circl's certified implementation, so the wire output is byte-exact
 // with any other X-Wing implementation; this package never re-implements the
 // combiner. The private key is the 32-byte derivation seed (circl PrivateKeySize).
+
 package crypto
 
 import (

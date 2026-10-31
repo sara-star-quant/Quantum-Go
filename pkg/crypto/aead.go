@@ -21,6 +21,7 @@
 // CRITICAL: Nonce reuse completely breaks security. Each (key, nonce) pair
 // MUST be used at most once. This implementation uses counters for nonce
 // generation and tracks usage to prevent reuse.
+
 package crypto
 
 import (

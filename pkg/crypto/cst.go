@@ -14,6 +14,7 @@
 //
 // In FIPS mode, CST failures cause a panic to prevent use of potentially
 // compromised keys or random data. In standard mode, failures return errors.
+
 package crypto
 
 import (

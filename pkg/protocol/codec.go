@@ -25,6 +25,7 @@
 //	| Version | Random | SessionID | KEMSuite | CHKEMCiphertext    | CipherSuite |
 //	| 2B      | 32B    | 16B       | 2B       | 2B len + suite-sz  | 2B          |
 //	+---------+--------+-----------+----------+-------------------+-------------+
+
 package protocol
 
 import (

@@ -1,4 +1,5 @@
-// Package quantumgo provides quantum-resistant tunnel encryption using Cascaded Hybrid KEM (CH-KEM).
+// Package quantumgo provides post-quantum tunnel encryption for Go: a hybrid
+// ML-KEM-1024 and X25519 handshake (CH-KEM) that keys the client in one round trip.
 //
 // Quantum-Go combines ML-KEM-1024 (NIST FIPS 203) post-quantum cryptography with
 // X25519 classical cryptography for defense-in-depth security against both

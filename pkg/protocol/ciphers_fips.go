@@ -5,6 +5,7 @@
 //
 // This file is compiled when the "fips" build tag is specified.
 // In FIPS mode, only FIPS 140-3 approved cipher suites are available.
+
 package protocol
 
 import "github.com/sara-star-quant/quantum-go/internal/constants"

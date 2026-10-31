@@ -10,6 +10,7 @@
 // and caches its sealed response so a retransmitted RekeyInit is replayed
 // verbatim - it must never re-run the randomized Encapsulate, which would derive
 // a different secret and desync the epochs.
+
 package tunnel
 
 import (

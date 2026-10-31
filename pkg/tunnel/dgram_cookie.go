@@ -10,6 +10,7 @@
 // and an issue timestamp, keyed by a per-endpoint secret minted at startup. A
 // process restart rotates the secret and invalidates outstanding cookies, which
 // only costs an extra RETRY round trip on the next attempt.
+
 package tunnel
 
 import (

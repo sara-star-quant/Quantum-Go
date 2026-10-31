@@ -9,6 +9,7 @@
 // or real timers: feed it inbound messages and timer ticks, and it returns the
 // messages to send. The endpoint wiring (datagram.go) owns the goroutine, the
 // real clock, fragmentation, and the socket.
+
 package tunnel
 
 import (

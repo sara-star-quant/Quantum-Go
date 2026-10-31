@@ -10,6 +10,7 @@
 // belong to the driver (dgram_handshake_driver.go) and the endpoint wiring
 // (datagram.go). A transition produces zero, one, or (the responder's
 // ServerHello + ServerFinished) two handshake messages: the flight.
+
 package tunnel
 
 import (
