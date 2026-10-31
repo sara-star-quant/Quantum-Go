@@ -17,6 +17,10 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     needs: license-scan
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
 
     steps:
     - name: Checkout code
@@ -47,6 +51,14 @@ jobs:
       env:
         VERSION: ${{ steps.get_version.outputs.VERSION }}
       run: make release
+
+    - name: Attest build provenance
+      uses: actions/attest-build-provenance@v4
+      with:
+        subject-path: |
+          bin/release/*.tar.gz
+          bin/release/*.zip
+          bin/release/checksums-sha256.txt
 
     - name: Generate release notes
       env:
