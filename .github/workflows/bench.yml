@@ -33,6 +33,10 @@ jobs:
           go test ./test/benchmark/ -run xxx -benchtime 20x \
             -bench 'Handshake$|HandshakeStaticAuth|HandshakePSK|HandshakeLatency' | tee bench.txt
 
+      - name: Datagram goodput
+        shell: bash
+        run: go test ./pkg/tunnel/ -run xxx -bench 'DatagramEndToEnd$' -benchtime 3s | tee goodput.txt
+
       - name: Soak (same-source datagram redials)
         if: github.event_name == 'schedule' || inputs.soak_dials != '0'
         shell: bash
@@ -47,6 +51,7 @@ jobs:
             echo "### ${{ matrix.os }} ($(go env GOOS)/$(go env GOARCH), $(go version | cut -d' ' -f3))"
             echo '```'
             grep -E '^Benchmark' bench.txt
+            grep -E '^Benchmark' goodput.txt
             [ -f soak.txt ] && grep -E '^(--- |ok|FAIL)' soak.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -56,4 +61,5 @@ jobs:
           name: bench-${{ matrix.os }}
           path: |
             bench.txt
+            goodput.txt
             soak.txt
