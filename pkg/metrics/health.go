@@ -2,7 +2,10 @@ package metrics
 
 import (
 	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -245,22 +248,28 @@ func formatInt(n int, suffix string) string {
 
 // --- Common Health Checks ---
 
-// MemoryCheck returns a health check that monitors memory usage.
-// threshold is the maximum allowed memory in bytes.
+// MemoryCheck returns a health check that fails when the Go heap in use exceeds
+// threshold bytes.
 func MemoryCheck(threshold uint64) CheckFunc {
 	return func() error {
-		// Note: This is a placeholder. In production, you would use
-		// runtime.ReadMemStats to check actual memory usage.
+		var ms runtime.MemStats
+		runtime.ReadMemStats(&ms)
+		if ms.HeapAlloc > threshold {
+			return fmt.Errorf("heap in use %d bytes exceeds the %d byte threshold", ms.HeapAlloc, threshold)
+		}
 		return nil
 	}
 }
 
-// ConnectivityCheck returns a health check that verifies network connectivity.
+// ConnectivityCheck returns a health check that fails when a TCP connection to addr
+// cannot be opened within timeout.
 func ConnectivityCheck(addr string, timeout time.Duration) CheckFunc {
 	return func() error {
-		// Note: This is a placeholder. In production, you would attempt
-		// to dial the address with the given timeout.
-		return nil
+		conn, err := net.DialTimeout("tcp", addr, timeout)
+		if err != nil {
+			return fmt.Errorf("cannot reach %s: %w", addr, err)
+		}
+		return conn.Close()
 	}
 }
 

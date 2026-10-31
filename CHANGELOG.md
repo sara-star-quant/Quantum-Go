@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`TransportConfig.MaxPendingHandshakes`**: the number of stream connections a `Listener` holds mid-handshake or waiting for `Accept` at once is configurable (default 1024, as before). Connections beyond it are closed on arrival.
 
 ### Fixed
+- **`MemoryCheck` and `ConnectivityCheck` health checks now check something**: both were placeholders that always returned nil, so a readiness endpoint using them reported healthy even with the heap over its limit or the peer unreachable. `MemoryCheck` now fails when the heap in use exceeds the threshold, and `ConnectivityCheck` fails when a TCP connection cannot be opened within the timeout.
 - **Data race on the datagram session pointer**: the handshake goroutine published an established session while the receive loop read it, with no synchronization. The race window was the moment a responder completed the handshake while data for it was arriving; it is now an atomic pointer, and a regression test fails under the race detector without the fix.
 
 ### Changed
