@@ -1,6 +1,6 @@
 module github.com/sara-star-quant/quantum-go
 
-go 1.26.10
+go 1.26.9
 
 require (
 	github.com/cloudflare/circl v1.6.3
