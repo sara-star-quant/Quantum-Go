@@ -11,6 +11,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/sara-star-quant/quantum-go/internal/constants"
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
@@ -201,6 +202,15 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
 		return nil, err
 	}
 	return newDatagramConn(ep, ds), nil
+}
+
+// retryCeiling is how many retransmits a handshake or rekey makes before failing:
+// the protocol constant unless a test raised it for a slow runner.
+func (e *DatagramEndpoint) retryCeiling() int {
+	if e.maxRetries > 0 {
+		return e.maxRetries
+	}
+	return constants.DatagramHandshakeMaxRetries
 }
 
 // newDriver builds a handshake driver carrying this endpoint's configured

@@ -461,8 +461,10 @@ func TestDgramRedialSameSourceNoStall(t *testing.T) {
 	epA := mustEndpoint(t, connA)
 	epB := mustEndpoint(t, connB)
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
-		ep.rtoInitial = 300 * time.Millisecond
-		ep.rtoMax = time.Second
+		// A stall is a wait for the first retransmit, so make that long enough that a
+		// slow, loaded machine cannot reach it: any dial near rtoInitial is a real stall.
+		ep.rtoInitial = 5 * time.Second
+		ep.rtoMax = 10 * time.Second
 	}
 	go epA.Serve()
 	go epB.Serve()
@@ -478,7 +480,7 @@ func TestDgramRedialSameSourceNoStall(t *testing.T) {
 		if _, err := DialDatagram(epA, connB.addr); err != nil {
 			t.Fatalf("dial %d: %v", i, err)
 		}
-		if d := time.Since(start); d > 200*time.Millisecond {
+		if d := time.Since(start); d > 3*time.Second {
 			t.Fatalf("dial %d took %v: stalled on a retransmit timeout", i, d)
 		}
 	}

@@ -242,7 +242,7 @@ func (c *DatagramConn) Rekey() error {
 	for {
 		select {
 		case <-timer.C:
-			if attempts > constants.DatagramHandshakeMaxRetries {
+			if attempts > c.ep.retryCeiling() {
 				return errRekeyTimeout
 			}
 			peer := c.ds.currentPeerAddr() // re-read so a mid-rekey roam is followed
