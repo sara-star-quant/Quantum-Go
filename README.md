@@ -141,7 +141,7 @@ receive on Linux, and optional fixed-size handshake padding.
 | Handshakes/sec (datagram/UDP, full CH-KEM, sequential) | ~1,300 (~760 µs each) |
 | Time until the client can send data (stream, protocol 6.0) | 1 RTT + ~0.4 ms crypto (was 2 RTT): 22 ms at 20 ms RTT, 102 ms at 100 ms, 502 ms at 500 ms (was 44, 204, 1004) |
 | Time until the server can read client data (stream) | 1.5 RTT + ~0.4 ms crypto (unchanged): 33 ms at 20 ms RTT, 153 ms at 100 ms |
-| Time until the client can send data (datagram, no loss) | 1 RTT + ~1.6 ms crypto and socket time: 23 ms at 20 ms RTT, 115 ms at 100 ms. A reordered server flight no longer costs a 500 ms retransmit timer |
+| Time until the client can send data (datagram, no loss) | 1 RTT + ~1 ms: 21 ms at 20 ms RTT, 101 ms at 100 ms (Linux), 23 and 115 ms (macOS laptop). A reordered server flight no longer costs a 500 ms retransmit timer |
 | Endpoint auth handshake cost (opt-in) | static-key ~+40% (one extra CH-KEM leg); PSK negligible (one KDF fold); data plane unaffected |
 | Stream per-record overhead | 16 B AEAD (tag only; nonce derived, not transmitted, was 28) + 13 B frame header (type, length, seq) = 29 B total (was 41) |
 | Single-tunnel throughput (stream/TCP, AES-GCM, end-to-end) | ~690 MB/s (5.5 Gb/s), sustained across rekeys |
@@ -189,11 +189,20 @@ independently measured; run the benchmark to verify):
 | Mid-range server (Xeon Silver) | 4-7 GB/s |
 | Enterprise (Xeon Platinum / EPYC) | 8-12 GB/s |
 
-Handshake latency is round-trip bound, so faster hardware does not change the RTT
-terms above. It only shrinks the crypto part (ML-KEM-1024 plus X25519, no AES
-involved): expect roughly 0.3-0.8 ms per handshake on a current server core, with
-throughput scaling near-linearly across cores since handshakes are independent.
-This is an estimate, not a measurement.
+Handshake CPU, measured by the [Benchmarks workflow](.github/workflows/bench.yml) on
+GitHub-hosted runners (shared 3-4 vCPU VMs, so indicative; 20 runs, no network):
+
+| Runner | CPU | Handshake | With static-key auth |
+|--------|-----|-----------|----------------------|
+| Linux x86-64 | AMD EPYC 7763 | ~610 µs | ~820 µs |
+| Linux arm64 | Ampere (ubuntu-24.04-arm) | ~520 µs | ~780 µs |
+| macOS arm64 | Apple M1 (virtual) | ~450 µs | ~670 µs |
+| Windows x86-64 | AMD EPYC 9V45 | ~340 µs | ~450 µs |
+
+Handshake latency is round-trip bound, so faster hardware only shrinks the crypto part
+of the RTT terms above. On every runner the stream client was keyed at 1 RTT plus under
+1 ms and the datagram handshake took 21 ms at 20 ms RTT. A 20,000-dial same-source soak
+passed on all four with no stalls or leaked state.
 
 Run `quantum-tunnel bench --handshakes N --datagram-handshakes N --throughput` on your target hardware. See [CLI Reference](docs/usage/CLI.md#benchmark-mode).
 
