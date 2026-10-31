@@ -23,11 +23,11 @@ import (
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 )
 
-// MessageType identifies the type of protocol message.
 // maxSessionIDLen bounds the SessionID field (it carries a resumption ticket in a
 // ClientHello). The wire length is one byte, so a longer value would truncate silently.
 const maxSessionIDLen = 255
 
+// MessageType identifies the type of protocol message.
 type MessageType uint8
 
 // Protocol message types for handshake, tunnel, and error signaling.

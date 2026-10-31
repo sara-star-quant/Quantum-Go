@@ -451,6 +451,8 @@ func (c *Codec) DecodeHelloRetryRequest(data []byte) (*HelloRetryRequest, error)
 	}, nil
 }
 
+// EncodeFinished serializes a ClientFinished or ServerFinished message carrying the
+// 32-byte verify data (the Finished MAC over the transcript).
 func (c *Codec) EncodeFinished(msgType MessageType, verifyData []byte) ([]byte, error) {
 	if len(verifyData) != 32 {
 		return nil, qerrors.ErrInvalidMessage

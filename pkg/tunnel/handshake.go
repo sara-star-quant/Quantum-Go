@@ -1100,6 +1100,9 @@ func responderFinish(h *Handshake, rw io.ReadWriter) error {
 	return nil
 }
 
+// InitiatorHandshake runs the full client side of the CH-KEM handshake over rw and
+// leaves session keyed: it sends ClientHello, verifies the server flight, and sends
+// ClientFinished. The client can send application data once it returns.
 func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
 	observer := session.observer
 	var done func(error)
