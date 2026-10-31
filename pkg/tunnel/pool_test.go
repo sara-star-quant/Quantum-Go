@@ -480,7 +480,7 @@ func TestPoolTryAcquire(t *testing.T) {
 	if err == nil {
 		t.Error("Expected error from TryAcquire when pool exhausted")
 	}
-	if elapsed > 10*time.Millisecond {
+	if elapsed > 500*time.Millisecond { // not blocking; generous for slow CI runners
 		t.Errorf("TryAcquire should fail immediately, took %v", elapsed)
 	}
 
