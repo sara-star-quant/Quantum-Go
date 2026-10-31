@@ -56,7 +56,11 @@ type TransportConfig struct {
 	// handshake on Accept. Without it a stalled peer pins a goroutine and session
 	// indefinitely (slow-loris). 0 means no handshake deadline.
 	HandshakeTimeout time.Duration
-	RateLimit        RateLimitConfig
+	// MaxPendingHandshakes caps the connections a Listener holds mid-handshake or
+	// waiting for Accept at once; connections beyond it are closed on arrival. 0 means
+	// the default of 1024. It is read when the listener starts accepting.
+	MaxPendingHandshakes int
+	RateLimit            RateLimitConfig
 	// Observer is a shared observer for all sessions (ignored if ObserverFactory is set).
 	Observer Observer
 
@@ -717,8 +721,8 @@ type Listener struct {
 	acceptErr error
 }
 
-// maxPendingHandshakes bounds the connections that are mid-handshake or waiting for
-// Accept at once. Connections beyond it are closed on arrival, so a flood of slow
+// maxPendingHandshakes is the default for TransportConfig.MaxPendingHandshakes: the
+// connections that may be mid-handshake or waiting for Accept at once. Connections beyond it are closed on arrival, so a flood of slow
 // peers cannot grow memory or goroutines without limit.
 const maxPendingHandshakes = 1024
 
@@ -752,7 +756,11 @@ func (l *Listener) startAcceptLoop() {
 	l.results = make(chan acceptResult, 64)
 	l.stopped = make(chan struct{})
 	l.closing = make(chan struct{})
-	l.pending = make(chan struct{}, maxPendingHandshakes)
+	limit := l.config.MaxPendingHandshakes
+	if limit <= 0 {
+		limit = maxPendingHandshakes
+	}
+	l.pending = make(chan struct{}, limit)
 	go l.acceptLoop()
 }
 

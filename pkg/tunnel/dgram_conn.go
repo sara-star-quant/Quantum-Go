@@ -7,6 +7,7 @@ package tunnel
 
 import (
 	"net"
+	"sync"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
@@ -18,16 +19,17 @@ import (
 // peer datagram's payload. Unlike a stream conn there is no FIN; Close is a single
 // best-effort authenticated CLOSE and teardown is otherwise driven by idle reaping.
 //
-// Send is safe for use from one goroutine at a time; Recv from another. Send is
-// not safe for concurrent callers (it shares no buffer in this phase, but the
-// contract is reserved for the zero-alloc path).
+// Send and SendBatch are safe for concurrent use: calls are serialized, because they
+// share a reusable frame buffer and sequence numbers must be sealed in order. Recv is
+// safe to call from another goroutine at the same time.
 type DatagramConn struct {
 	ep *DatagramEndpoint
 	ds *datagramSession
 
+	// sendMu serializes Send and SendBatch, which share sendBuf and batchBuf.
+	sendMu sync.Mutex
 	// sendBuf is the reusable frame buffer for Send (header || ciphertext || tag),
-	// retained across calls so the steady-state send path allocates nothing. Send
-	// is single-goroutine by contract, so it needs no lock.
+	// retained across calls so the steady-state send path allocates nothing.
 	sendBuf []byte
 	// batchBuf holds the sealed frames of one SendBatch, retained across calls.
 	batchBuf []byte
@@ -49,6 +51,8 @@ func (c *DatagramConn) Send(p []byte) error {
 	if len(p) > constants.DatagramMaxDataPayload {
 		return qerrors.ErrMessageTooLarge
 	}
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
 	s := c.ds.session
 	seq := s.nextDatagramSeq()
 	// Build header || ciphertext || tag in the reusable buffer: the header is both
@@ -89,8 +93,9 @@ const (
 // that supports it, runs of equal-size datagrams go out in a single syscall via UDP
 // segmentation offload. Datagram sizes, sequence numbers and the wire format are the
 // same either way, and any send the kernel will not segment falls back to plain
-// sends, so no datagram is lost. Like Send it is for one goroutine at a time. An
-// error stops the batch; earlier payloads were already sent.
+// sends, so no datagram is lost. Concurrent calls are serialized, so one batch's
+// datagrams are never interleaved with another call's. An error stops the batch;
+// earlier payloads were already sent.
 func (c *DatagramConn) SendBatch(payloads [][]byte) error {
 	if len(payloads) == 0 {
 		return nil
@@ -100,6 +105,8 @@ func (c *DatagramConn) SendBatch(payloads [][]byte) error {
 			return qerrors.ErrMessageTooLarge
 		}
 	}
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
 	s := c.ds.session
 	dst := c.ds.currentPeerAddr()
 

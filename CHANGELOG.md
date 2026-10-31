@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+- **`TransportConfig.MaxPendingHandshakes`**: the number of stream connections a `Listener` holds mid-handshake or waiting for `Accept` at once is configurable (default 1024, as before). Connections beyond it are closed on arrival.
+
+### Changed
+- **`DatagramConn.Send` and `SendBatch` are safe for concurrent use**: calls are serialized with a lock instead of requiring a single caller, so concurrent misuse can no longer corrupt the shared frame buffer.
+- **Resumption documentation corrected**: the ticket API is described as an experimental low-level building block. `Dial`, `Listen` and the datagram transport do not issue or use tickets, and a resumed handshake still performs the key exchange.
+
 ## [0.0.17][] - 2026-10-31
 
 **Theme:** Speed and server robustness. Protocol 6.0 merges the server's two handshake messages so a client is keyed after one round trip on both transports, the datagram transport gains batched sends with UDP segmentation offload, and several server-side stalls and blocking paths are removed. Protocol 6.0 is wire-incompatible with 5.x peers, which reject the mismatch cleanly at the handshake. Releases are now signed with cosign and carry a build-provenance attestation.

@@ -93,7 +93,7 @@ Measured on CI runners and a laptop; full tables, methodology and reproduction s
 | Hybrid guarantee | Secure if either algorithm is secure |
 | Endpoint authentication | Opt-in: static-key server pinning, require-auth, per-client PSK mutual auth |
 | Forward secrecy | Ephemeral keys per session and per rekey |
-| Session resumption | Encrypted tickets with an abbreviated handshake |
+| Session resumption | Experimental low-level ticket API; not used by `Dial` or `Listen` ([details](docs/usage/CONFIGURATION.md#session-resumption)) |
 | FIPS 140-3 | Build mode with POST and CST self-tests ([docs](docs/FIPS.md)); not a validated module |
 
 ## Documentation
