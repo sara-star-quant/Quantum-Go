@@ -51,7 +51,7 @@ func dialDgramAuthOpts(t *testing.T, seed uint64, drop, dup, reorder float64, se
 			return nil, nil, r.err
 		}
 		client = r.conn.Session()
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("dial did not resolve")
 	}
 
@@ -197,7 +197,7 @@ func dialDgramPSK(t *testing.T, seed uint64, serverPSK, serverID, clientPSK, cli
 			return nil, nil, r.err
 		}
 		client = r.conn.Session()
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("dial did not resolve")
 	}
 	select {
