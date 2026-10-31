@@ -4,28 +4,12 @@ package tunnel
 
 import (
 	"bytes"
-	"encoding/binary"
 	"net"
 	"testing"
 	"time"
-	"unsafe"
 
 	"golang.org/x/net/ipv4"
-	"golang.org/x/sys/unix"
 )
-
-// udpSegmentControl builds the UDP_SEGMENT (GSO) control message that asks the kernel
-// to slice one large send into segSize-byte datagrams. It is the send-side mirror of
-// the UDP_GRO cmsg the receive path reads.
-func udpSegmentControl(segSize uint16) []byte {
-	oob := make([]byte, unix.CmsgSpace(2))
-	h := (*unix.Cmsghdr)(unsafe.Pointer(&oob[0]))
-	h.Level = unix.SOL_UDP
-	h.Type = unix.UDP_SEGMENT
-	h.SetLen(unix.CmsgLen(2))
-	binary.NativeEndian.PutUint16(oob[unix.CmsgLen(0):], segSize)
-	return oob
-}
 
 // TestGSOSendSegments verifies the prerequisite for send-side offload (the deferred
 // stage 2c): that x/net's WriteBatch actually transmits Message.OOB, so a UDP_SEGMENT

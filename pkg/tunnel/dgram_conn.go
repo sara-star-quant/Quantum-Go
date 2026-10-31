@@ -29,6 +29,8 @@ type DatagramConn struct {
 	// retained across calls so the steady-state send path allocates nothing. Send
 	// is single-goroutine by contract, so it needs no lock.
 	sendBuf []byte
+	// batchBuf holds the sealed frames of one SendBatch, retained across calls.
+	batchBuf []byte
 }
 
 // newDatagramConn wraps an established datagram session.
@@ -71,6 +73,94 @@ func (c *DatagramConn) Send(p []byte) error {
 	// Rotate the epoch well before the per-epoch key budget is exhausted. Only the
 	// initiator drives rekey; it runs in the background so Send never blocks.
 	if s.Role == RoleInitiator && !c.ds.rekeyActive.Load() && s.datagramRekeyDue(seq) {
+		go func() { _ = c.Rekey() }()
+	}
+	return nil
+}
+
+// maxGSOSegments and maxGSOBytes are the kernel's limits for one segmented send.
+const (
+	maxGSOSegments = 64
+	maxGSOBytes    = 65507
+)
+
+// SendBatch sends every payload as its own DATA datagram, like calling Send for
+// each, but when the endpoint has offload enabled (WithDatagramOffload) on a kernel
+// that supports it, runs of equal-size datagrams go out in a single syscall via UDP
+// segmentation offload. Datagram sizes, sequence numbers and the wire format are the
+// same either way, and any send the kernel will not segment falls back to plain
+// sends, so no datagram is lost. Like Send it is for one goroutine at a time. An
+// error stops the batch; earlier payloads were already sent.
+func (c *DatagramConn) SendBatch(payloads [][]byte) error {
+	if len(payloads) == 0 {
+		return nil
+	}
+	for _, p := range payloads {
+		if len(p) > constants.DatagramMaxDataPayload {
+			return qerrors.ErrMessageTooLarge
+		}
+	}
+	s := c.ds.session
+	dst := c.ds.currentPeerAddr()
+
+	// Seal every payload back to back; offsets record where each frame ends.
+	buf := c.batchBuf[:0]
+	ends := make([]int, 0, len(payloads))
+	var lastSeq uint64
+	for _, p := range payloads {
+		seq := s.nextDatagramSeq()
+		lastSeq = seq
+		header := protocol.AppendDatagramDataHeader(buf, protocol.DatagramHeader{
+			Epoch:     s.datagramSendEpoch(),
+			RecvIndex: c.ds.peerIndex,
+			Seq:       seq,
+		})
+		frame, err := s.DatagramSealTo(header, header[len(buf):], seq, p)
+		if err != nil {
+			return err
+		}
+		buf = frame
+		ends = append(ends, len(buf))
+	}
+	c.batchBuf = buf[:0]
+
+	// Walk the frames, sending each run of equal-size frames (the last may be
+	// shorter) as one segmented send when possible.
+	start := 0
+	for i := 0; i < len(ends); {
+		segSize := ends[i] - start
+		runEnd, n := ends[i], 1
+		for j := i + 1; j < len(ends) && n < maxGSOSegments; j++ {
+			size := ends[j] - ends[j-1]
+			if size > segSize || runEnd+size-start > maxGSOBytes {
+				break
+			}
+			runEnd = ends[j]
+			n++
+			if size < segSize {
+				break // a short frame can only end a run
+			}
+		}
+		if n > 1 && c.ep.batch.writeGSO(buf[start:runEnd], segSize, dst) {
+			i += n
+			start = runEnd
+			continue
+		}
+		// Plain send for one frame (or the run the kernel refused), then re-scan.
+		if _, err := c.ep.conn.WriteTo(buf[start:ends[i]], dst); err != nil {
+			return err
+		}
+		start = ends[i]
+		i++
+	}
+
+	var total int64
+	for _, p := range payloads {
+		total += int64(len(p))
+	}
+	s.BytesSent.Add(total)
+	s.PacketsSent.Add(int64(len(payloads)))
+	if s.Role == RoleInitiator && !c.ds.rekeyActive.Load() && s.datagramRekeyDue(lastSeq) {
 		go func() { _ = c.Rekey() }()
 	}
 	return nil

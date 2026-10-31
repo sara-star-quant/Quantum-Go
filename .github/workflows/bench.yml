@@ -35,7 +35,7 @@ jobs:
 
       - name: Datagram goodput
         shell: bash
-        run: go test ./pkg/tunnel/ -run xxx -bench 'DatagramEndToEnd$' -benchtime 3s | tee goodput.txt
+        run: go test ./pkg/tunnel/ -run xxx -bench 'DatagramEndToEnd$|DatagramEndToEndBatch' -benchtime 3s | tee goodput.txt
 
       - name: Soak (same-source datagram redials)
         if: github.event_name == 'schedule' || inputs.soak_dials != '0'

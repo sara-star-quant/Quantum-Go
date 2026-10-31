@@ -138,6 +138,70 @@ func BenchmarkDatagramEndToEnd(b *testing.B) {
 	}
 }
 
+// BenchmarkDatagramEndToEndBatch is BenchmarkDatagramEndToEnd with SendBatch, with
+// and without offload, so the effect of UDP segmentation on delivered goodput shows
+// directly. Same credit window: a batch needs one credit per datagram.
+func BenchmarkDatagramEndToEndBatch(b *testing.B) {
+	const batch = 16
+	for _, offload := range []bool{false, true} {
+		b.Run(fmt.Sprintf("offload=%v", offload), func(b *testing.B) {
+			var opts []DatagramEndpointOption
+			if offload {
+				opts = append(opts, WithDatagramOffload())
+			}
+			client, server, stop := dialEstablished(b, opts...)
+			defer stop()
+
+			payloads := make([][]byte, batch)
+			for i := range payloads {
+				payloads[i] = make([]byte, constants.DatagramMaxDataPayload)
+			}
+
+			const window = dataInboxCap - 8 // below the receive queue so nothing drops
+			credits := make(chan struct{}, window)
+			for range window {
+				credits <- struct{}{}
+			}
+			var received int64
+			stopDrain := make(chan struct{})
+			go func() {
+				for {
+					select {
+					case <-server.recvCh:
+						atomic.AddInt64(&received, 1)
+						select {
+						case credits <- struct{}{}:
+						case <-stopDrain:
+							return
+						}
+					case <-server.closed:
+						return
+					case <-stopDrain:
+						return
+					}
+				}
+			}()
+
+			b.SetBytes(int64(len(payloads[0])) * batch)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				for range batch {
+					<-credits
+				}
+				if err := client.SendBatch(payloads); err != nil {
+					b.Fatalf("send: %v", err)
+				}
+			}
+			b.StopTimer()
+			close(stopDrain)
+			if got := atomic.LoadInt64(&received); got < int64(b.N)*batch-window {
+				b.Fatalf("delivered %d of %d datagrams: drops are inflating the throughput number", got, int64(b.N)*batch)
+			}
+		})
+	}
+}
+
 // dialFlows establishes n concurrent sessions into one shared single-socket
 // responder endpoint. See dialFlowsInto for the mechanics and why one initiator per
 // flow is used.

@@ -3,8 +3,11 @@
 package tunnel
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"net"
+	"sync/atomic"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
 	"golang.org/x/net/ipv4"
@@ -52,7 +55,45 @@ func newBatchIO(conn net.PacketConn, gro bool) batchIO {
 			rmsgs[i].OOB = make([]byte, groControlSize)
 		}
 	}
-	return &linuxBatchIO{pc: pc, rmsgs: rmsgs, gro: groOn}
+	b := &linuxBatchIO{pc: pc, rmsgs: rmsgs, gro: groOn}
+	// Offload covers both directions: send segmentation is on when requested and the
+	// kernel accepts UDP_SEGMENT on this socket.
+	b.gso.Store(gro && probeGSO(udp))
+	return b
+}
+
+// probeGSO reports whether the socket accepts UDP_SEGMENT (Linux 4.18 or newer).
+func probeGSO(udp *net.UDPConn) bool {
+	rc, err := udp.SyscallConn()
+	if err != nil {
+		return false
+	}
+	var ok bool
+	if err := rc.Control(func(fd uintptr) {
+		ok = unix.SetsockoptInt(int(fd), unix.SOL_UDP, unix.UDP_SEGMENT, 0) == nil
+	}); err != nil {
+		return false
+	}
+	return ok
+}
+
+// udpSegmentControl builds the UDP_SEGMENT (GSO) control message that asks the kernel
+// to slice one large send into segSize-byte datagrams. It is the send-side mirror of
+// the UDP_GRO cmsg the receive path reads. encoding/binary serializes the kernel's
+// own header struct (cmsg_len, cmsg_level, cmsg_type) in native byte order, so the
+// layout is right on 32-bit and 64-bit Linux with no pointer casting or integer
+// conversions.
+func udpSegmentControl(segSize uint16) []byte {
+	var h unix.Cmsghdr
+	h.Level = unix.SOL_UDP
+	h.Type = unix.UDP_SEGMENT
+	h.SetLen(unix.CmsgLen(2))
+	buf := bytes.NewBuffer(make([]byte, 0, unix.CmsgSpace(2)))
+	// Writing fixed-size values to a bytes.Buffer cannot fail.
+	_ = binary.Write(buf, binary.NativeEndian, &h)
+	_ = binary.Write(buf, binary.NativeEndian, segSize)
+	oob := buf.Bytes()
+	return append(oob, make([]byte, unix.CmsgSpace(2)-len(oob))...) // trailing alignment pad
 }
 
 // enableGRO turns on UDP_GRO for the socket, best-effort. It returns false on a
@@ -80,6 +121,9 @@ type linuxBatchIO struct {
 	// gro is set when UDP_GRO is active: recv must then re-split each coalesced
 	// buffer into its constituent datagrams.
 	gro bool
+	// gso is set while send-side UDP_SEGMENT is usable. A send the kernel or NIC
+	// rejects clears it for good, so one bad path costs a single failed attempt.
+	gso atomic.Bool
 }
 
 func (b *linuxBatchIO) recv(dispatch func(src net.Addr, payload []byte)) error {
@@ -161,4 +205,21 @@ func (b *linuxBatchIO) writeAll(frames [][]byte, dst net.Addr) {
 	// Best-effort, matching the WriteTo sites; a short or failed write is recovered
 	// by handshake/rekey retransmission.
 	_, _ = b.pc.WriteBatch(msgs, 0)
+}
+
+func (b *linuxBatchIO) writeGSO(buf []byte, segSize int, dst net.Addr) bool {
+	if !b.gso.Load() || segSize <= 0 || segSize > 0xFFFF {
+		return false
+	}
+	msgs := []ipv4.Message{{Buffers: [][]byte{buf}, Addr: dst, OOB: udpSegmentControl(uint16(segSize))}}
+	n, err := b.pc.WriteBatch(msgs, 0)
+	if err == nil && n == 1 {
+		return true
+	}
+	// A transient shortage is retried by the caller as plain sends; only an error
+	// that says segmentation itself is unsupported turns the feature off.
+	if errors.Is(err, unix.EIO) || errors.Is(err, unix.EINVAL) || errors.Is(err, unix.ENOPROTOOPT) || errors.Is(err, unix.EOPNOTSUPP) {
+		b.gso.Store(false)
+	}
+	return false
 }

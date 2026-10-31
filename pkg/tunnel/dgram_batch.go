@@ -31,6 +31,11 @@ type batchIO interface {
 	// matching the single-shot send sites (handshake/rekey retransmission recovers
 	// any dropped frame). Safe for concurrent use.
 	writeAll(frames [][]byte, dst net.Addr)
+	// writeGSO sends buf as consecutive segSize-byte datagrams (the last may be
+	// shorter) to dst in one syscall using UDP segmentation offload. It reports false
+	// when the platform, socket or kernel cannot do it, or the send failed; nothing
+	// was sent in that case and the caller must send the datagrams individually.
+	writeGSO(buf []byte, segSize int, dst net.Addr) bool
 }
 
 // fallbackIO is the portable one-datagram-at-a-time implementation over the
@@ -62,3 +67,6 @@ func (f *fallbackIO) writeAll(frames [][]byte, dst net.Addr) {
 		_, _ = f.conn.WriteTo(fr, dst)
 	}
 }
+
+// writeGSO is unavailable on the portable path.
+func (f *fallbackIO) writeGSO([]byte, int, net.Addr) bool { return false }
