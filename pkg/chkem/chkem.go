@@ -1,4 +1,6 @@
-// Package chkem implements the Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM).
+// Package chkem implements the Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM):
+// ML-KEM-1024 and X25519 combined into one key exchange that stays secure if either
+// algorithm holds, with pluggable suites (CH-KEM-v1 and X-Wing) and static-key identities.
 //
 // CH-KEM is a novel defense-in-depth key encapsulation mechanism that combines:
 //   - X25519 (classical elliptic curve Diffie-Hellman)

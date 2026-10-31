@@ -1,4 +1,5 @@
-// Package metrics provides observability primitives for the quantum-go tunnel library.
+// Package metrics provides Prometheus metrics, OpenTelemetry-compatible tracing,
+// structured logging and health checks for Quantum-Go sessions.
 //
 // # Overview
 //
