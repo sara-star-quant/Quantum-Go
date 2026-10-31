@@ -115,7 +115,8 @@ func TestDgramHandshakePaddingE2E(t *testing.T) {
 	}
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
 		ep.rtoInitial = 5 * time.Millisecond
-		ep.rtoMax = 250 * time.Millisecond
+		ep.rtoMax = 50 * time.Millisecond
+		ep.maxRetries = 40 // ~2s of headroom for slow CI runners
 	}
 	go epA.Serve()
 	go epB.Serve()

@@ -36,6 +36,7 @@ type dgramDriver struct {
 	rtoMax     time.Duration // backoff cap
 	rto        time.Duration // current retransmit timeout
 	retries    int
+	maxRetries int // retransmits before the handshake fails
 
 	// retransmitAt is when to resend the cached flight (zero = disarmed).
 	retransmitAt time.Time
@@ -73,6 +74,7 @@ func newDgramDriverWithRTO(session *Session, now func() time.Time, rtoInitial, r
 		rtoInitial: rtoInitial,
 		rtoMax:     rtoMax,
 		rto:        rtoInitial,
+		maxRetries: constants.DatagramHandshakeMaxRetries,
 		status:     driverRunning,
 	}
 }
@@ -137,7 +139,7 @@ func (d *dgramDriver) onComplete(final []hsMessage) []hsMessage {
 		// Linger long enough to cover the responder's whole flight retransmit window
 		// (it backs off up to rtoMax for MaxRetries tries), so a lost ClientFinished
 		// is recovered by replay rather than timing out.
-		d.lingerAt = d.now().Add(constants.DatagramHandshakeMaxRetries * d.rtoMax)
+		d.lingerAt = d.now().Add(time.Duration(d.maxRetries) * d.rtoMax)
 		d.replaysLeft = constants.DatagramHandshakeLingerReplays
 	}
 	return final
@@ -156,7 +158,7 @@ func (d *dgramDriver) onTimeout() []hsMessage {
 
 	if d.status == driverRunning && !d.retransmitAt.IsZero() && !now.Before(d.retransmitAt) {
 		d.retries++
-		if d.retries > constants.DatagramHandshakeMaxRetries {
+		if d.retries > d.maxRetries {
 			d.status = driverFailed
 			d.retransmitAt = time.Time{}
 			return nil

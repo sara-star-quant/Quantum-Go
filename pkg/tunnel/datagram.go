@@ -422,6 +422,8 @@ type DatagramEndpoint struct {
 	// rtoInitial/rtoMax bound handshake retransmission backoff; defaulted from
 	// constants, overridable (in-package) for fast tests.
 	rtoInitial time.Duration
+	// maxRetries overrides the handshake retransmit ceiling when positive (tests only).
+	maxRetries int
 	rtoMax     time.Duration
 
 	// idleTimeout is how long an established session may be idle before the reaper

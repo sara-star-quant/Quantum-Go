@@ -28,7 +28,8 @@ func dialDgramAuthOpts(t *testing.T, seed uint64, drop, dup, reorder float64, se
 	epA.pinnedServerKey = clientPin
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
 		ep.rtoInitial = 5 * time.Millisecond
-		ep.rtoMax = 250 * time.Millisecond
+		ep.rtoMax = 50 * time.Millisecond
+		ep.maxRetries = 40 // ~2s of headroom for slow CI runners
 	}
 	go epA.Serve()
 	go epB.Serve()
@@ -173,7 +174,8 @@ func dialDgramPSK(t *testing.T, seed uint64, serverPSK, serverID, clientPSK, cli
 	epA.psk, epA.pskIdentity = clientPSK, clientID
 	for _, ep := range []*DatagramEndpoint{epA, epB} {
 		ep.rtoInitial = 5 * time.Millisecond
-		ep.rtoMax = 250 * time.Millisecond
+		ep.rtoMax = 50 * time.Millisecond
+		ep.maxRetries = 40 // ~2s of headroom for slow CI runners
 	}
 	go epA.Serve()
 	go epB.Serve()
@@ -269,7 +271,8 @@ func TestDgramRequirePSKTable(t *testing.T) {
 		epA.psk, epA.pskIdentity = clientKey, []byte(clientID)
 		for _, ep := range []*DatagramEndpoint{epA, epB} {
 			ep.rtoInitial = 5 * time.Millisecond
-			ep.rtoMax = 250 * time.Millisecond
+			ep.rtoMax = 50 * time.Millisecond
+			ep.maxRetries = 40 // ~2s of headroom for slow CI runners
 		}
 		go epA.Serve()
 		go epB.Serve()

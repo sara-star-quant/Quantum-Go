@@ -201,7 +201,11 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
 // retransmission backoff. Both the dial and responder paths go through here so the
 // configured RTO cannot be dropped on the way to the driver.
 func (e *DatagramEndpoint) newDriver(session *Session) *dgramDriver {
-	return newDgramDriverWithRTO(session, nil, e.rtoInitial, e.rtoMax)
+	d := newDgramDriverWithRTO(session, nil, e.rtoInitial, e.rtoMax)
+	if e.maxRetries > 0 {
+		d.maxRetries = e.maxRetries
+	}
+	return d
 }
 
 // surface offers an established inbound session on the accept channel without
