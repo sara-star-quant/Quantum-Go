@@ -1,0 +1,42 @@
+name: Bug report
+description: Something does not behave as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go through the private advisory link on the issue chooser, not here.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Module version or commit, and Go version
+      placeholder: v0.0.18, go1.26.9
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options: [Stream (TCP), Datagram (UDP), Both, Not sure]
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and architecture
+      placeholder: linux/arm64
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: A short Go program or test that fails, if you can
+      render: go
