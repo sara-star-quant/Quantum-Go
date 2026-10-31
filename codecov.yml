@@ -1,0 +1,18 @@
+# Coverage is reported for the library and the key tooling. These files only print
+# demonstrations and benchmark results or hold test helpers, so they are left out:
+# counting them would measure the demos, not the code people depend on.
+ignore:
+  - "test/**"
+  - "cmd/quantum-tunnel/demo.go"
+  - "cmd/quantum-tunnel/bench.go"
+  - "cmd/quantum-tunnel/example.go"
+
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 2%
+    patch:
+      default:
+        informational: true

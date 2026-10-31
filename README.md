@@ -5,6 +5,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![Go Reference](https://pkg.go.dev/badge/github.com/sara-star-quant/quantum-go.svg)](https://pkg.go.dev/github.com/sara-star-quant/quantum-go)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sara-star-quant/Quantum-Go/badge)](https://scorecard.dev/viewer/?uri=github.com/sara-star-quant/Quantum-Go)
+[![Codecov](https://codecov.io/gh/sara-star-quant/Quantum-Go/branch/main/graph/badge.svg)](https://codecov.io/gh/sara-star-quant/Quantum-Go)
 [![Go Build](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml/badge.svg)](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml)
 [![Security Level](https://img.shields.io/badge/Security-NIST%20Category%205-green)](https://csrc.nist.gov/projects/post-quantum-cryptography)
 [![FIPS Mode](https://img.shields.io/badge/FIPS%20140--3-Ready-orange)](docs/FIPS.md)
