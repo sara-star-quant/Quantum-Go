@@ -304,7 +304,7 @@ func (l *handshakeLoop) loop(earlyReturn bool) (*Session, error) {
 			if l.driver.lingering() {
 				go func() { _, _ = l.loop(false) }()
 			}
-			return l.ds.session, nil
+			return l.ds.getSession(), nil
 		}
 	}
 
@@ -314,7 +314,7 @@ func (l *handshakeLoop) loop(earlyReturn bool) (*Session, error) {
 		l.ep.registry.remove(l.localIndex)
 		return nil, errHandshakeFailed
 	}
-	return l.ds.session, nil
+	return l.ds.getSession(), nil
 }
 
 // retryCh returns the session's RETRY-cookie channel, or nil for a responder
@@ -353,7 +353,7 @@ func (l *handshakeLoop) maybeSurface() {
 		return
 	}
 	l.surfaced = true
-	l.ds.session = l.driver.session()
+	l.ds.setSession(l.driver.session())
 	l.ds.peerIndex = l.peerIndex
 	l.ep.registry.removeSource(l.src.String())
 	l.ep.registry.releaseHalfOpen(l.src.String())

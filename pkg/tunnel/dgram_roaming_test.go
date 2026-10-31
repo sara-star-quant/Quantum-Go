@@ -57,10 +57,10 @@ func registerEstablished(t *testing.T, e *DatagramEndpoint, addr net.Addr) (idx 
 	t.Helper()
 	initiator, responder := datagramSessionPair(t)
 	ds = &datagramSession{
-		session: responder,
-		recvCh:  make(chan []byte, 8),
-		closed:  make(chan struct{}),
+		recvCh: make(chan []byte, 8),
+		closed: make(chan struct{}),
 	}
+	ds.setSession(responder)
 	ds.setPeerAddr(addr)
 	idx, err := e.registry.add(ds)
 	if err != nil {

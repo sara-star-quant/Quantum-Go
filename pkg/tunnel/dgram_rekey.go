@@ -205,7 +205,7 @@ func fragmentRekey(ds *datagramSession, epoch uint8, msgType protocol.MessageTyp
 // handshake initiator may drive it; the call blocks until the exchange completes,
 // times out, or the session closes. Concurrent calls return ErrRekeyInProgress.
 func (c *DatagramConn) Rekey() error {
-	s := c.ds.session
+	s := c.ds.getSession()
 	if s.Role != RoleInitiator {
 		return qerrors.ErrInvalidState
 	}
@@ -271,7 +271,7 @@ func (c *DatagramConn) Rekey() error {
 // (RekeyInit) or to the waiting initiator (RekeyResponse).
 func (e *DatagramEndpoint) handleRekey(h protocol.DatagramHandshakeHeader, body []byte) {
 	ds := e.registry.lookup(h.RecvIndex)
-	if ds == nil || ds.session == nil {
+	if ds == nil || ds.getSession() == nil {
 		return
 	}
 	switch h.MsgType {
@@ -301,10 +301,10 @@ func (e *DatagramEndpoint) handleRekeyInit(ds *datagramSession, epoch uint8, bod
 	}
 	// Only a rekey transitioning from the current epoch is processed; stale or
 	// out-of-order inits are dropped.
-	if epoch != ds.session.datagramSendEpoch() {
+	if epoch != ds.getSession().datagramSendEpoch() {
 		return
 	}
-	respBody, respEpoch, err := ds.session.respondToDatagramRekey(epoch, body)
+	respBody, respEpoch, err := ds.getSession().respondToDatagramRekey(epoch, body)
 	if err != nil {
 		return
 	}

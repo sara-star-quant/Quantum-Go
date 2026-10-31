@@ -213,7 +213,7 @@ func runE2E(t *testing.T, seed uint64, drop, dup, reorder float64) {
 	var server *Session
 	select {
 	case ds := <-epB.acceptCh:
-		server = ds.session
+		server = ds.getSession()
 	case <-time.After(5 * time.Second):
 		t.Fatal("responder did not surface a session")
 	}
@@ -271,7 +271,7 @@ func TestDgramHandshakeCookieRoundTrip(t *testing.T) {
 	var server *Session
 	select {
 	case ds := <-epB.acceptCh:
-		server = ds.session
+		server = ds.getSession()
 	case <-time.After(5 * time.Second):
 		t.Fatal("responder did not surface a session through the cookie gate")
 	}
@@ -349,7 +349,7 @@ func runTargetedLoss(t *testing.T, msg protocol.MessageType, fromDialer bool) {
 	var server *Session
 	select {
 	case ds := <-epB.acceptCh:
-		server = ds.session
+		server = ds.getSession()
 	case <-time.After(5 * time.Second):
 		t.Fatalf("responder did not surface a session after losing %v", msg)
 	}
@@ -579,5 +579,43 @@ func TestRecentHelloCacheExpiresAndBounds(t *testing.T) {
 	}
 	if len(r.recentHellos) > maxRecentHellos {
 		t.Fatalf("cache grew past its bound: %d", len(r.recentHellos))
+	}
+}
+
+// TestDgramSessionPublishIsRaceFree completes handshakes while data datagrams for the
+// still-unkeyed session arrive at the same endpoint. The handshake goroutine publishes
+// the session as the receive loop reads it; under the race detector an unsynchronized
+// field would be reported here.
+func TestDgramSessionPublishIsRaceFree(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		connA, connB := memPipe(uint64(i)+1, 0, 0, 0)
+		epA := mustEndpoint(t, connA)
+		epB := mustEndpoint(t, connB)
+		for _, ep := range []*DatagramEndpoint{epA, epB} {
+			ep.rtoInitial = 5 * time.Millisecond
+			ep.rtoMax = 50 * time.Millisecond
+			ep.maxRetries = 40
+		}
+		go epA.Serve()
+		go epB.Serve()
+
+		client, err := DialDatagram(epA, connB.addr)
+		if err != nil {
+			t.Fatalf("dial: %v", err)
+		}
+		// The client is keyed one round trip before the server verifies ClientFinished,
+		// so these sends race the server publishing its session.
+		for j := 0; j < 8; j++ {
+			_ = client.Send([]byte("early"))
+		}
+		accepted := make(chan struct{})
+		go func() { _, _ = epB.Accept(); close(accepted) }()
+		select {
+		case <-accepted:
+		case <-time.After(20 * time.Second):
+			t.Fatal("responder did not surface a session")
+		}
+		_ = epA.Close()
+		_ = epB.Close()
 	}
 }

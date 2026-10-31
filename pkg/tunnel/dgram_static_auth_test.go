@@ -59,7 +59,7 @@ func dialDgramAuthOpts(t *testing.T, seed uint64, drop, dup, reorder float64, se
 	// ClientFinished, which can trail the dial under load.
 	select {
 	case ds := <-epB.acceptCh:
-		server = ds.session
+		server = ds.getSession()
 	case <-time.After(5 * time.Second):
 	}
 	return client, server, nil
@@ -202,7 +202,7 @@ func dialDgramPSK(t *testing.T, seed uint64, serverPSK, serverID, clientPSK, cli
 	}
 	select {
 	case ds := <-epB.acceptCh:
-		server = ds.session
+		server = ds.getSession()
 	case <-time.After(5 * time.Second):
 	}
 	return client, server, nil

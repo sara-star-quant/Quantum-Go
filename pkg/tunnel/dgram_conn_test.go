@@ -151,14 +151,14 @@ func TestDatagramReplayRejectedOverWire(t *testing.T) {
 	defer func() { _ = epB.Close() }()
 
 	// Build a DATA frame exactly as Send would, but capture the bytes.
-	seq := client.ds.session.nextDatagramSeq()
+	seq := client.ds.getSession().nextDatagramSeq()
 	header := protocol.EncodeDatagramHeader(protocol.DatagramHeader{
 		Type:      protocol.DatagramFrameData,
-		Epoch:     client.ds.session.datagramSendEpoch(),
+		Epoch:     client.ds.getSession().datagramSendEpoch(),
 		RecvIndex: client.ds.peerIndex,
 		Seq:       seq,
 	})
-	ct, err := client.ds.session.DatagramSeal(header, seq, []byte("once"))
+	ct, err := client.ds.getSession().DatagramSeal(header, seq, []byte("once"))
 	if err != nil {
 		t.Fatalf("seal: %v", err)
 	}
@@ -243,7 +243,8 @@ func TestDatagramIdleReap(t *testing.T) {
 
 	s, _ := datagramSessionPair(t)
 	s.lastActivityNanos.Store(time.Now().Add(-time.Hour).UnixNano()) // long idle
-	ds := &datagramSession{session: s, recvCh: make(chan []byte, 1), closed: make(chan struct{})}
+	ds := &datagramSession{recvCh: make(chan []byte, 1), closed: make(chan struct{})}
+	ds.setSession(s)
 	if _, err := ep.registry.add(ds); err != nil {
 		t.Fatalf("register: %v", err)
 	}

@@ -252,8 +252,8 @@ func TestListenDatagramEndToEnd(t *testing.T) {
 		if srv == nil {
 			t.Fatalf("no responder session for client peerIndex %d", c.ds.peerIndex)
 		}
-		assertDataRoundTrip(t, c.Session(), srv.session)
-		assertDataRoundTrip(t, srv.session, c.Session())
+		assertDataRoundTrip(t, c.Session(), srv.getSession())
+		assertDataRoundTrip(t, srv.getSession(), c.Session())
 	}
 }
 

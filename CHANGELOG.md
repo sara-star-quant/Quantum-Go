@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **`TransportConfig.MaxPendingHandshakes`**: the number of stream connections a `Listener` holds mid-handshake or waiting for `Accept` at once is configurable (default 1024, as before). Connections beyond it are closed on arrival.
 
+### Fixed
+- **Data race on the datagram session pointer**: the handshake goroutine published an established session while the receive loop read it, with no synchronization. The race window was the moment a responder completed the handshake while data for it was arriving; it is now an atomic pointer, and a regression test fails under the race detector without the fix.
+
 ### Changed
 - **`DatagramConn.Send` and `SendBatch` are safe for concurrent use**: calls are serialized with a lock instead of requiring a single caller, so concurrent misuse can no longer corrupt the shared frame buffer.
 - **Resumption documentation corrected**: the ticket API is described as an experimental low-level building block. `Dial`, `Listen` and the datagram transport do not issue or use tickets, and a resumed handshake still performs the key exchange.

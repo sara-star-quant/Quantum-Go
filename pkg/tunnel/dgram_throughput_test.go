@@ -47,11 +47,11 @@ func benchDatagramConn(b *testing.B) *DatagramConn {
 		b.Fatalf("endpoint: %v", err)
 	}
 	ds := &datagramSession{
-		session:   s,
 		peerIndex: 0x1234,
 		recvCh:    make(chan []byte, 1),
 		closed:    make(chan struct{}),
 	}
+	ds.setSession(s)
 	ds.setPeerAddr(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9})
 	return newDatagramConn(ep, ds)
 }

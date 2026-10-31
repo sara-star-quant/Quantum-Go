@@ -136,7 +136,7 @@ func TestDgramHandshakePaddingE2E(t *testing.T) {
 	var server *Session
 	select {
 	case ds := <-epB.acceptCh:
-		server = ds.session
+		server = ds.getSession()
 	case <-time.After(5 * time.Second):
 		t.Fatal("responder did not surface a session")
 	}

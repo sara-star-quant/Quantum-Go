@@ -53,7 +53,7 @@ func (c *DatagramConn) Send(p []byte) error {
 	}
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
-	s := c.ds.session
+	s := c.ds.getSession()
 	seq := s.nextDatagramSeq()
 	// Build header || ciphertext || tag in the reusable buffer: the header is both
 	// the frame prefix and the AEAD AAD, and DatagramSealTo appends the sealed
@@ -107,7 +107,7 @@ func (c *DatagramConn) SendBatch(payloads [][]byte) error {
 	}
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
-	s := c.ds.session
+	s := c.ds.getSession()
 	dst := c.ds.currentPeerAddr()
 
 	// Seal every payload back to back; offsets record where each frame ends.
@@ -189,7 +189,7 @@ func (c *DatagramConn) Recv() ([]byte, error) {
 // Close sends one best-effort authenticated CLOSE and tears the session down
 // locally. It is idempotent.
 func (c *DatagramConn) Close() error {
-	s := c.ds.session
+	s := c.ds.getSession()
 	if s != nil {
 		seq := s.nextDatagramSeq()
 		header := protocol.EncodeDatagramHeader(protocol.DatagramHeader{
@@ -213,7 +213,7 @@ func (c *DatagramConn) Close() error {
 func (c *DatagramConn) RemoteAddr() net.Addr { return c.ds.currentPeerAddr() }
 
 // Session exposes the underlying Session (statistics, state).
-func (c *DatagramConn) Session() *Session { return c.ds.session }
+func (c *DatagramConn) Session() *Session { return c.ds.getSession() }
 
 // Accept returns the next inbound established datagram session as a DatagramConn,
 // blocking until one is available or the endpoint closes.
