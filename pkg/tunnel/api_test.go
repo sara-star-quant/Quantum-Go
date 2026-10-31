@@ -2,6 +2,7 @@ package tunnel_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -522,5 +523,41 @@ func TestAcceptAfterCloseReturnsError(t *testing.T) {
 	}
 	if _, err := listener.Accept(); err == nil {
 		t.Fatal("second Accept after Close returned nil error")
+	}
+}
+
+// TestAcceptShedsConnectionsBeyondPendingLimit checks the configured cap on
+// connections in flight: with a limit of one, a second connection is closed on
+// arrival while the first is still stalled in its handshake.
+func TestAcceptShedsConnectionsBeyondPendingLimit(t *testing.T) {
+	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+	defer func() { _ = listener.Close() }()
+	cfg := tunnel.DefaultTransportConfig()
+	cfg.MaxPendingHandshakes = 1
+	listener.SetConfig(cfg)
+
+	go func() { _, _ = listener.Accept() }() // start the accept loop
+
+	first, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("first dial: %v", err)
+	}
+	defer func() { _ = first.Close() }()
+	time.Sleep(100 * time.Millisecond) // let the first connection take the only slot
+
+	second, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("second dial: %v", err)
+	}
+	defer func() { _ = second.Close() }()
+	_ = second.SetReadDeadline(time.Now().Add(5 * time.Second))
+	buf := make([]byte, 1)
+	n, err := second.Read(buf)
+	var ne net.Error
+	if n != 0 || err == nil || (errors.As(err, &ne) && ne.Timeout()) {
+		t.Fatalf("second connection was not shed: n=%d err=%v", n, err)
 	}
 }
