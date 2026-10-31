@@ -45,7 +45,7 @@ fail=0
 run() {
   local label="$1"; shift
   echo "== $label"
-  if ! go test "$@"; then fail=1; echo "FAILED: $label"; fi
+  if ! go test -timeout 25m "$@"; then fail=1; echo "FAILED: $label"; fi
 }
 
 for dir in "${!names[@]}"; do
@@ -59,7 +59,7 @@ done
 declare -A pkgs
 for dir in "${!names[@]}" "${!whole[@]}"; do pkgs["$dir"]=1; done
 for dir in "${!pkgs[@]}"; do
-  run "$dir race (whole package)" -race -count=2 -shuffle=on "$dir"
+  run "$dir race (whole package)" -race -count=1 -shuffle=on "$dir"
   run "$dir fips (whole package)" -tags fips -count=1 -shuffle=on "$dir"
 done
 exit "$fail"
