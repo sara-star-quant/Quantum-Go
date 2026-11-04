@@ -44,6 +44,8 @@ How it stacks up against WireGuard, Rosenpass, IKEv2 and hybrid TLS, including w
 
 Quantum-Go is **pre-1.0 and research-grade**, and it has **not had a third-party audit**. Its handshake is about ten times larger than WireGuard's because ML-KEM-1024 is large. That is the price of security level 5, and the reason the smaller X-Wing suite exists.
 
+The library is about 8,300 lines of Go outside tests, blank lines and comments (`scripts/loc.sh`), small enough for one reviewer to read end to end.
+
 ## Quick start
 
 ```bash
