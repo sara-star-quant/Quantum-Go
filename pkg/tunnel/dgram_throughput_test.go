@@ -29,7 +29,7 @@ func (c *discardConn) SetWriteDeadline(time.Time) error { return nil }
 // benchDatagramConn builds an established DatagramConn over a discard conn without
 // running a handshake: it keys an initiator session directly so Send has a live
 // epoch cipher.
-func benchDatagramConn(b *testing.B) *DatagramConn {
+func benchDatagramConn(b testing.TB) *DatagramConn {
 	b.Helper()
 	s, err := NewSession(RoleInitiator)
 	if err != nil {
