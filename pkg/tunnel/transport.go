@@ -186,23 +186,7 @@ func (t *Transport) Send(data []byte) error {
 		return qerrors.ErrMessageTooLarge
 	}
 
-	// Encrypt data
-	ciphertext, seq, err := t.session.Encrypt(data)
-	if err != nil {
-		return err
-	}
-
-	// Encode as data message
-	msg, err := t.codec.EncodeData(seq, ciphertext)
-	if err != nil {
-		t.recordProtocolError(err)
-		return err
-	}
-
-	// Send with timeout. The write lock is released by writeFrame before the rekey
-	// check: CheckAndRekey -> SendRekey re-acquires writeMu, so holding it here would
-	// self-deadlock (sync.Mutex is not reentrant).
-	if err := t.writeFrame(msg); err != nil {
+	if err := t.sealAndWrite(data); err != nil {
 		return err
 	}
 
@@ -215,13 +199,36 @@ func (t *Transport) Send(data []byte) error {
 	return nil
 }
 
-// writeFrame writes a pre-encoded message to the connection under the write lock,
-// applying the write timeout if configured. It acquires and releases writeMu so that
-// callers do not hold the lock across follow-up operations (e.g. rekey).
-func (t *Transport) writeFrame(msg []byte) error {
+// sealAndWrite encrypts one record and writes it as a single critical section. Sealing
+// and writing under separate locks lets two senders swap order on the wire, so across a
+// rekey an old-key record could land after a new-key one and fail to open at a peer
+// that already switched keys. The lock is released before any follow-up rekey, which
+// re-acquires it (sync.Mutex is not reentrant).
+func (t *Transport) sealAndWrite(data []byte) error {
 	t.writeMu.Lock()
 	defer t.writeMu.Unlock()
 
+	ciphertext, seq, err := t.session.Encrypt(data)
+	if err != nil {
+		return err
+	}
+	msg, err := t.codec.EncodeData(seq, ciphertext)
+	if err != nil {
+		t.recordProtocolError(err)
+		return err
+	}
+	return t.writeLocked(msg)
+}
+
+// writeFrame writes a pre-encoded message to the connection under the write lock.
+func (t *Transport) writeFrame(msg []byte) error {
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+	return t.writeLocked(msg)
+}
+
+// writeLocked writes msg, applying the write timeout if configured. Caller holds writeMu.
+func (t *Transport) writeLocked(msg []byte) error {
 	if t.writeTimeout > 0 {
 		_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
 	}
