@@ -22,6 +22,7 @@ type Pool struct {
 	idle    []*pooledConn // Available connections (LIFO for cache locality)
 	waiters []chan *pooledConn
 	closed  bool
+	pending int // dials in flight that already hold a MaxConns slot
 	stats   *PoolStats
 
 	healthCtx    context.Context
@@ -140,7 +141,8 @@ func (p *Pool) Acquire(ctx context.Context) (*PoolConn, error) {
 	}
 
 	// Check if we can create a new connection
-	if p.config.MaxConns == 0 || len(p.conns) < p.config.MaxConns {
+	if p.config.MaxConns == 0 || len(p.conns)+p.pending < p.config.MaxConns {
+		p.pending++ // reserve the slot so concurrent callers cannot all dial past MaxConns
 		p.mu.Unlock()
 		return p.createAndAcquire(ctx, startTime)
 	}
@@ -196,8 +198,8 @@ func (p *Pool) waitForConnection(ctx context.Context, startTime time.Time) (*Poo
 	defer timer.Stop()
 
 	select {
-	case pc := <-ch:
-		return p.handleWaitResult(ctx, pc, startTime)
+	case pc, ok := <-ch:
+		return p.handleWaitResult(ctx, pc, ok, startTime)
 	case <-timer.C:
 		return p.handleWaitTimeout(ch, qerrors.ErrPoolTimeout)
 	case <-ctx.Done():
@@ -217,10 +219,15 @@ func (p *Pool) effectiveTimeout(ctx context.Context) time.Duration {
 }
 
 // handleWaitResult processes a connection received from wait channel.
-func (p *Pool) handleWaitResult(ctx context.Context, pc *pooledConn, startTime time.Time) (*PoolConn, error) {
+// A closed channel means the pool closed; a nil connection means a slot freed up
+// and the waiter should try again, which may dial a replacement.
+func (p *Pool) handleWaitResult(ctx context.Context, pc *pooledConn, ok bool, startTime time.Time) (*PoolConn, error) {
 	p.stats.decrementWaiting()
-	if pc == nil {
+	if !ok {
 		return nil, qerrors.ErrPoolClosed
+	}
+	if pc == nil {
+		return p.Acquire(ctx)
 	}
 
 	if !p.isHealthy(pc) {
@@ -299,7 +306,10 @@ func (p *Pool) notifyHealthCheck(healthy bool) {
 // notifyPoolStats notifies observer of pool statistics.
 func (p *Pool) notifyPoolStats() {
 	if p.config.Observer != nil {
-		p.config.Observer.OnPoolStats(p.stats.Snapshot())
+		p.mu.Lock()
+		snap := p.snapshotLocked()
+		p.mu.Unlock()
+		p.config.Observer.OnPoolStats(snap)
 	}
 }
 
@@ -326,7 +336,19 @@ func (p *Pool) TryAcquire() (*PoolConn, error) {
 
 // Stats returns the current pool statistics.
 func (p *Pool) Stats() PoolStatsSnapshot {
-	return p.stats.Snapshot()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.snapshotLocked()
+}
+
+// snapshotLocked reports the connection gauges from the pool's own lists, which are
+// authoritative, instead of the incrementally updated counters. Must hold lock.
+func (p *Pool) snapshotLocked() PoolStatsSnapshot {
+	snap := p.stats.Snapshot()
+	snap.ConnectionsTotal = int64(len(p.conns))
+	snap.ConnectionsIdle = int64(len(p.idle))
+	snap.ConnectionsInUse = snap.ConnectionsTotal - snap.ConnectionsIdle
+	return snap
 }
 
 // Size returns the current total number of connections (idle + in-use).
@@ -370,6 +392,7 @@ func (p *Pool) release(pc *pooledConn) error {
 		p.removeConnLocked(pc)
 		p.stats.recordConnectionClosed(false)
 		p.closeConnAsync(pc, "marked_unhealthy")
+		p.wakeWaiterLocked() // capacity freed: let a waiter dial a replacement
 		return nil
 	}
 
@@ -393,11 +416,14 @@ func (p *Pool) release(pc *pooledConn) error {
 // createAndAcquire creates a new connection and returns it.
 func (p *Pool) createAndAcquire(ctx context.Context, startTime time.Time) (*PoolConn, error) {
 	pc, err := p.createConn(ctx)
-	if err != nil {
-		return nil, err
-	}
 
 	p.mu.Lock()
+	p.pending--
+	if err != nil {
+		p.wakeWaiterLocked() // the reserved slot is free again
+		p.mu.Unlock()
+		return nil, err
+	}
 	if p.closed {
 		p.mu.Unlock()
 		_ = pc.tunnel.Close()
@@ -410,6 +436,15 @@ func (p *Pool) createAndAcquire(ctx context.Context, startTime time.Time) (*Pool
 	p.mu.Unlock()
 
 	return p.finishAcquire(pc, startTime, false), nil
+}
+
+// wakeWaiterLocked tells the oldest waiter to retry after capacity freed. Must hold lock.
+func (p *Pool) wakeWaiterLocked() {
+	if len(p.waiters) > 0 {
+		ch := p.waiters[0]
+		p.waiters = p.waiters[1:]
+		ch <- nil
+	}
 }
 
 // createConn creates a new tunnel connection.
