@@ -116,7 +116,15 @@ jobs:
         run: go build -tags fips ./...
 
       - name: FIPS tests (race)
-        run: go test -tags fips ./... -race
+        run: go test -tags fips ./... -race -coverpkg=./pkg/...,./internal/... -coverprofile=coverage-fips.out -covermode=atomic
+
+      - name: Upload FIPS coverage to Codecov
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        with:
+          files: coverage-fips.out
+          flags: fips
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   build:
     name: Build

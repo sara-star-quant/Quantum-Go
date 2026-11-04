@@ -14,6 +14,7 @@ import (
 	"runtime"
 
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/internal/randsrc"
 )
 
 // SecureRandom reads cryptographically secure random bytes into the provided slice.
@@ -22,7 +23,7 @@ import (
 // This function will only return an error if the system's random number generator
 // fails, which should be treated as a critical system failure.
 func SecureRandom(b []byte) error {
-	_, err := io.ReadFull(rand.Reader, b)
+	_, err := io.ReadFull(randsrc.Reader(), b)
 	if err != nil {
 		return qerrors.NewCryptoError("SecureRandom", err)
 	}

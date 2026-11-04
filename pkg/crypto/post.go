@@ -78,46 +78,36 @@ const POSTDomain = "POST-KAT-TEST"
 // This function is safe to call multiple times; tests only run once.
 func RunPOST() *POSTResult {
 	postResultOnce.Do(func() {
-		postResult = &POSTResult{
-			Passed: true,
-		}
-
-		// Run KDF test
-		if err := runKDFKAT(); err != nil {
-			postResult.KDFPassed = false
-			postResult.Passed = false
-			postResult.Errors = append(postResult.Errors, fmt.Sprintf("KDF KAT failed: %v", err))
-		} else {
-			postResult.KDFPassed = true
-		}
-
-		// Run AES-GCM test
-		if err := runAESGCMKAT(); err != nil {
-			postResult.AESPassed = false
-			postResult.Passed = false
-			postResult.Errors = append(postResult.Errors, fmt.Sprintf("AES-GCM KAT failed: %v", err))
-		} else {
-			postResult.AESPassed = true
-		}
-
-		// Run ML-KEM test
-		if err := runMLKEMKAT(); err != nil {
-			postResult.MLKEMPassed = false
-			postResult.Passed = false
-			postResult.Errors = append(postResult.Errors, fmt.Sprintf("ML-KEM KAT failed: %v", err))
-		} else {
-			postResult.MLKEMPassed = true
-		}
-
+		postResult = evaluatePOST(runKDFKAT, runAESGCMKAT, runMLKEMKAT)
 		postRan = true
-
-		// In FIPS mode, POST failures are fatal
-		if FIPSMode() && !postResult.Passed {
-			panic(fmt.Sprintf("FIPS POST failed: %v", postResult.Errors))
-		}
+		enforcePOST(postResult)
 	})
 
 	return postResult
+}
+
+// evaluatePOST runs the three known-answer tests and records each outcome.
+func evaluatePOST(kdf, aes, mlkem func() error) *POSTResult {
+	r := &POSTResult{Passed: true}
+	check := func(name string, run func() error, ok *bool) {
+		if err := run(); err != nil {
+			r.Passed = false
+			r.Errors = append(r.Errors, fmt.Sprintf("%s KAT failed: %v", name, err))
+			return
+		}
+		*ok = true
+	}
+	check("KDF", kdf, &r.KDFPassed)
+	check("AES-GCM", aes, &r.AESPassed)
+	check("ML-KEM", mlkem, &r.MLKEMPassed)
+	return r
+}
+
+// enforcePOST makes a POST failure fatal in FIPS mode.
+func enforcePOST(r *POSTResult) {
+	if FIPSMode() && !r.Passed {
+		panic(fmt.Sprintf("FIPS POST failed: %v", r.Errors))
+	}
 }
 
 // POSTRan returns true if POST has been executed
