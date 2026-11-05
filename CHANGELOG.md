@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.19][] - 2026-11-05
+
+**Theme:** Test depth and two concurrency fixes. A push to exercise the code no test reached (handshake error paths, the connection pool, stream and datagram fault injection, rekey under loss, entropy and self-test failure) found three bugs in the connection pool and a record-ordering race in the stream transport during a rekey, all fixed here. There is no wire change.
+
+### Fixed
+- **Stream records could reorder across a rekey**: `Send` sealed a record and wrote it under separate locks, so with concurrent senders an old-key record could reach the wire after a new-key one and fail to open at a peer that had already switched keys. Sealing and writing now happen under one lock.
+- **Pool grew past `MaxConns` under concurrency**: the limit was checked before dialing with the lock released, so concurrent callers all dialed. A slot is now reserved before the dial.
+- **Pool waiter starved after an unhealthy close**: a caller queued behind a connection closed as unhealthy waited until its timeout although a slot had freed. It is now woken and dials a replacement.
+- **Pool gauges drifted**: `Stats` reports total, idle and in-use connections from the pool's own lists instead of incremental counters.
+
+### Added
+- **Tests**: handshake error paths and tampering through real sockets, a 60-case handshake matrix over key suite, authentication and transport, stream fault injection, datagram rekey under loss, rollover, replay and the old-epoch window, pool lifecycle and concurrency, entropy and self-test failure, and microbenchmarks with allocation assertions for the documented zero-allocation send.
+- **`scripts/loc.sh`**: counts library lines of code (core 8,364 at this release).
+- **FIPS coverage**: CI uploads the `-tags fips` coverage profile to Codecov under the `fips` flag.
+
 ## [0.0.18][] - 2026-10-31
 
 **Theme:** Correctness and discoverability. This release fixes a data race on the datagram session pointer and two health checks that never checked anything, makes concurrent sends safe and the stream accept limit configurable, and makes the package pages on pkg.go.dev readable: one clear synopsis per package, runnable examples, a corrected Quick Start and a sourced comparison guide. There is no wire change.
@@ -404,7 +419,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.18...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.19...HEAD
+[0.0.19]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.18...v0.0.19
 [0.0.18]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.16...v0.0.17
 [0.0.16]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.15...v0.0.16

@@ -5,10 +5,10 @@
 
 ---
 
-## Current Status: v0.0.18
+## Current Status: v0.0.19
 
 > **Direction (Q4 2026).** Protocol 6.0 (one-round-trip handshake), batched datagram sends with UDP
-> offload, per-client PSKs and signed, attested releases have shipped (v0.0.17 and v0.0.18). The
+> offload, per-client PSKs and signed, attested releases have shipped (v0.0.17 and v0.0.18); v0.0.19 added the test-depth suites and fixed two concurrency bugs they found. The
 > **assurance tier** is well underway: a written wire specification, published conformance vectors,
 > machine-checked ProVerif proofs and an audit-readiness package are in place. What remains is a
 > **third-party audit** and **real FIPS 140-3 / CMVP validation**, plus a test-depth push (tamper sweeps,
