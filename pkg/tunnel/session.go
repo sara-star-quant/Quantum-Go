@@ -226,6 +226,12 @@ func (rw *ReplayWindow) Check(seq uint64) bool {
 
 // NewSession creates a new session with the given role.
 func NewSession(role Role) (*Session, error) {
+	return NewSessionWithSuite(role, chkem.DefaultSuite())
+}
+
+// NewSessionWithSuite is NewSession with an explicit starting KEM suite. A responder
+// ignores it (it follows the initiator's offer); an initiator offers it first.
+func NewSessionWithSuite(role Role, suite chkem.Suite) (*Session, error) {
 	// Generate session ID
 	sessionID, err := crypto.SecureRandomBytes(constants.SessionIDSize)
 	if err != nil {
@@ -234,7 +240,6 @@ func NewSession(role Role) (*Session, error) {
 
 	// Only the initiator sends an ephemeral key share. The responder encapsulates to it
 	// and never reads LocalKeyPair, so skip the keygen there.
-	suite := chkem.DefaultSuite()
 	var keyPair *chkem.KeyPair
 	if role == RoleInitiator {
 		keyPair, err = suite.GenerateKeyPair()

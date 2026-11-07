@@ -868,6 +868,16 @@ func supportedKEMSuiteIDs() []uint16 {
 	return out
 }
 
+// initiatorSuite resolves a configured starting suite id. 0 means the default. Any
+// other id must be one this peer would offer anyway (resolveKEMSuite enforces it), so
+// a preference can never bypass the offer list.
+func initiatorSuite(id chkem.SuiteID) (chkem.Suite, error) {
+	if id == 0 {
+		return chkem.DefaultSuite(), nil
+	}
+	return resolveKEMSuite(uint16(id))
+}
+
 // resolveKEMSuite returns the suite for a wire id, or an error if this peer would
 // not offer it (unregistered, or not FIPS approved in FIPS mode).
 func resolveKEMSuite(wireID uint16) (chkem.Suite, error) {

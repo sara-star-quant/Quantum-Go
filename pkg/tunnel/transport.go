@@ -87,6 +87,12 @@ type TransportConfig struct {
 	// pinned ones.
 	RequireStaticAuth bool
 
+	// KEMSuite, when set on a client (Dial), is the KEM suite offered first. 0 means
+	// CH-KEM-v1. It must be a registered suite, else Dial fails with
+	// ErrUnsupportedKEMSuite. A server that prefers another offered suite steers the
+	// client with a HelloRetryRequest.
+	KEMSuite chkem.SuiteID
+
 	// PSK is a pre-shared key (constants.PSKSize bytes) folded into the master
 	// secret for mutual authentication. Set the same PSK and PSKIdentity on both
 	// the client (Dial) and server (Listen). Nil means no PSK (default).
@@ -655,6 +661,11 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 		return nil, err
 	}
 
+	suite, err := initiatorSuite(config.KEMSuite)
+	if err != nil {
+		return nil, err
+	}
+
 	// Connect
 	conn, err := net.Dial(network, address)
 	if err != nil {
@@ -662,7 +673,7 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 	}
 
 	// Create session as initiator
-	session, err := NewSession(RoleInitiator)
+	session, err := NewSessionWithSuite(RoleInitiator, suite)
 	if err != nil {
 		_ = conn.Close()
 		return nil, err
