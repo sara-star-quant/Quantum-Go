@@ -868,11 +868,11 @@ func supportedKEMSuiteIDs() []uint16 {
 	return out
 }
 
-// resolveKEMSuite returns the registered suite for a wire id, or an error if this
-// peer does not support it.
+// resolveKEMSuite returns the suite for a wire id, or an error if this peer would
+// not offer it (unregistered, or not FIPS approved in FIPS mode).
 func resolveKEMSuite(wireID uint16) (chkem.Suite, error) {
 	suite, ok := chkem.GetSuite(chkem.SuiteID(wireID))
-	if !ok {
+	if !ok || !offeredKEMSuite(wireID) {
 		return nil, qerrors.ErrUnsupportedKEMSuite
 	}
 	return suite, nil
