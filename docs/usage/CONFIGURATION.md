@@ -64,7 +64,7 @@ t, err := tunnel.DialWithConfig("tcp", addr, cfg)
 ep, err := tunnel.NewDatagramEndpoint(conn, tunnel.WithKEMSuite(chkem.SuiteXWing))
 ```
 
-- The zero value means CH-KEM-v1. A suite the peer would not offer (not registered, or not FIPS approved in a FIPS build) fails before any packet is sent; on the datagram transport that is at endpoint construction.
+- The zero value means CH-KEM-v1. A suite the peer would not offer (not registered, or not FIPS approved in a FIPS build) fails before any packet is sent with `tunnel.ErrUnsupportedKEMSuite`; on the datagram transport that is at endpoint construction.
 - A server that does not support the first-offered suite steers the client to a mutually supported one with a single HelloRetryRequest. The offered list is bound into the Finished transcript, so stripping a suite from it fails the handshake.
 - Pool connections still start on the default suite; `PoolConfig` has no suite option.
 
