@@ -215,23 +215,23 @@ func TestPoolLifecycleHealthCheckEvictsAndReplenishes(t *testing.T) {
 	obs := &testPoolObserver{}
 	pool := lifecyclePool(t, addr, func(c *tunnel.PoolConfig) {
 		c.MinConns = 1
-		c.IdleTimeout = 100 * time.Millisecond
+		c.IdleTimeout = 400 * time.Millisecond
 		c.HealthCheckInterval = 20 * time.Millisecond
 		c.Observer = obs
 	})
 
 	// The idle connection ages out, the checker closes it and dials a replacement
-	// to hold MinConns.
-	waitUntil(t, "a health check to evict and replace the idle connection", func() bool {
+	// to hold MinConns. ConnectionsCreated and the observer callbacks both run before
+	// the replacement is registered (and the close notification runs after the stats
+	// update), so wait for every signal at once instead of asserting right after the
+	// first one. The replacement stays idle for IdleTimeout before the next eviction,
+	// which leaves a window wide enough for the poll to see the whole state.
+	waitUntil(t, "a health check to evict the idle connection and register a replacement", func() bool {
 		s := pool.Stats()
-		return s.ConnectionsCreated >= 2 && s.HealthChecksFailed >= 1
+		return s.ConnectionsCreated >= 2 && s.HealthChecksFailed >= 1 &&
+			obs.healthCheckCount.Load() > 0 && obs.connClosedCount.Load() > 0 &&
+			pool.Size() >= 1
 	})
-	if obs.healthCheckCount.Load() == 0 || obs.connClosedCount.Load() == 0 {
-		t.Fatalf("observer saw %d health checks and %d closes", obs.healthCheckCount.Load(), obs.connClosedCount.Load())
-	}
-	if pool.Size() < 1 {
-		t.Fatal("pool fell below MinConns")
-	}
 }
 
 func TestPoolLifecycleDialFailure(t *testing.T) {
