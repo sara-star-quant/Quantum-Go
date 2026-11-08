@@ -352,6 +352,13 @@ func TestDatagramHandshakeThroughTamperingProxy(t *testing.T) {
 					}
 					for _, ep := range []*DatagramEndpoint{srvEP, cliEP} {
 						ep.rtoInitial, ep.rtoMax, ep.maxRetries = 5*time.Millisecond, 30*time.Millisecond, 30
+					}
+					// The responder keeps retransmitting for about 9 s, so a stalled CI runner
+					// cannot make it give up after the dial already returned (a delayed
+					// ClientFinished then never surfaced a session). The dialer stays at 30
+					// retries so a rejected handshake still fails closed in about a second.
+					srvEP.maxRetries = 300
+					for _, ep := range []*DatagramEndpoint{srvEP, cliEP} {
 						go ep.Serve()
 						t.Cleanup(func() { _ = ep.Close() })
 					}
