@@ -146,6 +146,9 @@ func benchCommand() {
 	duration := fs.String("duration", "10s", "Duration for throughput test (e.g., 10s, 1m)")
 	cipherSuite := fs.String("cipher", "aes-gcm", "Cipher suite; only aes-gcm is supported (the tunnel negotiates it)")
 	chunk := fs.String("chunk", "8KB", "Record size for the throughput test (e.g., 8KB, 60KB); throughput depends strongly on it")
+	serve := fs.String("serve", "", "Receive a throughput test on this address (e.g., :9000); run --connect on another host")
+	connect := fs.String("connect", "", "Send a throughput test to a --serve address (e.g., host:9000)")
+	plain := fs.Bool("plain", false, "With --serve or --connect, use plain TCP instead of the tunnel")
 	baseline := fs.Bool("baseline", false, "Also run a plain TCP baseline with the same records and report the tunnel's overhead against it")
 
 	fs.Usage = func() {
@@ -169,11 +172,20 @@ EXAMPLES:
     # Move 10GB in 60KB records and compare with plain TCP
     quantum-tunnel bench --throughput --size 10GB --duration 5m --chunk 60KB --baseline
 
+    # Measure a real link: receive on one host, send from another
+    quantum-tunnel bench --serve :9000
+    quantum-tunnel bench --connect host:9000 --size 10GB --duration 5m --chunk 60KB
+
     # Run all benchmarks
     quantum-tunnel bench --handshakes 100 --throughput --size 500MB`)
 	}
 
 	_ = fs.Parse(os.Args[2:])
+
+	if *serve != "" || *connect != "" {
+		runRemoteBench(*serve, *connect, *plain, *size, *duration, *chunk)
+		return
+	}
 
 	runBench(*handshakes, *datagramHandshakes, *throughput, *size, *duration, *cipherSuite, *chunk, *baseline)
 }
@@ -193,4 +205,47 @@ This command shows:
 	}
 
 	showExamples()
+}
+
+// runRemoteBench runs one side of a two-host throughput test.
+func runRemoteBench(serve, connect string, plain bool, sizeStr, durationStr, chunkStr string) {
+	if serve != "" && connect != "" {
+		fmt.Fprintln(os.Stderr, "Use either --serve or --connect, not both")
+		os.Exit(1)
+	}
+	size, err := parseSize(sizeStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid --size: %v\n", err)
+		os.Exit(1)
+	}
+	chunkSize, err := parseSize(chunkStr)
+	if err != nil || chunkSize <= 0 {
+		fmt.Fprintf(os.Stderr, "Invalid --chunk %q: want a positive size such as 8KB or 60KB\n", chunkStr)
+		os.Exit(1)
+	}
+	duration := parseDuration(durationStr)
+
+	if serve != "" {
+		ready := make(chan string, 1)
+		go func() { fmt.Printf("Listening on %s, waiting for one sender...\n", <-ready) }()
+		res, err := serveThroughput(serve, plain, duration, ready)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		printRemoteResult("Receiver", plain, res)
+		return
+	}
+
+	chunk := make([]byte, chunkSize)
+	for i := range chunk {
+		chunk[i] = byte(i % 256)
+	}
+	fmt.Printf("Sending %s to %s in %s records for up to %v\n", formatSize(size), connect, formatSize(chunkSize), duration)
+	res, err := connectThroughput(connect, plain, size, duration, chunk, 50)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	printRemoteResult("Sender", plain, res)
 }

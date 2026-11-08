@@ -62,7 +62,7 @@ A dataset-sized transfer, 10 GiB of synthetic bytes (a repeating pattern; the tu
 | 8 KB | 31.8 s (338 MB/s) | 26.6 s (404 MB/s) |
 
 The rate matched the 1 GiB runs, so it does not fall off with more data. Read these with four limits in mind:
-- Loopback has no network limit. On a real link the network usually sets the rate and the tunnel's share of it is higher.
+- Loopback has no network limit. On a real link the network usually sets the rate and the tunnel's share of it is higher. `bench --serve` and `bench --connect` run the same test across two hosts, which is how to measure it.
 - Client and server share one process and one CPU here, so the CPU figures cover both ends. On separate hosts each side pays about half.
 - The throughput of the large-record Go benchmark and the earlier 690 MB/s headline were not reconciled with these numbers in this change; the CLI figures are what this tool measures today.
 - The datagram transport is not in this table: it does not retransmit application data, so a transfer time is not meaningful there. Its goodput is in the section above.
