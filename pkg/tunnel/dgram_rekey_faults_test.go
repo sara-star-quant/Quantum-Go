@@ -75,7 +75,7 @@ func TestDatagramRekeyTargetedLoss(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			client, server, epA, epB := dgramPair(t, 31, 0, 0, 0)
 			defer func() { _ = epA.Close(); _ = epB.Close() }()
-			memConn(tc.fromSide(epA, epB)).fault.dropFirst = tc.msg
+			memConn(tc.fromSide(epA, epB)).fault.setDropFirst(tc.msg)
 
 			if err := client.Rekey(); err != nil {
 				t.Fatalf("Rekey: %v", err)
@@ -170,8 +170,8 @@ func TestDatagramRekeyReplayedFramesIgnored(t *testing.T) {
 			}
 		}
 	}
-	memConn(epA).fault.tap = capture(&inits)
-	memConn(epB).fault.tap = capture(&resps)
+	memConn(epA).fault.setTap(capture(&inits))
+	memConn(epB).fault.setTap(capture(&resps))
 
 	if err := client.Rekey(); err != nil {
 		t.Fatal(err)
