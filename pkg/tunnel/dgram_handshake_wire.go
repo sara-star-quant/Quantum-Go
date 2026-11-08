@@ -163,7 +163,11 @@ func (e *DatagramEndpoint) redeliverHellos(src net.Addr, ds *datagramSession) {
 // DialDatagram performs the initiator handshake to dst over ep (whose Serve loop
 // must be running) and returns the established session as a DatagramConn.
 func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
-	session, err := NewSession(RoleInitiator)
+	suite, err := initiatorSuite(ep.kemSuite)
+	if err != nil {
+		return nil, err
+	}
+	session, err := NewSessionWithSuite(RoleInitiator, suite)
 	if err != nil {
 		return nil, err
 	}

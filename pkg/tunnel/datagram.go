@@ -536,6 +536,9 @@ type DatagramEndpoint struct {
 	psk         []byte
 	pskIdentity []byte
 
+	// kemSuite is the suite a dialing endpoint offers first (0 = CH-KEM-v1).
+	kemSuite chkem.SuiteID
+
 	// pskLookup and requirePSK mirror TransportConfig.PSKLookup / RequirePSK for the
 	// responder, set by WithPSKLookup and WithRequirePSK.
 	pskLookup  func(identity []byte) []byte
@@ -617,6 +620,13 @@ func WithPSK(identity, key []byte) DatagramEndpointOption {
 	}
 }
 
+// WithKEMSuite sets the KEM suite a dialing endpoint offers first (default
+// CH-KEM-v1). It must be a registered suite, else construction fails with
+// ErrUnsupportedKEMSuite.
+func WithKEMSuite(id chkem.SuiteID) DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.kemSuite = id }
+}
+
 // WithPSKLookup lets a listening endpoint hold one PSK per client identity: lookup
 // returns the constants.PSKSize-byte key for an identity, or nil if unknown. It takes
 // precedence over WithPSK on the responder.
@@ -683,6 +693,9 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 	}
 	for _, opt := range opts {
 		opt(e)
+	}
+	if _, err := initiatorSuite(e.kemSuite); err != nil {
+		return nil, err
 	}
 	if e.requireStaticAuth && e.staticIdentity == nil {
 		return nil, qerrors.ErrStaticAuthMisconfigured
