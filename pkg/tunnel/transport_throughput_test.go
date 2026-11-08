@@ -16,7 +16,7 @@ import (
 // TCP loopback connection. A real socket (not net.Pipe, which is a synchronous
 // in-memory hand-off) exercises the receive path's real syscalls and per-record
 // allocations. Keys are shared directly rather than via a full handshake.
-func benchStreamPair(b *testing.B) (sender, receiver *Transport, cleanup func()) {
+func benchStreamPair(b testing.TB) (sender, receiver *Transport, cleanup func()) {
 	b.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -122,5 +122,60 @@ func benchStreamRecords(b *testing.B, sizes []int) {
 			_ = sender.conn.SetWriteDeadline(time.Now()) // unblock a sender parked in Write
 			wg.Wait()
 		})
+	}
+}
+
+// BenchmarkStreamSendBatch compares one Send per record (batch=1) with SendBatch at
+// several batch sizes over a real loopback socket. Throughput is per delivered record,
+// measured at the receiver, so a batch only wins if the whole path does.
+func BenchmarkStreamSendBatch(b *testing.B) {
+	for _, size := range []int{256, 1400, 4 << 10, 8 << 10, 16 << 10} {
+		for _, batch := range []int{1, 8, 32} {
+			b.Run(fmt.Sprintf("record=%dB/batch=%d", size, batch), func(b *testing.B) {
+				sender, receiver, cleanup := benchStreamPair(b)
+				defer cleanup()
+				payloads := make([][]byte, batch)
+				for i := range payloads {
+					payloads[i] = make([]byte, size)
+				}
+
+				stop := make(chan struct{})
+				var wg sync.WaitGroup
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for {
+						select {
+						case <-stop:
+							return
+						default:
+						}
+						var err error
+						if batch == 1 {
+							err = sender.Send(payloads[0])
+						} else {
+							err = sender.SendBatch(payloads)
+						}
+						if err != nil {
+							return
+						}
+					}
+				}()
+
+				b.SetBytes(int64(size))
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if _, err := receiver.Receive(); err != nil {
+						b.Fatalf("receive %d/%d: %v", i, b.N, err)
+					}
+				}
+				b.StopTimer()
+
+				close(stop)
+				_ = sender.conn.SetWriteDeadline(time.Now())
+				wg.Wait()
+			})
+		}
 	}
 }

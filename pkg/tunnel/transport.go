@@ -14,7 +14,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"net"
+	"runtime"
 	"sync"
 	"time"
 
@@ -202,6 +204,122 @@ func (t *Transport) Send(data []byte) error {
 		_ = err
 	}
 
+	return nil
+}
+
+// SendBatch encrypts each payload as its own record and writes them all with one
+// vectored write, so a burst of small records costs one syscall instead of one each.
+// The batch is sealed and written under one lock: its records reach the wire in order
+// and contiguously even with concurrent senders. One oversize payload rejects the whole
+// batch before anything is written. The receiver sees ordinary records and needs no
+// change.
+func (t *Transport) SendBatch(payloads [][]byte) error {
+	t.closedMu.RLock()
+	closed := t.closed
+	t.closedMu.RUnlock()
+	if closed {
+		return qerrors.ErrTunnelClosed
+	}
+	for _, p := range payloads {
+		if len(p) > constants.MaxPayloadSize {
+			return qerrors.ErrMessageTooLarge
+		}
+	}
+	if len(payloads) == 0 {
+		return nil
+	}
+
+	if err := t.sealAndWriteBatch(payloads); err != nil {
+		return err
+	}
+	if err := t.CheckAndRekey(); err != nil {
+		_ = err // rekey errors are non-fatal, as in Send
+	}
+	return nil
+}
+
+// vectoredBatchMaxAvg is the largest average record size SendBatch coalesces into one
+// vectored write; above it the records are written one at a time under the same lock.
+// Measured on the bench workflow's runners with a direct-reading peer: the vectored
+// write won clearly for small records everywhere, stayed ahead at every size on macOS,
+// and lost 2 to 8% for records of 4 KB and up on x86-64 Linux and for 8 KB and up on
+// Windows. It is a variable so tests and benchmarks can force either path.
+var vectoredBatchMaxAvg = defaultVectoredBatchMaxAvg()
+
+func defaultVectoredBatchMaxAvg() int {
+	switch runtime.GOOS {
+	case "darwin":
+		return math.MaxInt
+	case "windows":
+		return 4 << 10
+	default:
+		return 2 << 10
+	}
+}
+
+// useVectoredBatch reports whether a batch is small-record enough for one vectored write.
+func useVectoredBatch(payloads [][]byte) bool {
+	total := 0
+	for _, p := range payloads {
+		total += len(p)
+	}
+	return total/len(payloads) <= vectoredBatchMaxAvg
+}
+
+func (t *Transport) sealAndWriteBatch(payloads [][]byte) error {
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
+	if !useVectoredBatch(payloads) {
+		return t.sealAndWriteEach(payloads)
+	}
+
+	msgs := make(net.Buffers, 0, len(payloads))
+	var sealErr error
+	for _, p := range payloads {
+		ciphertext, seq, err := t.session.Encrypt(p)
+		if err != nil {
+			sealErr = err
+			break
+		}
+		msg, err := t.codec.EncodeData(seq, ciphertext)
+		if err != nil {
+			t.recordProtocolError(err)
+			sealErr = err
+			break
+		}
+		msgs = append(msgs, msg)
+	}
+	// Records sealed before a failure already consumed sequence numbers; write them so
+	// the stream stays consistent, then report the failure.
+	if len(msgs) > 0 {
+		if t.writeTimeout > 0 {
+			_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
+		}
+		if _, err := msgs.WriteTo(t.conn); err != nil {
+			return err
+		}
+	}
+	return sealErr
+}
+
+// sealAndWriteEach seals and writes each record separately. The caller holds writeMu, so
+// the batch stays contiguous and in order exactly as with the vectored path.
+func (t *Transport) sealAndWriteEach(payloads [][]byte) error {
+	for _, p := range payloads {
+		ciphertext, seq, err := t.session.Encrypt(p)
+		if err != nil {
+			return err
+		}
+		msg, err := t.codec.EncodeData(seq, ciphertext)
+		if err != nil {
+			t.recordProtocolError(err)
+			return err
+		}
+		if err := t.writeLocked(msg); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

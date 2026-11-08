@@ -44,22 +44,22 @@ The datagram data path is syscall-bound, not crypto-bound: the isolated send pat
 
 ### Throughput by record size and cost against plain TCP
 
-`quantum-tunnel bench --throughput --baseline --chunk <size>` moves the same bytes in the same record size over a plain TCP stream and over a tunnel, on loopback, in one process. Apple M1 Pro, Go 1.27.3, AES-256-GCM, decimal MB/s, one 1 GiB run per row:
+`quantum-tunnel bench --throughput --baseline --chunk <size>` moves the same bytes in the same record size over a plain TCP stream and over a tunnel, on loopback, in one process. Apple M1 Pro, Go 1.27.3, AES-256-GCM, decimal MB/s, two 1 GiB runs per row averaged, machine otherwise idle:
 
 | Record size | Tunnel | Plain TCP | Tunnel as share of plain TCP | CPU per GiB, tunnel vs plain TCP |
 |-------------|--------|-----------|------------------------------|----------------------------------|
-| 8 KB | 341 MB/s | 401 MB/s | 85% | 5.7 vs 4.6 CPU-s (1.2x) |
-| 16 KB | 505 MB/s | 672 MB/s | 75% | 4.0 vs 3.0 CPU-s (1.4x) |
-| 60 KB | 995 MB/s | 1182 MB/s | 84% | 2.1 vs 1.1 CPU-s (1.9x) |
+| 8 KB | 337 MB/s | 401 MB/s | 84% | 5.8 vs 4.5 CPU-s (1.3x) |
+| 16 KB | 489 MB/s | 621 MB/s | 79% | 4.1 vs 3.2 CPU-s (1.3x) |
+| 60 KB | 964 MB/s | 1198 MB/s | 80% | 2.2 vs 1.1 CPU-s (2.0x) |
 
-Repeated runs moved the share by up to about 5 points (the 60 KB row read 80% on another run), so read it as roughly 75 to 85%.
+The two runs of each row agreed within 2 points. On a busy machine (a browser open) the share moved by up to 5 points, so close other applications before measuring.
 
 A dataset-sized transfer, 10 GiB of synthetic bytes (a repeating pattern; the tunnel does not compress, so the content does not matter) as a size class, not a real dataset, through one tunnel:
 
 | Record size | Tunnel | Plain TCP |
 |-------------|--------|-----------|
-| 60 KB | 10.9 s (987 MB/s) | 9.0 s (1189 MB/s) |
-| 8 KB | 31.4 s (342 MB/s) | 26.5 s (405 MB/s) |
+| 60 KB | 11.2 s (958 MB/s) | 9.1 s (1181 MB/s) |
+| 8 KB | 31.8 s (338 MB/s) | 26.6 s (404 MB/s) |
 
 The rate matched the 1 GiB runs, so it does not fall off with more data. Read these with four limits in mind:
 - Loopback has no network limit. On a real link the network usually sets the rate and the tunnel's share of it is higher.
@@ -68,6 +68,31 @@ The rate matched the 1 GiB runs, so it does not fall off with more data. Read th
 - The datagram transport is not in this table: it does not retransmit application data, so a transfer time is not meaningful there. Its goodput is in the section above.
 
 Receive timing starts at the first byte, not at `Accept`.
+
+### Batching small stream records
+
+For small records the cost is the syscall, not the bytes: on macOS, 86% of CPU in the small-record benchmark is `read` and `write`. `Tunnel.SendBatch` seals a burst under one lock and writes it. Small records go out in one vectored write, bulky ones one at a time, so a batch is always contiguous and in order. The cut-over is per platform and comes from measurement: no limit on macOS, 4 KB average record size on Windows, 2 KB elsewhere. The receiver sees ordinary records and needs no change.
+
+A batch of 8 against one `Send` per record, `BenchmarkStreamSendBatch` over loopback on the bench workflow's runners (4 shared vCPUs). Each cell is the median of two runs of three samples. Shared runners drift by 10% or more between runs, so treat the figures as direction:
+
+| Platform | 256 B records | 1400 B | 4 KB | 8 KB | 16 KB |
+|----------|---------------|--------|------|------|-------|
+| macOS arm64 | 2.2x | 1.9x | 1.5x | 1.8x | 1.4x |
+| Windows x86-64 | 3.1x | 2.3x | 1.5x | 1.0x | 0.98x |
+| Linux x86-64 | 2.65x | 1.02x | 1.01x | 1.02x | 0.99x |
+| Linux arm64 | 1.05x | 1.08x | 1.06x | 1.01x | 0.95x |
+
+In short:
+- Small records gain wherever a syscall is expensive: 2 to 3x on macOS and Windows, and 2.65x at 256 B on x86-64 Linux.
+- On Linux there is little to gain from 1400 B up in a loopback benchmark, because the receiver is the limit by then. Two-host numbers are not in yet.
+- Bulky records take the same path as `Send`, so they land at about 1.0x. One cell stayed low in both runs (Windows, 32 records of 16 KB: 0.85x and 0.95x). From 8 KB up, use `Send`.
+- A batch of 8 gets nearly all of the benefit; larger batches add little.
+
+On an idle M1 Pro laptop, where syscalls cost more, a batch of 8 gave 9.1x at 256 B and 6.5x at 1400 B. That is the best case.
+
+I also tried a receive-side read-ahead, so one `read` serves many records, and left it out. On Linux loopback it raised batched throughput by up to 1.7x but cut plain per-record sends to about 0.45x, and a heuristic that turns it on only for bursts did not avoid that. Loopback charges the sender for waking a faster receiver, so it cannot settle receiver policy; that needs two hosts.
+
+`SendBatch` is aimed at a VPN reading packets from a TUN device in bursts.
 
 ### Where stream time goes
 

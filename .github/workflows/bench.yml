@@ -37,6 +37,10 @@ jobs:
         shell: bash
         run: go test ./pkg/tunnel/ -run xxx -bench 'DatagramEndToEnd$|DatagramEndToEndBatch' -benchtime 3s | tee goodput.txt
 
+      - name: Stream batching
+        shell: bash
+        run: go test ./pkg/tunnel/ -run xxx -bench 'StreamSendBatch' -benchtime 1s -count 3 | tee streambatch.txt
+
       - name: Soak (same-source datagram redials)
         if: github.event_name == 'schedule' || inputs.soak_dials != '0'
         shell: bash
@@ -52,6 +56,7 @@ jobs:
             echo '```'
             grep -E '^Benchmark' bench.txt
             grep -E '^Benchmark' goodput.txt
+            grep -E '^Benchmark' streambatch.txt
             [ -f soak.txt ] && grep -E '^(--- |ok|FAIL)' soak.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -62,4 +67,5 @@ jobs:
           path: |
             bench.txt
             goodput.txt
+            streambatch.txt
             soak.txt
