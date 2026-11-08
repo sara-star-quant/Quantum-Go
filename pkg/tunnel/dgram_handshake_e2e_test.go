@@ -69,6 +69,29 @@ func newFaultModel(seed uint64, drop, dup, reorder float64) *faultModel {
 	}
 }
 
+// setTap installs the traffic tap under the fault lock; emit reads it from
+// handshake retransmit goroutines that outlive the dial.
+func (f *faultModel) setTap(fn func(data []byte)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.tap = fn
+}
+
+// setDropFirst arms a targeted loss under the fault lock, for use once traffic is
+// already flowing.
+func (f *faultModel) setDropFirst(msg protocol.MessageType) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.dropFirst = msg
+}
+
+// dropArmedUnused reports a targeted loss that was armed but never triggered.
+func (f *faultModel) dropArmedUnused() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.dropFirst != 0 && !f.dropFirstOK
+}
+
 func (f *faultModel) emit(peer *memPacketConn, data []byte, src net.Addr) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -362,7 +385,7 @@ func runTargetedLoss(t *testing.T, msg protocol.MessageType, fromDialer bool) {
 	case <-time.After(5 * time.Second):
 		t.Fatalf("dial did not complete after losing %v", msg)
 	}
-	if connA.fault.dropFirst != 0 && !connA.fault.dropFirstOK || connB.fault.dropFirst != 0 && !connB.fault.dropFirstOK {
+	if connA.fault.dropArmedUnused() || connB.fault.dropArmedUnused() {
 		t.Fatalf("the targeted %v datagram was never sent, so nothing was lost", msg)
 	}
 	assertDataRoundTrip(t, client, server)
