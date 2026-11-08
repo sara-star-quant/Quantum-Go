@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"math"
 	"net"
 	"testing"
 	"time"
@@ -130,6 +131,48 @@ func BenchmarkMicroRegistryLookupParallel(b *testing.B) {
 	})
 }
 
+// quietAllocs returns the allocations per call of f, retrying while the count is
+// above limit. testing.AllocsPerRun counts mallocs from every goroutine in the
+// process, so a previous test's closing connections or handshakes can inflate a single
+// measurement; a genuine regression allocates in every attempt and still exceeds limit.
+func quietAllocs(limit float64, f func()) float64 {
+	best := math.MaxFloat64
+	for attempt := 0; attempt < 20; attempt++ {
+		if got := testing.AllocsPerRun(100, f); got < best {
+			best = got
+		}
+		if best <= limit {
+			break
+		}
+		time.Sleep(50 * time.Millisecond) // let a finite background burst drain
+	}
+	return best
+}
+
+// TestQuietAllocsToleratesBackgroundBurstButNotRegressions guards the helper: a finite
+// burst of foreign allocations must not fail a zero-allocation function, and a function
+// that really allocates must still be reported.
+func TestQuietAllocsToleratesBackgroundBurstButNotRegressions(t *testing.T) {
+	var sink []byte
+	allocating := func() { sink = make([]byte, 64); _ = sink }
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		end := time.Now().Add(150 * time.Millisecond)
+		for time.Now().Before(end) {
+			_ = make([]byte, 128)
+		}
+	}()
+	if got := quietAllocs(0, func() {}); got != 0 {
+		t.Fatalf("noop reported %v allocs during a background burst", got)
+	}
+	<-done
+	if got := quietAllocs(0, allocating); got < 1 {
+		t.Fatalf("allocating function reported %v allocs", got)
+	}
+}
+
 // The docs claim a zero-allocation steady-state send; the one residual allocation is
 // the AEAD nonce, which escapes through the cipher.AEAD interface. Pin that so the
 // documentation cannot drift from the code.
@@ -142,7 +185,7 @@ func TestDatagramSendAllocations(t *testing.T) {
 	if err := c.Send(payload); err != nil {
 		t.Fatal(err)
 	}
-	if got := testing.AllocsPerRun(200, func() { _ = c.Send(payload) }); got > 1 {
+	if got := quietAllocs(1, func() { _ = c.Send(payload) }); got > 1 {
 		t.Fatalf("steady-state Send allocates %v times per call, documented limit is 1 (the nonce)", got)
 	}
 }
@@ -152,12 +195,12 @@ func TestDatagramHotPathAllocations(t *testing.T) {
 		t.Skip("the race detector adds allocations")
 	}
 	frame := protocol.EncodeDatagramData(protocol.DatagramHeader{Type: protocol.DatagramFrameData, RecvIndex: 7, Seq: 1}, make([]byte, 64))
-	if got := testing.AllocsPerRun(200, func() { _, _, _ = protocol.ParseDatagramHeader(frame) }); got != 0 {
+	if got := quietAllocs(0, func() { _, _, _ = protocol.ParseDatagramHeader(frame) }); got != 0 {
 		t.Errorf("ParseDatagramHeader allocates %v times", got)
 	}
 	w := NewDatagramReplayWindow()
 	var seq uint64
-	if got := testing.AllocsPerRun(200, func() {
+	if got := quietAllocs(0, func() {
 		seq++
 		if w.Admissible(seq) {
 			w.Check(seq)
@@ -170,11 +213,11 @@ func TestDatagramHotPathAllocations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := testing.AllocsPerRun(200, func() { _ = reg.lookup(idx) }); got != 0 {
+	if got := quietAllocs(0, func() { _ = reg.lookup(idx) }); got != 0 {
 		t.Errorf("registry lookup allocates %v times", got)
 	}
 	a, b := &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1}, &net.UDPAddr{IP: net.IPv4(10, 0, 0, 1), Port: 1}
-	if got := testing.AllocsPerRun(200, func() { _ = addrEqual(a, b) }); got != 0 {
+	if got := quietAllocs(0, func() { _ = addrEqual(a, b) }); got != 0 {
 		t.Errorf("addrEqual allocates %v times", got)
 	}
 }
