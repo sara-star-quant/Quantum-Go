@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.21][] - 2026-11-09
+
+**Theme:** Stream batching and throughput tooling. A burst of small stream records can go out in one call, the throughput benchmark now compares against plain TCP and runs across two hosts, and the library's sentinel errors can finally be matched from outside the module. There is no wire change.
+
+### Added
+- **`Tunnel.SendBatch`**: seals a burst of stream records under one lock and writes them together. Small records go out in one vectored write and bulky ones one at a time, so a batch always stays contiguous and in order; the cut-over is per platform (no limit on macOS, 4 KB average record size on Windows, 2 KB elsewhere). On the bench workflow's runners a batch of 8 is 2 to 3x faster for 256 B records on macOS, Windows and x86-64 Linux and about 1.0x for bulky records.
+- **Exported sentinel errors**: `pkg/tunnel` and `pkg/chkem` export the errors they return (`ErrServerKeyMismatch`, `ErrUnsupportedKEMSuite`, `ErrPoolClosed`, `ErrInvalidPublicKey` and others), so callers outside the module can match them with `errors.Is`.
+- **Throughput bench flags**: `--chunk` sets the record size, `--baseline` runs plain TCP with the same records and reports the tunnel's share and CPU cost, and `--serve` and `--connect` (with `--plain` for a bare TCP reference) run the test across two hosts.
+- **Docs**: a throughput table by record size with a 10 GiB run, cross-platform batching numbers from the bench workflow, a refreshed threat model (T9 to T11) and audit readiness for protocol 6.0, and the KEM suite options in the configuration guide.
+
+### Changed
+- **Bench output**: throughput is decimal MB/s (it printed MiB/s under an MB/s label), receive timing starts at the first byte, sizes accept the `KiB` forms and `TB` and reject unknown units, and `--cipher chacha20` exits with an error instead of running AES-GCM under another label.
+
+### Fixed
+- **Tests under load**: the datagram tamper test responder gets a retry budget that survives a stalled runner, a data race on the datagram test fault model is gone, a pool lifecycle assertion no longer races the pool's own bookkeeping, and allocation-count tests are no longer thrown off by background goroutines.
+- **Untracked test files**: a `.gitignore` rule that also matched the `cmd/quantum-tunnel` directory kept new files there, and one existing test file, out of git; it now matches only the root binary.
+
 ## [0.0.20][] - 2026-11-08
 
 **Theme:** Extensible suites. Code outside the module can now register a KEM suite and a client can choose which suite it offers first. A shared conformance battery and benchmark set hold every suite to the same bar, and a review of the new registry closed a FIPS gating gap before it could be reached. There is no wire change.
@@ -436,7 +453,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.20...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.21...HEAD
+[0.0.21]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.20...v0.0.21
 [0.0.20]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.19...v0.0.20
 [0.0.19]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.18...v0.0.19
 [0.0.18]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.17...v0.0.18
