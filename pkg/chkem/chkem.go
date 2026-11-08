@@ -227,9 +227,9 @@ func ParseKeyPair(seed []byte) (*KeyPair, error) {
 	}, nil
 }
 
-// suiteKeyHandle is the live private-key handle a non-v1 suite stores in
+// SuiteKeyHandle is the live private-key handle a non-v1 suite stores in
 // KeyPair.impl. The crypto wrappers (e.g. *crypto.XWingKeyPair) satisfy it.
-type suiteKeyHandle interface {
+type SuiteKeyHandle interface {
 	PublicKeyBytes() []byte
 	Zeroize()
 }
@@ -237,7 +237,7 @@ type suiteKeyHandle interface {
 // PublicKey returns the public component of the key pair.
 func (kp *KeyPair) PublicKey() *PublicKey {
 	if kp.suite != 0 {
-		if h, ok := kp.impl.(suiteKeyHandle); ok {
+		if h, ok := kp.impl.(SuiteKeyHandle); ok {
 			return &PublicKey{suite: kp.suite, raw: h.PublicKeyBytes()}
 		}
 		return &PublicKey{suite: kp.suite}
@@ -461,7 +461,7 @@ func ParseCiphertext(data []byte) (*Ciphertext, error) {
 // Zeroize securely erases the private key material.
 func (kp *KeyPair) Zeroize() {
 	if kp.suite != 0 {
-		if h, ok := kp.impl.(suiteKeyHandle); ok {
+		if h, ok := kp.impl.(SuiteKeyHandle); ok {
 			h.Zeroize()
 		}
 		kp.impl = nil

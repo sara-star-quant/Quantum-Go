@@ -1,6 +1,11 @@
 package chkem
 
-import "github.com/sara-star-quant/quantum-go/internal/constants"
+import (
+	"sync"
+
+	"github.com/sara-star-quant/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
+)
 
 // SuiteID is the 2-byte wire identifier of a KEM suite. It is negotiated in the
 // handshake so peers can agree on the KEM construction (the cascade, the combiner)
@@ -82,25 +87,50 @@ func (chkemV1) SeedSize() int { return StaticKeySeedSize }
 // FIPS 140-3 algorithm claim.
 func (chkemV1) IsFIPSApproved() bool { return true }
 
-// registry maps a SuiteID to its implementation.
-var registry = map[SuiteID]Suite{
-	SuiteCHKEMv1: chkemV1{},
-	SuiteXWing:   xwingSuite{},
-}
+// registry maps a SuiteID to its implementation. Built-ins are fixed; RegisterSuite
+// adds external suites under registryMu.
+var (
+	registryMu sync.RWMutex
+	registry   = map[SuiteID]Suite{
+		SuiteCHKEMv1: chkemV1{},
+		SuiteXWing:   xwingSuite{},
+	}
+	// order lists suite ids in preference order: built-ins first, then registered.
+	order = []SuiteID{SuiteCHKEMv1, SuiteXWing}
+)
+
+// builtinSuites is how many leading entries of order are built in.
+const builtinSuites = 2
 
 // DefaultSuite returns the default KEM suite (CH-KEM-v1). It is the suite used when
 // no negotiation has selected another.
-func DefaultSuite() Suite { return registry[SuiteCHKEMv1] }
+func DefaultSuite() Suite { return chkemV1{} }
 
 // GetSuite returns the registered suite for id, or false if unknown.
 func GetSuite(id SuiteID) (Suite, bool) {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
 	s, ok := registry[id]
 	return s, ok
 }
 
-// SupportedSuites returns the registered suite ids in preference order (most
-// preferred first). CH-KEM-v1 is always present as the mandatory default, so any
-// two peers share it.
+// SupportedSuites returns the offerable suite ids in preference order (most
+// preferred first): built-ins, then registered suites in registration order. In FIPS
+// mode, suites that are not FIPS approved are dropped. CH-KEM-v1 is always present
+// and first, so any two peers share it. The returned slice is a copy.
 func SupportedSuites() []SuiteID {
-	return []SuiteID{SuiteCHKEMv1, SuiteXWing}
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	out := make([]SuiteID, 0, len(order))
+	for _, id := range order {
+		if crypto.FIPSMode() && !registry[id].IsFIPSApproved() {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
 }
+
+// BindsRole reports that CH-KEM-v1 binds the caller role into the secret, so the
+// conformance battery checks reflection resistance for it.
+func (chkemV1) BindsRole() bool { return true }

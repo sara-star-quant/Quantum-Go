@@ -2,10 +2,12 @@ package tunnel
 
 import (
 	"net"
+	"sync"
 	"testing"
 
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 	"github.com/sara-star-quant/quantum-go/pkg/chkem"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 )
 
 func TestResolveKEMSuite(t *testing.T) {
@@ -59,3 +61,55 @@ func TestHandshakeNegotiatesV1(t *testing.T) {
 			initiator.kemSuite.ID(), responder.kemSuite.ID())
 	}
 }
+
+// TestResolveKEMSuiteHonorsFIPSOffer: a registered suite that is not FIPS approved
+// must not resolve in FIPS mode (the server resolves the client's first-flight
+// suite), and must resolve otherwise.
+func TestResolveKEMSuiteHonorsFIPSOffer(t *testing.T) {
+	const id = chkem.CustomSuiteMin + 0x0F00
+	nonFIPSOnce.Do(func() {
+		if err := chkem.RegisterSuite(nonFIPSSuite{DefaultSuiteBase: chkem.DefaultSuite(), id: id}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	_, err := resolveKEMSuite(uint16(id))
+	if crypto.FIPSMode() == (err == nil) {
+		t.Fatalf("FIPSMode=%v but resolve err=%v", crypto.FIPSMode(), err)
+	}
+}
+
+var nonFIPSOnce sync.Once
+
+// nonFIPSSuite reuses CH-KEM-v1's behavior under a custom id and reports it as not
+// FIPS approved.
+type nonFIPSSuite struct {
+	DefaultSuiteBase chkem.Suite
+	id               chkem.SuiteID
+}
+
+func (s nonFIPSSuite) ID() chkem.SuiteID { return s.id }
+func (s nonFIPSSuite) GenerateKeyPair() (*chkem.KeyPair, error) {
+	return s.DefaultSuiteBase.GenerateKeyPair()
+}
+func (s nonFIPSSuite) GenerateStaticKeyPair() (*chkem.KeyPair, []byte, error) {
+	return s.DefaultSuiteBase.GenerateStaticKeyPair()
+}
+func (s nonFIPSSuite) ParseKeyPair(b []byte) (*chkem.KeyPair, error) {
+	return s.DefaultSuiteBase.ParseKeyPair(b)
+}
+func (s nonFIPSSuite) Encapsulate(p *chkem.PublicKey, r chkem.Role) (*chkem.Ciphertext, []byte, error) {
+	return s.DefaultSuiteBase.Encapsulate(p, r)
+}
+func (s nonFIPSSuite) Decapsulate(c *chkem.Ciphertext, k *chkem.KeyPair, r chkem.Role) ([]byte, error) {
+	return s.DefaultSuiteBase.Decapsulate(c, k, r)
+}
+func (s nonFIPSSuite) ParsePublicKey(b []byte) (*chkem.PublicKey, error) {
+	return s.DefaultSuiteBase.ParsePublicKey(b)
+}
+func (s nonFIPSSuite) ParseCiphertext(b []byte) (*chkem.Ciphertext, error) {
+	return s.DefaultSuiteBase.ParseCiphertext(b)
+}
+func (s nonFIPSSuite) PublicKeySize() int   { return s.DefaultSuiteBase.PublicKeySize() }
+func (s nonFIPSSuite) CiphertextSize() int  { return s.DefaultSuiteBase.CiphertextSize() }
+func (s nonFIPSSuite) SeedSize() int        { return s.DefaultSuiteBase.SeedSize() }
+func (s nonFIPSSuite) IsFIPSApproved() bool { return false }
