@@ -24,9 +24,11 @@ Tracked as GitHub issues, in this order:
    x cipher matrix, untested public options, stream and pool fault injection, datagram rekey lifecycle,
    crypto fault injection.
 2. Path-MTU discovery for the datagram transport.
-3. A second independent implementation checked against the conformance vectors.
-4. A decision on the experimental resumption API: wire it into `Dial` and `Listen`, or remove it.
-5. Third-party audit and FIPS 140-3 validation (owner-driven, not an open task).
+3. Throughput on real hardware. A bench mode that runs client and server on separate hosts, and Linux numbers from CI, because loopback has already misled us once. Then in-place seal and open on the stream path to drop the per-record allocations.
+4. Striped multi-flow sessions. Document striping over `Pool` first; build a one-handshake bundle only if the Linux and two-host numbers show parallel flows gain enough to justify it.
+5. A second independent implementation checked against the conformance vectors.
+6. A decision on the experimental resumption API: wire it into `Dial` and `Listen`, or remove it.
+7. Third-party audit and FIPS 140-3 validation (owner-driven, not an open task).
 
 ## Strategic Priorities (valuation-driven)
 
