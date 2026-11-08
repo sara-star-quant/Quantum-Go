@@ -18,3 +18,17 @@ func TestBuiltInSuitesConform(t *testing.T) {
 		})
 	}
 }
+
+// BenchmarkSuites runs the shared KEM benchmarks for every built-in suite, so a new
+// built-in is measured as soon as it is registered.
+func BenchmarkSuites(b *testing.B) {
+	for _, id := range chkem.SupportedSuites() {
+		if id >= chkem.CustomSuiteMin {
+			continue
+		}
+		s, _ := chkem.GetSuite(id)
+		b.Run(map[chkem.SuiteID]string{chkem.SuiteCHKEMv1: "chkem-v1", chkem.SuiteXWing: "xwing"}[id], func(b *testing.B) {
+			suitetest.Bench(b, s)
+		})
+	}
+}

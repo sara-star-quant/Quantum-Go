@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -183,24 +184,6 @@ func runDgramMatrix(t *testing.T, srv, cli hsSide, wantOK bool) hsResult {
 }
 
 func TestHandshakeMatrix(t *testing.T) {
-	v1 := func() *chkem.KeyPair {
-		kp, _, err := chkem.GenerateStaticKeyPair()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return kp
-	}
-	xw := func() *chkem.KeyPair {
-		s, ok := chkem.GetSuite(chkem.SuiteXWing)
-		if !ok {
-			t.Fatal("X-Wing suite is not registered")
-		}
-		kp, _, err := s.GenerateStaticKeyPair()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return kp
-	}
 	psk := func(b byte) []byte {
 		k := make([]byte, 32)
 		for i := range k {
@@ -284,10 +267,37 @@ func TestHandshakeMatrix(t *testing.T) {
 	}
 
 	runners := []hsRunner{{"stream", runStreamMatrix}, {"datagram", runDgramMatrix}}
-	suites := []struct {
+	// Every built-in suite the registry offers runs the whole matrix, so a new built-in
+	// is covered the moment it is registered. External ids (>= CustomSuiteMin) are
+	// skipped: other tests register permanent stand-ins that are not full suites.
+	type matrixSuite struct {
 		name string
 		gen  func() *chkem.KeyPair
-	}{{"ch-kem-v1", v1}, {"x-wing", xw}}
+	}
+	var suites []matrixSuite
+	for _, id := range chkem.SupportedSuites() {
+		if id >= chkem.CustomSuiteMin {
+			continue
+		}
+		s, ok := chkem.GetSuite(id)
+		if !ok {
+			t.Fatalf("suite %#x is offered but not registered", id)
+		}
+		name := map[chkem.SuiteID]string{chkem.SuiteCHKEMv1: "ch-kem-v1", chkem.SuiteXWing: "x-wing"}[id]
+		if name == "" {
+			name = fmt.Sprintf("suite-%04x", uint16(id))
+		}
+		suites = append(suites, matrixSuite{name: name, gen: func() *chkem.KeyPair {
+			kp, _, err := s.GenerateStaticKeyPair()
+			if err != nil {
+				t.Fatal(err)
+			}
+			return kp
+		}})
+	}
+	if len(suites) < 2 {
+		t.Fatalf("matrix covers %d built-in suites, want at least CH-KEM-v1 and X-Wing", len(suites))
+	}
 
 	for _, rn := range runners {
 		for _, su := range suites {
