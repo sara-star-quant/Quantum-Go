@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.20][] - 2026-11-08
+
+**Theme:** Extensible suites. Code outside the module can now register a KEM suite and a client can choose which suite it offers first. A shared conformance battery and benchmark set hold every suite to the same bar, and a review of the new registry closed a FIPS gating gap before it could be reached. There is no wire change.
+
+### Added
+- **`chkem.RegisterSuite`**: external KEM suites register at ids from `0x8000`, at most 16. Built-ins stay first and preferred, and FIPS mode drops suites that are not FIPS approved. `NewSuiteKeyPair`, `NewSuitePublicKey`, `NewSuiteCiphertext` and `KeyPair.Handle` let an external suite build its values.
+- **`suitetest.Run` and `suitetest.Bench`**: a conformance battery (sizes, round trip, tampering, wrong key, cross-suite and nil inputs, seed determinism) and keygen, encapsulate and decapsulate benchmarks with wire sizes, runnable against any suite.
+- **`TransportConfig.KEMSuite` and datagram `WithKEMSuite`**: a client chooses the suite it offers first, default CH-KEM-v1. An id the peer would not offer fails with `ErrUnsupportedKEMSuite`. Pool connections still start on the default suite.
+- **Tests**: the 60-case handshake matrix runs every built-in suite the registry offers.
+
+### Fixed
+- **FIPS gating on the first-flight suite**: a responder resolved the client's suite without the FIPS filter, so a registered suite that is not FIPS approved would have been accepted. It now resolves only suites it would offer.
+- **Flaky tests under load**: data races on the datagram fault model, a pool lifecycle assertion that raced the pool's own bookkeeping, and allocation counts polluted by background goroutines.
+
+### Changed
+- **ProVerif image**: the formal verification base image is pinned by digest.
+
 ## [0.0.19][] - 2026-11-05
 
 **Theme:** Test depth and two concurrency fixes. A push to exercise the code no test reached (handshake error paths, the connection pool, stream and datagram fault injection, rekey under loss, entropy and self-test failure) found three bugs in the connection pool and a record-ordering race in the stream transport during a rekey, all fixed here. There is no wire change.
@@ -419,7 +436,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.19...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.20...HEAD
+[0.0.20]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.19...v0.0.20
 [0.0.19]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.18...v0.0.19
 [0.0.18]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.17...v0.0.18
 [0.0.17]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.16...v0.0.17
