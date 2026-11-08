@@ -50,6 +50,40 @@ serverCfg.RequirePSK = true                  // needs PSK or PSKLookup set
 
 Datagram endpoints use options instead: `tunnel.WithStaticIdentity(kp)`, `tunnel.WithPinnedServerKey(pub)`, `tunnel.WithRequireStaticAuth()`, `tunnel.WithPSK(identity, key)`, `tunnel.WithPSKLookup(fn)`, and `tunnel.WithRequirePSK()`.
 
+### KEM Suites (v0.0.20+)
+
+A client offers CH-KEM-v1 (ML-KEM-1024 + X25519) first. Choose another registered suite as the first offer; X-Wing (ML-KEM-768 + X25519) has a smaller key share and ciphertext (1216 and 1120 bytes against 1600 and 1600).
+
+```go
+// Stream: offer X-Wing first.
+cfg := tunnel.DefaultTransportConfig()
+cfg.KEMSuite = chkem.SuiteXWing
+t, err := tunnel.DialWithConfig("tcp", addr, cfg)
+
+// Datagram: the same choice as an endpoint option.
+ep, err := tunnel.NewDatagramEndpoint(conn, tunnel.WithKEMSuite(chkem.SuiteXWing))
+```
+
+- The zero value means CH-KEM-v1. A suite the peer would not offer (not registered, or not FIPS approved in a FIPS build) fails before any packet is sent; on the datagram transport that is at endpoint construction.
+- A server that does not support the first-offered suite steers the client to a mutually supported one with a single HelloRetryRequest. The offered list is bound into the Finished transcript, so stripping a suite from it fails the handshake.
+- Pool connections still start on the default suite; `PoolConfig` has no suite option.
+
+#### Registering your own suite
+
+Implement `chkem.Suite`, run the shared conformance battery against it, then register it. Both peers must register the same id.
+
+```go
+func TestMySuite(t *testing.T)      { suitetest.Run(t, mySuite{}) }       // conformance
+func BenchmarkMySuite(b *testing.B) { suitetest.Bench(b, mySuite{}) }     // keygen, encapsulate, decapsulate
+
+err := chkem.RegisterSuite(mySuite{})
+```
+
+- Ids start at `chkem.CustomSuiteMin` (`0x8000`); lower ids are reserved for built-ins. At most `chkem.MaxCustomSuites` (16) can be registered.
+- Registered suites are offered after the built-ins, so CH-KEM-v1 stays first and preferred. In a FIPS build, suites that report `IsFIPSApproved() == false` are not offered.
+- Build your key pair, public key and ciphertext values with `chkem.NewSuiteKeyPair`, `chkem.NewSuitePublicKey` and `chkem.NewSuiteCiphertext`.
+- A registered suite runs in-process with access to handshake secrets. The library validates and tests it but cannot contain it; you own its code and supply chain (threat T11 in the [threat model](../technical/THREAT_MODEL.md)).
+
 ### Rate Limiting (v0.0.6+)
 
 Protect your server from DoS attacks and resource exhaustion:
