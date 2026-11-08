@@ -5,7 +5,7 @@ the cryptography, maps each security claim to its evidence, records the supply-c
 known limitations honestly, and points to everything an auditor needs. It is not an audit and makes no
 certification claim; it is the package an auditor (or a buyer's security team) starts from.
 
-Protocol version: 5.0. Last updated: 2026-06-20.
+Protocol version: 6.0. Last updated: 2026-11-08 (v0.0.20).
 
 ## 1. Scope
 
@@ -14,6 +14,8 @@ In scope for a cryptographic-protocol audit:
   and HelloRetryRequest, and the Finished/transcript binding.
 - The KEM constructions (`pkg/chkem`): CH-KEM-v1 (ML-KEM-1024 + X25519) and X-Wing (ML-KEM-768 + X25519),
   and the static-key / PSK authentication folds.
+- The public KEM suite registry (`chkem.RegisterSuite`) and its validation, FIPS filtering and conformance battery
+  (`pkg/chkem`, `pkg/chkem/suitetest`).
 - The record layer, rekey ratchet, replay window, and the datagram fragmentation + return-routability
   cookie (`pkg/tunnel`, `pkg/protocol`).
 - The cryptographic wrappers (`pkg/crypto`) over the underlying primitives.
@@ -24,7 +26,7 @@ application protocol carried inside the tunnel.
 
 ## 2. System overview and trust boundaries
 
-A TLS 1.3-structured 4-message handshake establishes a hybrid post-quantum session key, then an
+A TLS 1.3-structured one-round-trip handshake (ClientHello, a ServerHello and ServerFinished flight, ClientFinished) establishes a hybrid post-quantum session key, then an
 authenticated-encryption record layer carries data over a stream (TCP) or datagram (UDP) transport. The
 adversary model, assets, and trust boundaries are in
 [`../technical/THREAT_MODEL.md`](../technical/THREAT_MODEL.md); the wire protocol is specified in
@@ -73,7 +75,14 @@ vulnerabilities. License: Apache 2.0 (with a `NOTICE` file); dependencies are pe
 - The handshake is unauthenticated by default; endpoint authentication (static-key pinning, PSK mutual) is
   opt-in. An unconfigured tunnel provides encryption and forward secrecy but not peer identity.
 - Resumption tickets are not yet bound to server identity (verified-open; design captured, not shipped).
-- Sequence-based nonces require single-threaded or externally-synchronized use of a session's keys.
+- Sequence-based nonces assume a session's keys are used only through the session; `Send` and `SendBatch`
+  are serialized per session, so concurrent senders are safe.
+- KEM-suite negotiation and HelloRetryRequest are covered by the transcript-agreement proof and by tests,
+  not by a dedicated formal model.
+- A registered external KEM suite runs in-process with access to handshake secrets. The library validates and
+  tests it but cannot contain it; the registering application owns its code.
+- The datagram header is a constant 14-byte layout and handshake sizes are distinctive; only opt-in padding
+  reduces fingerprinting.
 - Side-channel and constant-time guarantees rely on the underlying libraries (Go stdlib, circl).
 - Key-compromise impersonation is not a design goal.
 - The formal proofs are symbolic (perfect-cryptography); they verify the protocol composition, not the Go
@@ -112,4 +121,4 @@ POST/CST; gosec/lint/race CI gates.
 Recommended auditor focus: the combiner and key-schedule domain separation; the HRR synthetic-hash
 transcript and downgrade resistance; the static-key/PSK fold and the suite-dispatch of the static leg; the
 datagram return-routability and reassembly anti-DoS bounds; nonce derivation and the replay window across a
-rekey; and the model-to-code fidelity gap noted in the formal README.
+rekey; the suite registry's trust boundary; and the model-to-code fidelity gap noted in the formal README.

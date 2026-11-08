@@ -2,7 +2,9 @@
 
 This is a self-authored threat model, informed by the NIST SP 800-30 risk methodology. It is NOT an independent third-party security audit; a third-party audit is tracked separately on the roadmap. Risk ratings reflect the authors' analysis of the design as of the dates noted.
 
-**Last Updated:** 2026-01-18
+**Last Updated:** 2026-11-08 (v0.0.20, wire protocol 6.0)
+
+Revised for the datagram transport, endpoint authentication, KEM suite negotiation with HelloRetryRequest, the public suite registry and the one-round-trip handshake. T9 to T11 are new; T6 to T8 and the protocol vulnerabilities in 5.3 were updated. The scores for T1 to T5 are unchanged from the January assessment, and the grids in 6.1 and 6.2 predate this revision (T9 to T11 are in 6.3).
 
 ---
 
@@ -50,7 +52,10 @@ This threat model evaluates the security posture of the Quantum-Go tunnel encryp
 - X25519 implementation (Go crypto/ecdh)
 - Key derivation (SHAKE-256)
 - Authenticated encryption (AES-256-GCM, ChaCha20-Poly1305)
-- Protocol handshake and transport
+- Protocol handshake and transport (stream/TCP and datagram/UDP)
+- Endpoint authentication: static-key pinning and pre-shared keys
+- KEM suite negotiation, HelloRetryRequest and the public suite registry
+- Datagram fragmentation, the return-routability cookie and roaming
 - Key management lifecycle
 
 **Out of Scope:**
@@ -59,6 +64,7 @@ This threat model evaluates the security posture of the Quantum-Go tunnel encryp
 - Hardware security modules
 - Physical security
 - User authentication mechanisms
+- The code of externally registered KEM suites (the registering application owns it; see T11)
 
 ### 2.2 Methodology
 
@@ -182,10 +188,28 @@ Risk Score: 1-25
 **Risk Score:** 9 (Moderate)
 
 #### T8: Denial of Service
-**Description:** Resource exhaustion through handshake flooding
+**Description:** Resource exhaustion through handshake flooding, and on UDP, reassembler occupancy and reflection from spoofed sources (see [datagram-dos.md](../datagram-dos.md))
 **Likelihood:** Medium (3)
 **Impact:** Medium (3)
 **Risk Score:** 9 (Moderate)
+
+#### T9: Downgrade via Suite Negotiation
+**Description:** An active attacker strips or rewrites the offered KEM suites, or tampers with a HelloRetryRequest, to steer both peers onto a weaker suite
+**Likelihood:** Low (2)
+**Impact:** High (4)
+**Risk Score:** 8 (Moderate)
+
+#### T10: Traffic Analysis and Protocol Fingerprinting
+**Description:** A passive observer classifies the tunnel as Quantum-Go from its unencrypted framing (the datagram header is a constant 14-byte layout and the PQ handshake has distinctive sizes), or infers activity from record sizes and timing. The payload stays encrypted; this is a metadata and censorship-resistance concern, not a confidentiality break
+**Likelihood:** High (4)
+**Impact:** Low (2)
+**Risk Score:** 8 (Moderate)
+
+#### T11: Malicious or Defective External KEM Suite
+**Description:** An application registers a suite through `chkem.RegisterSuite` that leaks or weakens the shared secret. A registered suite runs in-process with access to handshake secrets, so the library cannot contain it
+**Likelihood:** Low (2)
+**Impact:** Critical (5)
+**Risk Score:** 10 (High)
 
 ---
 
@@ -213,10 +237,14 @@ Risk Score: 1-25
 
 | ID | Vulnerability | Severity | Status |
 |----|---------------|----------|--------|
-| V9 | Downgrade attack | High | Mitigated (no fallback) |
+| V9 | Downgrade attack | High | Mitigated: the Finished MAC binds the transcript including the offered suite list, and a HelloRetryRequest uses a synthetic transcript hash. Covered by the transcript-agreement proof and by tamper and HRR tests; negotiation and HRR are not modeled separately in ProVerif |
 | V10 | Version rollback | Medium | Mitigated (version binding) |
-| V11 | Replay attack | Medium | Mitigated (sequence numbers) |
+| V11 | Replay attack | Medium | Mitigated (derived nonce, 1024-bit sliding window on both transports) |
 | V12 | Session hijacking | High | Mitigated (encryption) |
+| V13 | Spoofed-source amplification and reassembler exhaustion (UDP) | Medium | Partly mitigated: a load-gated stateless cookie engages under pressure and the RETRY never exceeds the datagram that triggered it. Below the pressure threshold an endpoint answers unverified sources, and a deeper amplification budget is future work (see [datagram-dos.md](../datagram-dos.md)) |
+| V14 | Role confusion and reflection | Medium | Mitigated (role bound into the CH-KEM transcript; X-Wing's combiner is spec-fixed, so the handshake transcript and Finished carry it) |
+| V15 | Unauthenticated peer | High | Open by default; opt-in static-key pinning and PSK close it |
+| V16 | Wire fingerprinting | Low | Open (only opt-in handshake padding exists) |
 
 ---
 
@@ -257,6 +285,16 @@ Impact
    └─────┴─────┴─────┴─────┴─────►
      1     2     3     4     5   Likelihood
 ```
+
+### 6.3 Threats Added in the November 2026 Revision
+
+| Threat | Pre-mitigation (L x I) | Post-mitigation (L x I) | Residual |
+|--------|------------------------|-------------------------|----------|
+| T9 Downgrade via negotiation | 2 x 4 = 8 (Moderate) | 1 x 4 = 4 (Low) | Low; the negotiation path has tests but no separate formal model |
+| T10 Fingerprinting | 4 x 2 = 8 (Moderate) | 4 x 2 = 8 (Moderate) | Moderate by default; reduced only where handshake padding is enabled |
+| T11 External suite | 2 x 5 = 10 (High) | 2 x 5 = 10 (High) | High; conditional on the supply chain of the registered code |
+
+T10 and T11 do not improve after mitigation because the library has no control that removes them: padding is opt-in and does not hide the header, and an in-process suite cannot be sandboxed.
 
 ---
 
@@ -302,18 +340,14 @@ if session.NeedsRekey() {
 
 | Threat | Mitigation | Effectiveness |
 |--------|------------|---------------|
-| T6 (MitM) | Transcript binding | High |
-| T7 (Replay) | Sequence numbers | High |
-| T8 (DoS) | Rate limiting | Medium |
+| T6 (MitM) | Transcript binding; optional static-key pinning and PSK for peer identity | High with pinning or PSK, none against an unauthenticated active attacker by default |
+| T7 (Replay) | Derived per-direction nonce prefix and a 1024-bit sliding window; the datagram window is never reset across a rekey | High |
+| T8 (DoS) | Per-IP and handshake rate limits, handshake timeout, `MaxPendingHandshakes`; on UDP a load-gated stateless cookie and a de-amplifying RETRY | Medium to High under load; Medium otherwise |
+| T9 (Downgrade) | Offered suites bound into the Finished transcript; HelloRetryRequest synthetic transcript hash; offer list enforced on both sides, including the FIPS filter | High, tested; not separately modeled |
+| T10 (Fingerprinting) | Optional fixed-size handshake padding | Low |
+| T11 (External suite) | Explicit registration, ids from `0x8000`, a cap of 16, the shared `suitetest` conformance battery | Low against a malicious suite, Medium against an accidentally defective one |
 
-**Implementation:**
-```go
-// Replay protection with sliding window
-type ReplayWindow struct {
-    highSeq    uint64
-    bitmap     uint64  // Last 64 sequences
-}
-```
+**Replay protection:** each direction keeps a 1024-bit window of recent sequence numbers, and the AEAD nonce is the derived prefix joined with the sequence number, so a nonce is never reused within a key epoch.
 
 ---
 
@@ -326,6 +360,8 @@ type ReplayWindow struct {
 | Side-channel (reduced) | Using audited std lib | Implementation |
 | Key theft (reduced) | Operational controls | Operations |
 | Algorithm break (very low) | Multiple layers | Cryptographic |
+| Wire fingerprinting (T10) | No obfuscation layer yet; padding is opt-in | Protocol |
+| External suite code (T11) | The registering application owns the suite's code and supply chain | Operations |
 
 ### 8.2 Residual Risk Summary
 
@@ -344,9 +380,10 @@ type ReplayWindow struct {
 
 ### 9.1 High Priority
 
-1. **Complete self-test implementation** for FIPS compliance
+1. **Model suite negotiation and HelloRetryRequest in ProVerif.** Downgrade resistance rests on the transcript-agreement proof and on tests today; the negotiation path itself is not formally modeled
 2. **Establish key management procedures** including rotation schedules
 3. **Deploy monitoring** for cryptographic operation failures
+4. **Reduce wire fingerprinting (T10)** with an optional obfuscation layer; the default header is a constant layout
 
 ### 9.2 Medium Priority
 
@@ -386,4 +423,4 @@ type ReplayWindow struct {
 
 ## Appendix B: Document Control
 
-**Last Updated:** 2026-01-18
+**Last Updated:** 2026-11-08
