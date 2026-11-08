@@ -72,6 +72,8 @@ go build -tags otel -o quantum-tunnel ./cmd/quantum-tunnel
 
 Test performance on your hardware:
 
+Throughput options: `--size` (bytes to move, for example `10GB`), `--duration` (stop after this long), `--chunk` (record size, default `8KB`; throughput depends strongly on it), and `--baseline` (also run plain TCP with the same records and report the tunnel's throughput share and CPU cost against it). Sizes accept `KB`, `MB`, `GB`, `TB` and the `KiB` forms; an unknown unit is an error. `--cipher` accepts only `aes-gcm`, because the tunnel negotiates AES-256-GCM and cannot be asked for another cipher yet. Throughput is reported in decimal MB/s.
+
 ```bash
 # Benchmark 100 stream (TCP) handshakes
 quantum-tunnel bench --handshakes 100
@@ -82,8 +84,8 @@ quantum-tunnel bench --datagram-handshakes 100
 # Benchmark throughput for 30 seconds
 quantum-tunnel bench --throughput --duration 30s
 
-# Benchmark 1GB data transfer with ChaCha20-Poly1305
-quantum-tunnel bench --throughput --size 1GB --cipher chacha20
+# Move 10GB in 60KB records and compare against plain TCP
+quantum-tunnel bench --throughput --size 10GB --duration 5m --chunk 60KB --baseline
 
 # Run all benchmarks
 quantum-tunnel bench --handshakes 100 --throughput --size 500MB
@@ -93,7 +95,7 @@ quantum-tunnel bench --handshakes 100 --throughput --size 500MB
 - **Handshakes (stream/TCP)**: ~1,450/sec (~670us each, full CH-KEM, sequential)
 - **Handshakes (datagram/UDP)**: ~1,300/sec (~760us each, full CH-KEM, sequential)
 - **Cipher throughput**: ~2.5 GB/s AES-256-GCM raw AEAD (ARMv8 Crypto Extensions); ~0.7 GB/s ChaCha20-Poly1305
-- **Single-tunnel throughput (stream/TCP)**: ~690 MB/s (5.5 Gb/s) end-to-end over TCP, sustained across automatic rekeys
+- **Single-tunnel throughput (stream/TCP)**: ~690 MB/s (5.5 Gb/s) end-to-end over TCP, sustained across automatic rekeys; it depends on the record size, see [PERFORMANCE.md](../PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp)
 - **Datagram data path (UDP)**: encrypted, zero-alloc send (~3 GB/s isolated on M1 Pro darwin); one-way single-flow delivered goodput ~58 MB/s on macOS loopback (a loopback artifact) and ~280 MB/s (~2.2 Gb/s) on Linux (container arm64, indicative)
 - **Datagram aggregate (UDP, Linux `SO_REUSEPORT`)**: a single receive goroutine tops out ~365 MB/s aggregate; spreading receive across 8 sockets lifts it ~1.6x to ~565 MB/s on an 8-core container, scaling further on a many-core host
 

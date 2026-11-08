@@ -144,7 +144,9 @@ func benchCommand() {
 	throughput := fs.Bool("throughput", false, "Run throughput benchmark")
 	size := fs.String("size", "100MB", "Data size for throughput test (e.g., 100MB, 1GB)")
 	duration := fs.String("duration", "10s", "Duration for throughput test (e.g., 10s, 1m)")
-	cipherSuite := fs.String("cipher", "aes-gcm", "Cipher suite: aes-gcm or chacha20")
+	cipherSuite := fs.String("cipher", "aes-gcm", "Cipher suite; only aes-gcm is supported (the tunnel negotiates it)")
+	chunk := fs.String("chunk", "8KB", "Record size for the throughput test (e.g., 8KB, 60KB); throughput depends strongly on it")
+	baseline := fs.Bool("baseline", false, "Also run a plain TCP baseline with the same records and report the tunnel's overhead against it")
 
 	fs.Usage = func() {
 		fmt.Println(`USAGE: quantum-tunnel bench [options]
@@ -164,8 +166,8 @@ EXAMPLES:
     # Benchmark throughput for 30 seconds
     quantum-tunnel bench --throughput --duration 30s
 
-    # Benchmark 1GB data transfer with ChaCha20-Poly1305
-    quantum-tunnel bench --throughput --size 1GB --cipher chacha20
+    # Move 10GB in 60KB records and compare with plain TCP
+    quantum-tunnel bench --throughput --size 10GB --duration 5m --chunk 60KB --baseline
 
     # Run all benchmarks
     quantum-tunnel bench --handshakes 100 --throughput --size 500MB`)
@@ -173,7 +175,7 @@ EXAMPLES:
 
 	_ = fs.Parse(os.Args[2:])
 
-	runBench(*handshakes, *datagramHandshakes, *throughput, *size, *duration, *cipherSuite)
+	runBench(*handshakes, *datagramHandshakes, *throughput, *size, *duration, *cipherSuite, *chunk, *baseline)
 }
 
 func exampleCommand() {

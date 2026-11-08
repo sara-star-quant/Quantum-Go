@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,7 +13,7 @@ import (
 	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
-func runBench(handshakes, datagramHandshakes int, throughputTest bool, sizeStr, durationStr, cipherSuite string) {
+func runBench(handshakes, datagramHandshakes int, throughputTest bool, sizeStr, durationStr, cipherSuite, chunkStr string, baseline bool) {
 	const bannerWidth = 59
 	fmt.Println("╔" + strings.Repeat("═", bannerWidth) + "╗")
 	fmt.Printf("║%-*s║\n", bannerWidth, "      Quantum-Resistant Tunnel Benchmark")
@@ -37,9 +38,28 @@ func runBench(handshakes, datagramHandshakes int, throughputTest bool, sizeStr, 
 	}
 
 	if throughputTest {
-		size := parseSize(sizeStr)
+		size, err := parseSize(sizeStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid --size: %v\n", err)
+			os.Exit(1)
+		}
+		chunk, err := parseSize(chunkStr)
+		if err != nil || chunk <= 0 {
+			fmt.Fprintf(os.Stderr, "Invalid --chunk %q: want a positive size such as 8KB or 60KB\n", chunkStr)
+			os.Exit(1)
+		}
+		if cipherSuite != "aes-gcm" {
+			// The client offers AES-256-GCM first and the server takes the first suite both
+			// support, so another cipher cannot be requested yet. Refuse instead of
+			// reporting a run under a label it did not use.
+			fmt.Fprintf(os.Stderr, "--cipher %s is not supported yet: the tunnel negotiates AES-256-GCM\n", cipherSuite)
+			os.Exit(1)
+		}
 		duration := parseDuration(durationStr)
-		benchThroughput(size, duration, cipherSuite)
+		if err := benchThroughput(size, duration, int(chunk), baseline); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
 	}
 }
 
@@ -230,74 +250,138 @@ func printHandshakeRating(avg time.Duration) {
 	}
 }
 
-func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr string) {
+// throughputResult is one measured transfer.
+type throughputResult struct {
+	sent, received   int64
+	sendDur, recvDur time.Duration
+	cpu              time.Duration // user+system CPU of this process (both ends), 0 if unavailable
+	cipher           string        // negotiated cipher, empty for plain TCP
+}
+
+func (r throughputResult) recvMBps() float64 {
+	if r.recvDur <= 0 {
+		return 0
+	}
+	return float64(r.received) / r.recvDur.Seconds() / 1e6
+}
+
+func (r throughputResult) sendMBps() float64 {
+	if r.sendDur <= 0 {
+		return 0
+	}
+	return float64(r.sent) / r.sendDur.Seconds() / 1e6
+}
+
+// cpuPerGiB is the CPU seconds spent per GiB delivered.
+func (r throughputResult) cpuPerGiB() float64 {
+	if r.cpu <= 0 || r.received <= 0 {
+		return 0
+	}
+	return r.cpu.Seconds() / (float64(r.received) / (1 << 30))
+}
+
+func benchThroughput(totalBytes int64, duration time.Duration, chunkSize int, baseline bool) error {
 	fmt.Printf("Benchmarking Throughput\n")
 	fmt.Println(strings.Repeat("─", 60))
-	fmt.Printf("Target: %s over %v\n", formatSize(totalBytes), duration)
-	fmt.Printf("Cipher: %s\n\n", cipherSuiteStr)
+	fmt.Printf("Target: %s over %v, %s records\n\n", formatSize(totalBytes), duration, formatSize(int64(chunkSize)))
 
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to start listener: %v\n", err)
-		os.Exit(1)
-	}
-	defer func() { _ = listener.Close() }()
-
-	addr := listener.Addr().String()
-
-	var wg sync.WaitGroup
-	var totalSent, totalReceived atomic.Int64
-	var sendDuration, receiveDuration time.Duration
-
-	// Data chunk (8KB)
-	chunkSize := 8192
 	chunk := make([]byte, chunkSize)
 	for i := range chunk {
 		chunk[i] = byte(i % 256)
 	}
 
-	// Server goroutine. Receive() handles rekey messages internally and only returns
-	// data frames, so the counter reflects application payload.
+	var plain throughputResult
+	if baseline {
+		fmt.Println("Plain TCP baseline (no encryption)")
+		var err error
+		if plain, err = measureTCP(totalBytes, duration, chunk); err != nil {
+			return fmt.Errorf("baseline: %w", err)
+		}
+		fmt.Printf("  %.2f MB/s", plain.recvMBps())
+		if c := plain.cpuPerGiB(); c > 0 {
+			fmt.Printf(", %.2f CPU-s/GiB", c)
+		}
+		fmt.Print("\n\n")
+	}
+
+	res, err := measureTunnel(totalBytes, duration, chunk)
+	if err != nil {
+		return err
+	}
+	printThroughputResults(res)
+
+	if baseline && plain.recvMBps() > 0 && res.recvMBps() > 0 {
+		fmt.Println()
+		fmt.Println("Versus plain TCP, same records, same host:")
+		fmt.Printf("  Throughput: %.1f%% of plain TCP (%.2f vs %.2f MB/s)\n",
+			100*res.recvMBps()/plain.recvMBps(), res.recvMBps(), plain.recvMBps())
+		if pc, tc := plain.cpuPerGiB(), res.cpuPerGiB(); pc > 0 && tc > 0 {
+			fmt.Printf("  CPU: %.2f vs %.2f CPU-s/GiB (%.1fx)\n", tc, pc, tc/pc)
+		}
+		fmt.Println("  Loopback, one process for both ends: CPU covers client and server together.")
+	}
+	return nil
+}
+
+// measureTunnel moves up to totalBytes (or for duration) through a tunnel on loopback.
+func measureTunnel(totalBytes int64, duration time.Duration, chunk []byte) (throughputResult, error) {
+	var res throughputResult
+	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return res, fmt.Errorf("start listener: %w", err)
+	}
+	defer func() { _ = listener.Close() }()
+	addr := listener.Addr().String()
+
+	var wg sync.WaitGroup
+	var totalSent, totalReceived atomic.Int64
+	var sendDuration, receiveDuration time.Duration
+	var srvErr, cliErr error
+	cipher := make(chan string, 1)
+
+	cpuStart := processCPUTime()
+
+	// Receive() handles rekey messages internally and only returns data frames, so the
+	// counter reflects application payload.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Accept error: %v\n", err)
+			srvErr = fmt.Errorf("accept: %w", err)
 			return
 		}
 		defer func() { _ = conn.Close() }()
 
-		receiveStart := time.Now()
+		var receiveStart time.Time // starts at the first payload, not at Accept
 		for {
 			data, err := conn.Receive()
 			if err != nil {
 				break
 			}
+			if receiveStart.IsZero() {
+				receiveStart = time.Now()
+			}
 			totalReceived.Add(int64(len(data)))
-
-			// Check if we should stop
 			if time.Since(receiveStart) >= duration {
 				break
 			}
 		}
-		receiveDuration = time.Since(receiveStart)
+		if !receiveStart.IsZero() {
+			receiveDuration = time.Since(receiveStart)
+		}
 	}()
 
-	// Client goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-
-		time.Sleep(100 * time.Millisecond) // Let server start
-
 		client, err := tunnel.Dial("tcp", addr)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Dial error: %v\n", err)
+			cliErr = fmt.Errorf("dial: %w", err)
 			return
 		}
 		defer func() { _ = client.Close() }()
+		cipher <- client.Session().CipherSuite.String()
 
 		// Full-duplex drainer: the initiator must Receive so that an automatic rekey
 		// (triggered mid-stream once the byte threshold is crossed) can complete its
@@ -313,22 +397,16 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 		}()
 
 		sendStart := time.Now()
-		bytesToSend := totalBytes
 		lastProgress := time.Now()
-
-		for totalSent.Load() < bytesToSend && time.Since(sendStart) < duration {
+		for totalSent.Load() < totalBytes && time.Since(sendStart) < duration {
 			if err := client.Send(chunk); err != nil {
-				fmt.Fprintf(os.Stderr, "Send error: %v\n", err)
+				cliErr = fmt.Errorf("send: %w", err)
 				break
 			}
 			sent := totalSent.Add(int64(len(chunk)))
-
-			// Progress update every second
 			if time.Since(lastProgress) >= time.Second {
-				elapsed := time.Since(sendStart)
-				mbps := float64(sent) / elapsed.Seconds() / 1024 / 1024
-				fmt.Printf("Progress: %s / %s (%.1f MB/s)\r",
-					formatSize(sent), formatSize(bytesToSend), mbps)
+				fmt.Printf("Progress: %s / %s (%.1f MB/s)\r", formatSize(sent), formatSize(totalBytes),
+					float64(sent)/time.Since(sendStart).Seconds()/1e6)
 				lastProgress = time.Now()
 			}
 		}
@@ -340,31 +418,121 @@ func benchThroughput(totalBytes int64, duration time.Duration, cipherSuiteStr st
 	}()
 
 	wg.Wait()
-
-	printThroughputResults(totalSent.Load(), totalReceived.Load(), sendDuration, receiveDuration)
+	res = throughputResult{
+		sent: totalSent.Load(), received: totalReceived.Load(),
+		sendDur: sendDuration, recvDur: receiveDuration,
+		cpu: processCPUTime() - cpuStart,
+	}
+	select {
+	case res.cipher = <-cipher:
+	default:
+	}
+	if srvErr != nil {
+		return res, srvErr
+	}
+	return res, cliErr
 }
 
-func printThroughputResults(totalSent, totalReceived int64, sendDuration, receiveDuration time.Duration) {
+// measureTCP is the unencrypted baseline: the same chunk over a plain loopback TCP stream.
+func measureTCP(totalBytes int64, duration time.Duration, chunk []byte) (throughputResult, error) {
+	var res throughputResult
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return res, err
+	}
+	defer func() { _ = ln.Close() }()
+
+	var wg sync.WaitGroup
+	var totalSent, totalReceived atomic.Int64
+	var sendDuration, receiveDuration time.Duration
+	var srvErr, cliErr error
+	cpuStart := processCPUTime()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		conn, err := ln.Accept()
+		if err != nil {
+			srvErr = err
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		buf := make([]byte, 64*1024)
+		var receiveStart time.Time
+		for {
+			n, err := conn.Read(buf)
+			if n > 0 {
+				if receiveStart.IsZero() {
+					receiveStart = time.Now()
+				}
+				totalReceived.Add(int64(n))
+			}
+			if err != nil || (!receiveStart.IsZero() && time.Since(receiveStart) >= duration) {
+				break
+			}
+		}
+		if !receiveStart.IsZero() {
+			receiveDuration = time.Since(receiveStart)
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		conn, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			cliErr = err
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		sendStart := time.Now()
+		for totalSent.Load() < totalBytes && time.Since(sendStart) < duration {
+			n, err := conn.Write(chunk)
+			totalSent.Add(int64(n))
+			if err != nil {
+				cliErr = err
+				break
+			}
+		}
+		sendDuration = time.Since(sendStart)
+	}()
+
+	wg.Wait()
+	res = throughputResult{
+		sent: totalSent.Load(), received: totalReceived.Load(),
+		sendDur: sendDuration, recvDur: receiveDuration,
+		cpu: processCPUTime() - cpuStart,
+	}
+	if srvErr != nil {
+		return res, srvErr
+	}
+	return res, cliErr
+}
+
+func printThroughputResults(r throughputResult) {
 	fmt.Println()
 	fmt.Println("\nResults:")
-	fmt.Printf("  Data sent: %s\n", formatSize(totalSent))
-	fmt.Printf("  Data received: %s\n", formatSize(totalReceived))
-	fmt.Printf("  Send duration: %v\n", sendDuration)
-	fmt.Printf("  Receive duration: %v\n", receiveDuration)
+	if r.cipher != "" {
+		fmt.Printf("  Cipher (negotiated): %s\n", r.cipher)
+	}
+	fmt.Printf("  Data sent: %s\n", formatSize(r.sent))
+	fmt.Printf("  Data received: %s\n", formatSize(r.received))
+	fmt.Printf("  Send duration: %v\n", r.sendDur)
+	fmt.Printf("  Receive duration: %v\n", r.recvDur)
 	fmt.Println()
 
-	if sendDuration > 0 {
-		sendMBps := float64(totalSent) / sendDuration.Seconds() / 1024 / 1024
-		fmt.Printf("Send Throughput: %.2f MB/s (%.2f Mbps)\n", sendMBps, sendMBps*8)
+	if r.sendDur > 0 {
+		fmt.Printf("Send Throughput: %.2f MB/s (%.2f Mbps)\n", r.sendMBps(), r.sendMBps()*8)
 	}
-
-	if receiveDuration > 0 {
-		recvMBps := float64(totalReceived) / receiveDuration.Seconds() / 1024 / 1024
-		fmt.Printf("Receive Throughput: %.2f MB/s (%.2f Mbps)\n", recvMBps, recvMBps*8)
+	if r.recvDur > 0 {
+		fmt.Printf("Receive Throughput: %.2f MB/s (%.2f Mbps)\n", r.recvMBps(), r.recvMBps()*8)
 	}
-
-	avgMBps := (float64(totalSent)/sendDuration.Seconds() + float64(totalReceived)/receiveDuration.Seconds()) / 2 / 1024 / 1024
-	printThroughputRating(avgMBps)
+	if c := r.cpuPerGiB(); c > 0 {
+		fmt.Printf("CPU: %.2f CPU-s/GiB (client and server)\n", c)
+	}
+	if r.sendDur > 0 && r.recvDur > 0 {
+		printThroughputRating((r.sendMBps() + r.recvMBps()) / 2)
+	}
 }
 
 func printThroughputRating(avgMBps float64) {
@@ -380,22 +548,37 @@ func printThroughputRating(avgMBps float64) {
 	}
 }
 
-func parseSize(s string) int64 {
-	// Simple parser for sizes like "100MB", "1GB"
-	var value int64
-	var unit string
-	_, _ = fmt.Sscanf(s, "%d%s", &value, &unit)
-
-	switch unit {
-	case "KB", "kb", "K", "k":
-		return value * 1024
-	case "MB", "mb", "M", "m":
-		return value * 1024 * 1024
-	case "GB", "gb", "G", "g":
-		return value * 1024 * 1024 * 1024
-	default:
-		return value
+// parseSize parses sizes such as "100", "8KB", "60k", "1GiB". An unknown unit or a
+// malformed number is an error, not a silently tiny size.
+func parseSize(s string) (int64, error) {
+	s = strings.TrimSpace(s)
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
 	}
+	value, err := strconv.ParseInt(s[:i], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size %q", s)
+	}
+	unit := strings.TrimSpace(s[i:])
+	mult := int64(1)
+	switch strings.ToLower(unit) {
+	case "":
+	case "kb", "kib", "k":
+		mult = 1 << 10
+	case "mb", "mib", "m":
+		mult = 1 << 20
+	case "gb", "gib", "g":
+		mult = 1 << 30
+	case "tb", "tib", "t":
+		mult = 1 << 40
+	default:
+		return 0, fmt.Errorf("invalid size %q: unknown unit %q", s, unit)
+	}
+	if value > (1<<62)/mult {
+		return 0, fmt.Errorf("invalid size %q: too large", s)
+	}
+	return value * mult, nil
 }
 
 func parseDuration(s string) time.Duration {

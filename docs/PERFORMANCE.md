@@ -38,9 +38,36 @@ Handshake latency is round-trip bound, so faster hardware only shrinks the crypt
 
 ## Data plane
 
-AES-256-GCM seals at about 2.5 GB/s per core and ChaCha20-Poly1305 at about 0.7 GB/s (raw AEAD, Apple M1 Pro). The stream transport reaches about 690 MB/s (5.5 Gb/s) single tunnel, sustained across rekeys. Per-record overhead on the stream is 29 bytes (16 B AEAD tag, nonce derived and not transmitted, plus a 13 B frame header).
+AES-256-GCM seals at about 2.5 GB/s per core and ChaCha20-Poly1305 at about 0.7 GB/s (raw AEAD, Apple M1 Pro). The stream transport reaches about 690 MB/s (5.5 Gb/s) single tunnel, sustained across rekeys; the record size moves this a lot, see the next section. Per-record overhead on the stream is 29 bytes (16 B AEAD tag, nonce derived and not transmitted, plus a 13 B frame header).
 
 The datagram data path is syscall-bound, not crypto-bound: the isolated send path runs at about 3 GB/s on a laptop, so throughput is set by the send and receive system calls. Two features attack that cost.
+
+### Throughput by record size and cost against plain TCP
+
+`quantum-tunnel bench --throughput --baseline --chunk <size>` moves the same bytes in the same record size over a plain TCP stream and over a tunnel, on loopback, in one process. Apple M1 Pro, Go 1.27.3, AES-256-GCM, decimal MB/s, one 1 GiB run per row:
+
+| Record size | Tunnel | Plain TCP | Tunnel as share of plain TCP | CPU per GiB, tunnel vs plain TCP |
+|-------------|--------|-----------|------------------------------|----------------------------------|
+| 8 KB | 341 MB/s | 401 MB/s | 85% | 5.7 vs 4.6 CPU-s (1.2x) |
+| 16 KB | 505 MB/s | 672 MB/s | 75% | 4.0 vs 3.0 CPU-s (1.4x) |
+| 60 KB | 995 MB/s | 1182 MB/s | 84% | 2.1 vs 1.1 CPU-s (1.9x) |
+
+Repeated runs moved the share by up to about 5 points (the 60 KB row read 80% on another run), so read it as roughly 75 to 85%.
+
+A dataset-sized transfer, 10 GiB of synthetic bytes (a repeating pattern; the tunnel does not compress, so the content does not matter) as a size class, not a real dataset, through one tunnel:
+
+| Record size | Tunnel | Plain TCP |
+|-------------|--------|-----------|
+| 60 KB | 10.9 s (987 MB/s) | 9.0 s (1189 MB/s) |
+| 8 KB | 31.4 s (342 MB/s) | 26.5 s (405 MB/s) |
+
+The rate matched the 1 GiB runs, so it does not fall off with more data. Read these with four limits in mind:
+- Loopback has no network limit. On a real link the network usually sets the rate and the tunnel's share of it is higher.
+- Client and server share one process and one CPU here, so the CPU figures cover both ends. On separate hosts each side pays about half.
+- The throughput of the large-record Go benchmark and the earlier 690 MB/s headline were not reconciled with these numbers in this change; the CLI figures are what this tool measures today.
+- The datagram transport is not in this table: it does not retransmit application data, so a transfer time is not meaningful there. Its goodput is in the section above.
+
+Receive timing starts at the first byte, not at `Accept`.
 
 ### Where stream time goes
 

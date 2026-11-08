@@ -21,7 +21,7 @@ Traffic an attacker records today can be decrypted later by a quantum computer. 
 ## What you get
 
 - **Speed to first byte.** The client sends data after **1 round trip** on both transports: 21 ms on a 20 ms link, 101 ms on a 100 ms link. The handshake costs 340 to 610 µs of CPU for both sides.
-- **Throughput.** About **690 MB/s** on a single stream tunnel. On Linux, batched datagram sends with UDP offload reach **701 MB/s** (x86-64) and **528 MB/s** (arm64) per flow, up to 3.6 times a plain send.
+- **Throughput.** About **690 MB/s** on a single stream tunnel; the record size changes it a lot, see [PERFORMANCE.md](docs/PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp). On Linux, batched datagram sends with UDP offload reach **701 MB/s** (x86-64) and **528 MB/s** (arm64) per flow, up to 3.6 times a plain send.
 - **Top-tier post-quantum security.** ML-KEM-1024 is NIST security level 5. Prefer smaller handshakes? Set `KEMSuite` to the X-Wing suite (ML-KEM-768 + X25519), or register your own suite.
 - **Two transports, one API.** TCP, and a connectionless UDP transport with retransmission, reliable rekey, anti-DoS cookies and roaming across IP changes.
 - **Authentication you control.** Pin your server's key, or issue each client its own pre-shared key. A client with no key looks the same as one with a wrong key.
@@ -93,7 +93,7 @@ Measured on CI runners and a laptop; full tables, methodology and reproduction s
 |--------|--------|
 | Client can send data after | 1 RTT (stream and datagram), under 1 ms of crypto |
 | Handshake CPU, both sides | 340 to 610 µs (Linux, macOS, Windows runners); static-key auth adds about 35 to 50% |
-| Stream throughput, single tunnel | about 690 MB/s (5.5 Gb/s) |
+| Stream throughput, single tunnel | about 690 MB/s (5.5 Gb/s), depends on record size |
 | Datagram goodput, single flow, Linux | 196 / 304 MB/s per datagram (x86 / arm64), 701 / 528 MB/s with `SendBatch` and offload |
 | AES-256-GCM, raw, one core | about 2.5 GB/s |
 | Wire cost | 29 B per stream record; about 1.7 KB handshake flight (ML-KEM-1024) |
