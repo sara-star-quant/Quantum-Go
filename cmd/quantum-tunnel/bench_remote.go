@@ -60,8 +60,9 @@ func serveThroughput(addr string, plain bool, duration time.Duration, ready chan
 		}
 		defer func() { _ = conn.Close() }()
 		res.cipher = conn.Session().CipherSuite.String()
+		buf := make([]byte, 0, 64<<10)
 		for {
-			data, err := conn.Receive()
+			data, err := conn.ReceiveInto(buf[:0])
 			if err != nil {
 				break
 			}

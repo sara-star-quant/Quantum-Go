@@ -124,8 +124,8 @@ func TestStreamSendAllocations(t *testing.T) {
 	}
 	batch := [][]byte{payload, payload, payload, payload}
 	_ = tr.sealAndWriteBatch(batch)
-	if got := quietAllocs(2, func() { _ = tr.sealAndWriteBatch(batch) }); got > 2 {
-		t.Fatalf("steady-state batch send allocates %v times per batch, want at most 2 (the buffer lists)", got)
+	if got := quietAllocs(0, func() { _ = tr.sealAndWriteBatch(batch) }); got != 0 {
+		t.Fatalf("steady-state batch send allocates %v times per batch, want 0", got)
 	}
 }
 

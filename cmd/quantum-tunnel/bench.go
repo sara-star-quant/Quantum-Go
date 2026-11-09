@@ -353,9 +353,10 @@ func measureTunnel(totalBytes int64, duration time.Duration, chunk []byte) (thro
 		}
 		defer func() { _ = conn.Close() }()
 
-		var receiveStart time.Time // starts at the first payload, not at Accept
+		var receiveStart time.Time     // starts at the first payload, not at Accept
+		buf := make([]byte, 0, 64<<10) // one buffer for every record: no allocation per receive
 		for {
-			data, err := conn.Receive()
+			data, err := conn.ReceiveInto(buf[:0])
 			if err != nil {
 				break
 			}

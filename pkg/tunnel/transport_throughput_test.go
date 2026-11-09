@@ -179,3 +179,44 @@ func BenchmarkStreamSendBatch(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkStreamReceiveInto is the receive benchmark with a reused caller buffer, which
+// removes the per-record plaintext allocation.
+func BenchmarkStreamReceiveInto(b *testing.B) {
+	for _, size := range []int{1 << 10, 16 << 10, 60 << 10} {
+		b.Run(fmt.Sprintf("record=%dB", size), func(b *testing.B) {
+			sender, receiver, cleanup := benchStreamPair(b)
+			defer cleanup()
+			payload := make([]byte, size)
+			stop := make(chan struct{})
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-stop:
+						return
+					default:
+					}
+					if err := sender.Send(payload); err != nil {
+						return
+					}
+				}
+			}()
+			buf := make([]byte, 0, size)
+			b.SetBytes(int64(size))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := receiver.ReceiveInto(buf[:0]); err != nil {
+					b.Fatalf("receive %d/%d: %v", i, b.N, err)
+				}
+			}
+			b.StopTimer()
+			close(stop)
+			_ = sender.conn.SetWriteDeadline(time.Now())
+			wg.Wait()
+		})
+	}
+}

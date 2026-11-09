@@ -39,6 +39,12 @@ type Transport struct {
 	// goroutine.
 	readBuf []byte
 
+	// batchBufs and batchFrames are the reused working lists of sealAndWriteBatch,
+	// guarded by writeMu.
+	batchBufs   net.Buffers
+	batchFrames []*[]byte
+	batchSend   net.Buffers
+
 	// nonceScratch is the AEAD nonce for the receive path. Receive is single-reader, and
 	// a field is heap memory already, where a local array would escape to the heap on
 	// every record.
@@ -308,12 +314,17 @@ func (t *Transport) sealAndWriteBatch(payloads [][]byte) error {
 		return t.sealAndWriteEach(payloads)
 	}
 
-	msgs := make(net.Buffers, 0, len(payloads))
-	frames := make([]*[]byte, 0, len(payloads))
+	// The two lists live on the Transport and are reused: SendBatch holds writeMu, so
+	// only one batch uses them at a time.
+	msgs := t.batchBufs[:0]
+	frames := t.batchFrames[:0]
 	defer func() {
-		for _, f := range frames { // the writev below has returned by the time this runs
+		for i, f := range frames { // the writev below has returned by the time this runs
 			putFrame(f)
+			frames[i] = nil
 		}
+		clear(msgs) // drop references to the frames
+		t.batchFrames, t.batchBufs = frames[:0], msgs[:0]
 	}()
 	var sealErr error
 	for _, p := range payloads {
@@ -337,7 +348,12 @@ func (t *Transport) sealAndWriteBatch(payloads [][]byte) error {
 		if t.writeTimeout > 0 {
 			_ = t.conn.SetWriteDeadline(time.Now().Add(t.writeTimeout))
 		}
-		if _, err := msgs.WriteTo(t.conn); err != nil {
+		// WriteTo consumes the list it is called on and takes its address, so a local
+		// header would escape to the heap; this field already lives there.
+		t.batchSend = msgs
+		_, err := t.batchSend.WriteTo(t.conn)
+		t.batchSend = nil
+		if err != nil {
 			return err
 		}
 	}
@@ -403,44 +419,54 @@ func (t *Transport) writeLocked(msg []byte) error {
 // Uses an iterative loop instead of recursion to prevent stack overflow
 // from malicious peers sending unbounded control messages (e.g. ping floods).
 func (t *Transport) Receive() ([]byte, error) {
+	return t.ReceiveInto(nil)
+}
+
+// ReceiveInto is Receive that appends the plaintext to dst and returns the extended
+// slice, so a caller that reuses one buffer (pass buf[:0]) receives records with no
+// allocation once the buffer is large enough. Control messages are handled as in
+// Receive and never reach the caller. On an error dst's contents are unchanged.
+func (t *Transport) ReceiveInto(dst []byte) ([]byte, error) {
 	for {
 		if err := t.checkClosed(); err != nil {
-			return nil, err
+			return dst, err
 		}
 
 		msg, msgType, err := t.readMessage()
 		if err != nil {
-			return nil, err
+			return dst, err
 		}
 
 		switch msgType {
 		case protocol.MessageTypeData:
-			data, err := t.handleData(msg)
+			data, err := t.handleDataTo(dst, msg)
 			if err != nil {
 				t.recordProtocolError(err)
+				return dst, err
 			}
-			return data, err
+			return data, nil
 		case protocol.MessageTypePing:
 			if err := t.sendPong(); err != nil {
-				return nil, err
+				return dst, err
 			}
 			continue
 		case protocol.MessageTypePong:
 			continue
 		case protocol.MessageTypeClose:
 			t.markClosed()
-			return nil, qerrors.ErrTunnelClosed
+			return dst, qerrors.ErrTunnelClosed
 		case protocol.MessageTypeRekey:
 			if err := t.handleRekey(msg); err != nil {
 				t.recordProtocolError(err)
-				return nil, err
+				return dst, err
 			}
 			continue
 		case protocol.MessageTypeAlert:
-			return t.handleAlert(msg)
+			_, err := t.handleAlert(msg)
+			return dst, err
 		default:
 			t.recordProtocolError(qerrors.ErrInvalidMessage)
-			return nil, qerrors.ErrInvalidMessage
+			return dst, qerrors.ErrInvalidMessage
 		}
 	}
 }
@@ -503,6 +529,11 @@ func (t *Transport) markClosed() {
 
 // handleData processes an encrypted data message.
 func (t *Transport) handleData(msg []byte) ([]byte, error) {
+	return t.handleDataTo(nil, msg)
+}
+
+// handleDataTo is handleData appending the plaintext to dst.
+func (t *Transport) handleDataTo(dst, msg []byte) ([]byte, error) {
 	// Decode data message
 	seq, ciphertext, err := t.codec.DecodeData(msg)
 	if err != nil {
@@ -514,7 +545,7 @@ func (t *Transport) handleData(msg []byte) ([]byte, error) {
 	// new cipher), so there is no fragile sequence-number-based flip here.
 	// The sender authenticated the sequence number exactly as it appears in the frame
 	// header, so those bytes serve as the additional data without a separate buffer.
-	plaintext, err := t.session.decryptDataTo(nil, ciphertext, seq, msg[protocol.HeaderSize:protocol.HeaderSize+8], t.nonceScratch[:])
+	plaintext, err := t.session.decryptDataTo(dst, ciphertext, seq, msg[protocol.HeaderSize:protocol.HeaderSize+8], t.nonceScratch[:])
 	if err != nil {
 		return nil, err
 	}
