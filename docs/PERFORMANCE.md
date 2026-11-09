@@ -10,6 +10,7 @@ Two transports share the crypto core: a TCP/stream transport (length-prefixed fr
 - **Laptop:** Apple M1 Pro, loopback, Go 1.27, quiet machine, network-filtering software turned off.
 - **Hygiene:** measure with network-filtering software (a VPN client, antivirus or endpoint-security agent) turned off. Such software can sit on every socket call, loopback included: on the laptop used here, quitting one VPN client roughly doubled 60 KB-record throughput (about 1.2 to 2.5 GB/s) and tripled 8 KB-record throughput. Check that the machine is idle before a run, alternate the builds you compare, and repeat each run.
 - **Container:** Linux arm64 VM with 8 cores (Docker Desktop), loopback.
+- **Container bridge:** `scripts/docker-bench.sh [repetitions]` runs the throughput bench between two containers on a bridge network and prints the tunnel against plain TCP per record size, with the spread between runs. It is closer to two hosts than loopback, but it is still one machine.
 - **Reproduce:** `quantum-tunnel bench --handshakes N --datagram-handshakes N --throughput` ([CLI reference](usage/CLI.md#benchmark-mode)), or `go test ./test/benchmark/ -bench Handshake` and `go test ./pkg/tunnel/ -bench DatagramEndToEnd`.
 
 ## Connection setup
@@ -92,7 +93,14 @@ In short:
 
 On a quiet Apple M1 Pro laptop a batch of 8 gave 3.4x at 256 B, 2.4x at 1400 B and 1.6x at 8 KB, in line with the macOS runner.
 
-I also tried a receive-side read-ahead, so one `read` serves many records, and left it out. On Linux loopback it raised batched throughput by up to 1.7x but cut plain per-record sends to about 0.45x, and a heuristic that turns it on only for bursts did not avoid that. Loopback charges the sender for waking a faster receiver, so it cannot settle receiver policy; that needs two hosts.
+I tried a receive-side read-ahead (so one `read` serves many records) twice and left it out. On Linux loopback it raised batched throughput by up to 1.7x but cut plain per-record sends to about 0.45x, and a heuristic that enables it only for bursts did not avoid that. Loopback charges the sender for waking a faster receiver, so a second test used two containers on a bridge network (`scripts/docker-bench.sh`; Docker Desktop on an Apple M1 Pro, quiet machine, network-filtering software off, medians of three interleaved runs, read-ahead for records up to 4 KB against direct reads):
+
+| Record size | Plain `Send` | `SendBatch` of 8 | Receiver CPU per GiB, batch of 8 |
+|-------------|--------------|------------------|----------------------------------|
+| 1400 B | 272 to 276 MB/s (+2%) | 641 to 830 MB/s (+29%) | 1.73 to 1.31 (-24%) |
+| 2048 B | 388 to 331 MB/s (-15%) | 769 to 980 MB/s (+28%) | 1.45 to 1.16 (-20%) |
+
+Read-ahead is a clear win for small records that arrive in bursts. It also cost plain 2 KB sends 15% in all three runs, and a receiver cannot cheaply tell a bursty sender from a plain one, so it stays out. At 4 KB and above the container VM produced two throughput modes (identical runs read 584, 948 and 584 MB/s), so those cells could not resolve a difference of 10%. A bridge is closer to a real network than loopback but is still one machine; two real hosts running the same script and `bench --serve` and `--connect` would settle it.
 
 `SendBatch` is aimed at a VPN reading packets from a TUN device in bursts.
 
@@ -123,7 +131,7 @@ Both Linux architectures were consistent from run to run. macOS and Windows move
 
 ### Where stream time goes
 
-A CPU profile of 60 KB records over loopback (`BenchmarkStreamReceiveLargeRecords`, quiet laptop) shows about 66% of CPU in `read` and `write` system calls, about 4.5% in AES-GCM, and most of the rest in scheduler and netpoll waits; for 1 KB records it is 88% system calls. The tunnel runs at about half of plain TCP. A record costs a header read and a payload read, where the plain TCP loop reads 64 KB at once, so receive-side read-ahead is the obvious next lever. It helped bursts of records and hurt single records in Linux loopback tests, where the sender pays for waking a faster receiver, and loopback cannot settle that, so it was not shipped; it needs a two-host measurement.
+A CPU profile of 60 KB records over loopback (`BenchmarkStreamReceiveLargeRecords`, quiet laptop) shows about 66% of CPU in `read` and `write` system calls, about 4.5% in AES-GCM, and most of the rest in scheduler and netpoll waits; for 1 KB records it is 88% system calls. The tunnel runs at about half of plain TCP. A record costs a header read and a payload read, where the plain TCP loop reads 64 KB at once, so receive-side read-ahead is the obvious next lever. It gained 29% for batched small records and cost plain 2 KB sends 15% in container-bridge tests (see the batching section), so it was not shipped.
 
 ### Datagram goodput, single flow (CI runners, Linux)
 
