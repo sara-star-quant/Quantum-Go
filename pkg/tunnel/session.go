@@ -11,7 +11,6 @@
 package tunnel
 
 import (
-	"context"
 	"encoding/binary"
 	"sync"
 	"sync/atomic"
@@ -349,7 +348,7 @@ func (s *Session) InitializeKeys(masterSecret []byte, cipherSuite constants.Ciph
 
 // Encrypt encrypts data for sending.
 func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
-	seq, cipher, prefix, done, err := s.sealPrep(len(plaintext))
+	seq, cipher, prefix, timer, err := s.sealPrep(len(plaintext))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -363,12 +362,10 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 	buildAEADNonce(nonce[:], prefix, seq)
 	ciphertext, err := cipher.SealWithNonce(nonce[:], plaintext, aad)
 	if err != nil {
-		if done != nil {
-			done(err)
-		}
+		s.reportEncrypt(timer, len(plaintext), err)
 		return nil, 0, err
 	}
-	s.sealDone(done, len(plaintext))
+	s.sealDone(timer, len(plaintext))
 	return ciphertext, seq, nil
 }
 
@@ -386,7 +383,7 @@ func (s *Session) encryptFrameTo(dst, plaintext, nonce []byte) ([]byte, uint64, 
 	if ctLen > constants.MaxPayloadSize {
 		return dst, 0, qerrors.ErrMessageTooLarge // checked before a sequence number is consumed
 	}
-	seq, cipher, prefix, done, err := s.sealPrep(len(plaintext))
+	seq, cipher, prefix, timer, err := s.sealPrep(len(plaintext))
 	if err != nil {
 		return dst, 0, err
 	}
@@ -400,19 +397,18 @@ func (s *Session) encryptFrameTo(dst, plaintext, nonce []byte) ([]byte, uint64, 
 	buildAEADNonce(nonce, prefix, seq)
 	out, err := cipher.SealWithNonceTo(dst, nonce, plaintext, aad)
 	if err != nil {
-		if done != nil {
-			done(err)
-		}
+		s.reportEncrypt(timer, len(plaintext), err)
 		return dst[:start], 0, err
 	}
-	s.sealDone(done, len(plaintext))
+	s.sealDone(timer, len(plaintext))
 	return out, seq, nil
 }
 
 // sealPrep assigns the next sequence number and captures the send cipher state for one
-// record, enforcing the per-epoch key-wear cap. done is the observer callback to finish
-// with (nil without an observer); on error it has already been called.
-func (s *Session) sealPrep(n int) (seq uint64, cipher *crypto.AEAD, prefix []byte, done func(error), err error) {
+// record, enforcing the per-epoch key-wear cap. timer starts the observer's clock (a zero
+// value, costing nothing, when there is no observer); on error the failure has already
+// been reported.
+func (s *Session) sealPrep(n int) (seq uint64, cipher *crypto.AEAD, prefix []byte, timer opTimer, err error) {
 	seq = s.sendSeq.Add(1) - 1
 
 	// The send cipher is switched to the new key explicitly at rekey time (initiator in
@@ -426,18 +422,14 @@ func (s *Session) sealPrep(n int) (seq uint64, cipher *crypto.AEAD, prefix []byt
 	startSeq := s.sendEpochStartSeq.Load()
 	s.mu.RUnlock()
 
-	if s.observer != nil {
-		_, done = s.observer.OnEncrypt(context.Background(), n)
-	}
+	timer = s.startTimer()
 
 	if cipher == nil {
 		if s.observer != nil {
 			s.observer.OnProtocolError(qerrors.ErrInvalidState)
 		}
-		if done != nil {
-			done(qerrors.ErrInvalidState)
-		}
-		return 0, nil, nil, nil, qerrors.ErrInvalidState
+		s.reportEncrypt(timer, n, qerrors.ErrInvalidState)
+		return 0, nil, nil, opTimer{}, qerrors.ErrInvalidState
 	}
 
 	// Hard cap on how many records this epoch's key seals. NeedsRekey starts a rekey
@@ -447,24 +439,42 @@ func (s *Session) sealPrep(n int) (seq uint64, cipher *crypto.AEAD, prefix []byt
 	// uint64 underflow at the rekey boundary, where this seq was assigned just before a
 	// concurrent rekey advanced sendEpochStartSeq (seq < startSeq, so per-epoch count 0).
 	if seq >= startSeq && seq-startSeq >= constants.MaxPacketsBeforeRekey {
-		if done != nil {
-			done(qerrors.ErrNonceExhausted)
-		}
-		return 0, nil, nil, nil, qerrors.ErrNonceExhausted
+		s.reportEncrypt(timer, n, qerrors.ErrNonceExhausted)
+		return 0, nil, nil, opTimer{}, qerrors.ErrNonceExhausted
 	}
-	return seq, cipher, prefix, done, nil
+	return seq, cipher, prefix, timer, nil
 }
 
 // sealDone finishes the accounting for a record that was sealed.
-func (s *Session) sealDone(done func(error), plaintextLen int) {
-	if done != nil {
-		done(nil)
-	}
+func (s *Session) sealDone(timer opTimer, plaintextLen int) {
+	s.reportEncrypt(timer, plaintextLen, nil)
 	s.BytesSent.Add(int64(plaintextLen))
 	s.PacketsSent.Add(1)
 	s.mu.Lock()
 	s.LastActivity = time.Now()
 	s.mu.Unlock()
+}
+
+// opTimer is the start of one observed operation; the zero value means unobserved.
+type opTimer struct{ start time.Time }
+
+func (s *Session) startTimer() opTimer {
+	if s.observer == nil {
+		return opTimer{}
+	}
+	return opTimer{start: time.Now()}
+}
+
+func (s *Session) reportEncrypt(t opTimer, n int, err error) {
+	if s.observer != nil {
+		s.observer.OnEncrypt(n, time.Since(t.start), err)
+	}
+}
+
+func (s *Session) reportDecrypt(t opTimer, n int, err error) {
+	if s.observer != nil {
+		s.observer.OnDecrypt(n, time.Since(t.start), err)
+	}
 }
 
 // Decrypt decrypts received data.
@@ -501,10 +511,7 @@ func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce [
 	}
 
 	observer := s.observer
-	var done func(error)
-	if observer != nil {
-		_, done = observer.OnDecrypt(context.Background(), len(ciphertext))
-	}
+	timer := s.startTimer()
 
 	// Use sequence number as additional authenticated data, and derive the AEAD nonce
 	// as prefix || seq (the sender did not transmit it). The same nonce serves both the
@@ -533,14 +540,10 @@ func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce [
 				observer.OnAuthFailure()
 			}
 		}
-		if done != nil {
-			done(err)
-		}
+		s.reportDecrypt(timer, len(ciphertext), err)
 		return nil, err
 	}
-	if done != nil {
-		done(nil)
-	}
+	s.reportDecrypt(timer, len(ciphertext), nil)
 
 	s.BytesReceived.Add(int64(len(plaintext)))
 	s.PacketsRecv.Add(1)

@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net"
 	"testing"
@@ -151,5 +152,58 @@ func TestStreamReceiveAllocations(t *testing.T) {
 		i++
 	}); got > 1 {
 		t.Fatalf("stream receive allocates %v times per record, want at most 1 (the plaintext)", got)
+	}
+}
+
+// quietObserver is an Observer that does nothing, to prove the data path costs the same
+// with an observer attached.
+type quietObserver struct{}
+
+func (quietObserver) OnSessionStart()       {}
+func (quietObserver) OnSessionEnd()         {}
+func (quietObserver) OnSessionFailed(error) {}
+func (quietObserver) OnReplayDetected()     {}
+func (quietObserver) OnAuthFailure()        {}
+func (quietObserver) OnProtocolError(error) {}
+func (quietObserver) OnHandshakeStart(ctx context.Context) (context.Context, func(error)) {
+	return ctx, func(error) {}
+}
+func (quietObserver) OnRekeyStart(ctx context.Context) (context.Context, func(error)) {
+	return ctx, func(error) {}
+}
+func (quietObserver) OnEncrypt(int, time.Duration, error) {}
+func (quietObserver) OnDecrypt(int, time.Duration, error) {}
+
+func TestObserverAddsNoAllocationsToTheStreamDataPath(t *testing.T) {
+	if raceEnabled {
+		t.Skip("the race detector drops pooled buffers and adds allocations")
+	}
+	tx, rx := inplaceSessionPair(t)
+	tx.SetObserver(quietObserver{})
+	rx.SetObserver(quietObserver{})
+
+	send := &Transport{session: tx, conn: sinkConn{}, codec: protocol.NewCodec()}
+	payload := make([]byte, 1400)
+	_ = send.sealAndWrite(payload)
+	if got := quietAllocs(0, func() { _ = send.sealAndWrite(payload) }); got != 0 {
+		t.Fatalf("send with an observer allocates %v times per record, want 0", got)
+	}
+
+	frames := make([][]byte, 0, 4096)
+	for i := 0; i < 4096; i++ {
+		f, _, err := tx.encryptFrameTo(nil, payload, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		frames = append(frames, f)
+	}
+	recv := &Transport{session: rx, codec: protocol.NewCodec()}
+	buf := make([]byte, 0, 2048)
+	i := 0
+	if got := testing.AllocsPerRun(1000, func() {
+		_, _ = recv.handleDataTo(buf[:0], frames[i])
+		i++
+	}); got != 0 {
+		t.Fatalf("receive with an observer allocates %v times per record, want 0", got)
 	}
 }

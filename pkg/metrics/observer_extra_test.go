@@ -63,19 +63,15 @@ func TestTunnelObserverHandshakeEncryptDecrypt(t *testing.T) {
 			t.Fatalf("%s: %d handshake latencies recorded, want 2", role, n)
 		}
 
-		_, done = o.OnEncrypt(context.Background(), 100)
-		done(nil)
-		_, done = o.OnEncrypt(context.Background(), 100)
-		done(errors.New("seal"))
+		o.OnEncrypt(100, time.Millisecond, nil)
+		o.OnEncrypt(100, time.Millisecond, errors.New("seal"))
 		s := c.Snapshot()
 		if s.BytesSent != 100 || s.PacketsSent != 1 || s.EncryptErrors != 1 {
 			t.Fatalf("%s encrypt: bytes=%d packets=%d errors=%d", role, s.BytesSent, s.PacketsSent, s.EncryptErrors)
 		}
 
-		_, done = o.OnDecrypt(context.Background(), 60)
-		done(nil)
-		_, done = o.OnDecrypt(context.Background(), 60)
-		done(errors.New("open"))
+		o.OnDecrypt(60, time.Millisecond, nil)
+		o.OnDecrypt(60, time.Millisecond, errors.New("open"))
 		s = c.Snapshot()
 		if s.BytesReceived != 60 || s.PacketsRecv != 1 || s.DecryptErrors != 1 {
 			t.Fatalf("%s decrypt: bytes=%d packets=%d errors=%d", role, s.BytesReceived, s.PacketsRecv, s.DecryptErrors)

@@ -103,46 +103,29 @@ func (o *TunnelObserver) OnHandshakeStart(ctx context.Context) (context.Context,
 	}
 }
 
-// OnEncrypt records encryption metrics.
-func (o *TunnelObserver) OnEncrypt(ctx context.Context, plaintextLen int) (context.Context, func(error)) {
-	start := time.Now()
-	ctx, endSpan := o.tracer.StartSpan(ctx, SpanEncrypt)
-
-	return ctx, func(err error) {
-		duration := time.Since(start)
-		o.collector.RecordEncryptLatency(duration)
-
-		if err != nil {
-			o.collector.RecordEncryptError()
-			o.logger.Debug("encrypt failed", Fields{"error": err.Error()})
-		} else {
-			o.collector.RecordBytesSent(plaintextLen)
-			o.collector.RecordPacketSent()
-		}
-
-		endSpan(err)
+// OnEncrypt records one sealed record. It allocates nothing, so it is safe on the data
+// path; per-record trace spans were dropped because each one was a detached root span.
+func (o *TunnelObserver) OnEncrypt(plaintextLen int, took time.Duration, err error) {
+	o.collector.RecordEncryptLatency(took)
+	if err != nil {
+		o.collector.RecordEncryptError()
+		o.logger.Debug("encrypt failed", Fields{"error": err.Error()})
+		return
 	}
+	o.collector.RecordBytesSent(plaintextLen)
+	o.collector.RecordPacketSent()
 }
 
-// OnDecrypt records decryption metrics.
-func (o *TunnelObserver) OnDecrypt(ctx context.Context, ciphertextLen int) (context.Context, func(error)) {
-	start := time.Now()
-	ctx, endSpan := o.tracer.StartSpan(ctx, SpanDecrypt)
-
-	return ctx, func(err error) {
-		duration := time.Since(start)
-		o.collector.RecordDecryptLatency(duration)
-
-		if err != nil {
-			o.collector.RecordDecryptError()
-			o.logger.Debug("decrypt failed", Fields{"error": err.Error()})
-		} else {
-			o.collector.RecordBytesReceived(ciphertextLen)
-			o.collector.RecordPacketReceived()
-		}
-
-		endSpan(err)
+// OnDecrypt records one opened record, like OnEncrypt.
+func (o *TunnelObserver) OnDecrypt(ciphertextLen int, took time.Duration, err error) {
+	o.collector.RecordDecryptLatency(took)
+	if err != nil {
+		o.collector.RecordDecryptError()
+		o.logger.Debug("decrypt failed", Fields{"error": err.Error()})
+		return
 	}
+	o.collector.RecordBytesReceived(ciphertextLen)
+	o.collector.RecordPacketReceived()
 }
 
 // OnReplayDetected records a blocked replay attack.
@@ -201,18 +184,18 @@ func NewInstrumentedSession(observer *TunnelObserver) *InstrumentedSession {
 }
 
 // WrapEncrypt wraps an encrypt operation with metrics.
-func (s *InstrumentedSession) WrapEncrypt(ctx context.Context, plaintextLen int, fn func() error) error {
-	_, done := s.observer.OnEncrypt(ctx, plaintextLen)
+func (s *InstrumentedSession) WrapEncrypt(_ context.Context, plaintextLen int, fn func() error) error {
+	start := time.Now()
 	err := fn()
-	done(err)
+	s.observer.OnEncrypt(plaintextLen, time.Since(start), err)
 	return err
 }
 
 // WrapDecrypt wraps a decrypt operation with metrics.
-func (s *InstrumentedSession) WrapDecrypt(ctx context.Context, ciphertextLen int, fn func() error) error {
-	_, done := s.observer.OnDecrypt(ctx, ciphertextLen)
+func (s *InstrumentedSession) WrapDecrypt(_ context.Context, ciphertextLen int, fn func() error) error {
+	start := time.Now()
 	err := fn()
-	done(err)
+	s.observer.OnDecrypt(ciphertextLen, time.Since(start), err)
 	return err
 }
 

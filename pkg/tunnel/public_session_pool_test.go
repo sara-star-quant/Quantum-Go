@@ -25,14 +25,8 @@ func (o *countingObserver) OnProtocolError(error) {}
 func (o *countingObserver) OnHandshakeStart(ctx context.Context) (context.Context, func(error)) {
 	return ctx, func(error) {}
 }
-func (o *countingObserver) OnEncrypt(ctx context.Context, _ int) (context.Context, func(error)) {
-	o.encrypts.Add(1)
-	return ctx, func(error) {}
-}
-func (o *countingObserver) OnDecrypt(ctx context.Context, _ int) (context.Context, func(error)) {
-	o.decrypts.Add(1)
-	return ctx, func(error) {}
-}
+func (o *countingObserver) OnEncrypt(int, time.Duration, error) { o.encrypts.Add(1) }
+func (o *countingObserver) OnDecrypt(int, time.Duration, error) { o.decrypts.Add(1) }
 func (o *countingObserver) OnRekeyStart(ctx context.Context) (context.Context, func(error)) {
 	return ctx, func(error) {}
 }
