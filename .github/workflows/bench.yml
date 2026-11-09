@@ -39,7 +39,7 @@ jobs:
 
       - name: Stream batching
         shell: bash
-        run: go test ./pkg/tunnel/ -run xxx -bench 'StreamSendBatch' -benchtime 1s -count 3 | tee streambatch.txt
+        run: go test ./pkg/tunnel/ -run xxx -bench 'StreamSendBatch|StreamReceive' -benchtime 1s -count 3 -benchmem | tee streambatch.txt
 
       - name: Soak (same-source datagram redials)
         if: github.event_name == 'schedule' || inputs.soak_dials != '0'
