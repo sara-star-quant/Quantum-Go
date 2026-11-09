@@ -32,8 +32,14 @@ type DatagramConn struct {
 	// sendBuf is the reusable frame buffer for Send (header || ciphertext || tag),
 	// retained across calls so the steady-state send path allocates nothing.
 	sendBuf []byte
-	// batchBuf holds the sealed frames of one SendBatch, retained across calls.
-	batchBuf []byte
+	// batchBuf holds the sealed frames of one SendBatch, retained across calls, and
+	// batchEnds the offset where each frame ends.
+	batchBuf  []byte
+	batchEnds []int
+
+	// nonce is the AEAD nonce scratch for sealing, guarded by sendMu. A field is on the
+	// heap already; a local array would be allocated on every datagram.
+	nonce [constants.AESNonceSize]byte
 }
 
 // newDatagramConn wraps an established datagram session.
@@ -64,7 +70,7 @@ func (c *DatagramConn) Send(p []byte) error {
 		RecvIndex: c.ds.peerIndex,
 		Seq:       seq,
 	})
-	frame, err := s.DatagramSealTo(header, header, seq, p)
+	frame, err := s.DatagramSealTo(header, header, seq, p, c.nonce[:])
 	if err != nil {
 		return err
 	}
@@ -113,7 +119,8 @@ func (c *DatagramConn) SendBatch(payloads [][]byte) error {
 
 	// Seal every payload back to back; offsets record where each frame ends.
 	buf := c.batchBuf[:0]
-	ends := make([]int, 0, len(payloads))
+	ends := c.batchEnds[:0]
+	defer func() { c.batchEnds = ends[:0] }() // keep the grown list; read only until return
 	var lastSeq uint64
 	for _, p := range payloads {
 		seq := s.nextDatagramSeq()
@@ -123,7 +130,7 @@ func (c *DatagramConn) SendBatch(payloads [][]byte) error {
 			RecvIndex: c.ds.peerIndex,
 			Seq:       seq,
 		})
-		frame, err := s.DatagramSealTo(header, header[len(buf):], seq, p)
+		frame, err := s.DatagramSealTo(header, header[len(buf):], seq, p, c.nonce[:])
 		if err != nil {
 			return err
 		}

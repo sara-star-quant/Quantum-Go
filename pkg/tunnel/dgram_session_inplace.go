@@ -16,8 +16,10 @@ import (
 // seq, authenticating aad, and appends ciphertext||tag to dst, returning the
 // extended slice. To build a frame in place pass dst = the header bytes (whose
 // content must equal aad) backed by an array with spare capacity, so the result is
-// header||ciphertext||tag with no allocation. See DatagramSeal for the semantics.
-func (s *Session) DatagramSealTo(dst, aad []byte, seq uint64, plaintext []byte) ([]byte, error) {
+// header||ciphertext||tag with no allocation. nonce is caller-owned scratch of
+// AESNonceSize bytes (an array local to this call would escape to the heap through the
+// AEAD interface); pass nil to have one allocated. See DatagramSeal for the semantics.
+func (s *Session) DatagramSealTo(dst, aad []byte, seq uint64, plaintext, nonce []byte) ([]byte, error) {
 	s.mu.RLock()
 	cur := s.dgramEpochs.cur
 	prefix := s.sendNoncePrefix
@@ -28,9 +30,11 @@ func (s *Session) DatagramSealTo(dst, aad []byte, seq uint64, plaintext []byte) 
 	if seq-cur.startSeq >= constants.MaxPacketsBeforeRekey {
 		return nil, qerrors.ErrNonceExhausted
 	}
-	var nonce [constants.AESNonceSize]byte
-	buildAEADNonce(nonce[:], prefix, seq)
-	out, err := cur.sendCipher.SealWithNonceTo(dst, nonce[:], plaintext, aad)
+	if nonce == nil {
+		nonce = make([]byte, constants.AESNonceSize)
+	}
+	buildAEADNonce(nonce, prefix, seq)
+	out, err := cur.sendCipher.SealWithNonceTo(dst, nonce, plaintext, aad)
 	if err != nil {
 		return nil, err
 	}
@@ -40,9 +44,10 @@ func (s *Session) DatagramSealTo(dst, aad []byte, seq uint64, plaintext []byte) 
 
 // DatagramOpenTo decrypts ciphertext for the epoch named in the frame header and
 // appends the plaintext to dst, returning the extended slice. It mirrors
-// DatagramOpen but does not allocate when dst has spare capacity. The caller still
+// DatagramOpen but does not allocate when dst has spare capacity and nonce is
+// caller-owned scratch of AESNonceSize bytes (nil allocates one). The caller still
 // performs the replay-window check.
-func (s *Session) DatagramOpenTo(dst []byte, epoch uint8, seq uint64, ciphertext, aad []byte) ([]byte, error) {
+func (s *Session) DatagramOpenTo(dst []byte, epoch uint8, seq uint64, ciphertext, aad, nonce []byte) ([]byte, error) {
 	s.mu.RLock()
 	cipher := s.datagramRecvCipherLocked(epoch)
 	prefix := s.recvNoncePrefix
@@ -50,9 +55,11 @@ func (s *Session) DatagramOpenTo(dst []byte, epoch uint8, seq uint64, ciphertext
 	if cipher == nil {
 		return nil, qerrors.ErrAuthenticationFailed
 	}
-	var nonce [constants.AESNonceSize]byte
-	buildAEADNonce(nonce[:], prefix, seq)
-	pt, err := cipher.OpenWithNonceTo(dst, nonce[:], ciphertext, aad)
+	if nonce == nil {
+		nonce = make([]byte, constants.AESNonceSize)
+	}
+	buildAEADNonce(nonce, prefix, seq)
+	pt, err := cipher.OpenWithNonceTo(dst, nonce, ciphertext, aad)
 	if err != nil {
 		return nil, err
 	}

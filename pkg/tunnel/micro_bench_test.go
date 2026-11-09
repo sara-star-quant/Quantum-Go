@@ -185,8 +185,15 @@ func TestDatagramSendAllocations(t *testing.T) {
 	if err := c.Send(payload); err != nil {
 		t.Fatal(err)
 	}
-	if got := quietAllocs(1, func() { _ = c.Send(payload) }); got > 1 {
-		t.Fatalf("steady-state Send allocates %v times per call, documented limit is 1 (the nonce)", got)
+	if got := quietAllocs(0, func() { _ = c.Send(payload) }); got != 0 {
+		t.Fatalf("steady-state Send allocates %v times per call, want 0", got)
+	}
+	batch := [][]byte{payload, payload, payload, payload}
+	if err := c.SendBatch(batch); err != nil {
+		t.Fatal(err)
+	}
+	if got := quietAllocs(0, func() { _ = c.SendBatch(batch) }); got != 0 {
+		t.Fatalf("steady-state SendBatch allocates %v times per call, want 0", got)
 	}
 }
 
