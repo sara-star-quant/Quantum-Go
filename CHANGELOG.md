@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.22][] - 2026-11-09
+
+**Theme:** Allocation-free data paths and cleaner measurements. Stream records are sealed and opened without extra buffers, which cut CPU per GiB by more than half at 60 KB records on a laptop, and every send path, plus receive into a reused buffer, now allocates nothing per record in steady state. Two public interfaces change, and the throughput figures in the docs were re-measured after a network filter turned out to be distorting the laptop numbers. There is no wire change.
+
+### Added
+- **`ReceiveInto(dst)`**: appends a record's plaintext to the caller's buffer, so a loop that reuses one buffer receives without allocating once the buffer is large enough. `Receive` is unchanged.
+- **`scripts/docker-bench.sh`**: runs the throughput bench between two containers on a bridge network, a closer stand-in for two hosts than loopback, and prints the tunnel against plain TCP with the spread between runs.
+
+### Changed
+- **Stream records seal and open without extra buffers**: each record is sealed straight into a pooled frame, the sequence number in the frame header doubles as the AEAD additional data, the nonce uses memory that is already on the heap, and `SendBatch` reuses its working lists. A 60 KB record allocates 65 KB instead of 197 KB, and the frame is byte-identical to the old one. On a quiet laptop that is 72% more throughput and 54% less CPU per GiB at 60 KB records, and 52% more throughput at 16 KB and 8 KB. On the Linux and macOS CI runners, 16 KB and 60 KB records gained 35% to 76%; Windows at 60 KB read about 6% lower in two runs and the cause is not found.
+- **Breaking, `Observer.OnEncrypt` and `OnDecrypt`**: they now take the length, the duration and the error after the record finishes, instead of returning a context and a closure, so an attached observer no longer allocates per record. Per-record trace spans are gone; each one was a root span started from a background context.
+- **Breaking, `Session.DatagramSealTo` and `DatagramOpenTo`**: they take a nonce scratch parameter, and `nil` allocates one. The datagram connection passes its own, so datagram send and batch send allocate nothing.
+- **Throughput figures re-measured**: the docs and README quote numbers from a quiet machine with network-filtering software (a VPN client, antivirus or endpoint-security agent) turned off. With it running, every socket call paid a tax that roughly halved large-record throughput and cut 8 KB records to a third, so earlier laptop figures understated the tunnel. The README headline moves from 690 MB/s to about 2.5 GB/s at 60 KB records on a laptop.
+
+### Notes
+- A receive-side read-ahead was tried and left out: in container-bridge tests it gained 29% for batched small records and cost plain 2 KB sends 15%. The measurements are in `docs/PERFORMANCE.md`.
+
 ## [0.0.21][] - 2026-11-09
 
 **Theme:** Stream batching and throughput tooling. A burst of small stream records can go out in one call, the throughput benchmark now compares against plain TCP and runs across two hosts, and the library's sentinel errors can finally be matched from outside the module. There is no wire change.
@@ -453,7 +470,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.21...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.22...HEAD
+[0.0.22]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.21...v0.0.22
 [0.0.21]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.20...v0.0.21
 [0.0.20]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.19...v0.0.20
 [0.0.19]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.18...v0.0.19
