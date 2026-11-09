@@ -140,14 +140,14 @@ func TestStreamReceiveAllocations(t *testing.T) {
 	tr := &Transport{session: rx, codec: codec}
 	// Replay protection rejects a repeated sequence number, so measure one fresh
 	// frame per run.
-	frames := make([][]byte, 0, 4096)
-	for i := 0; i < 4096; i++ {
+	frames := make([][]byte, 0, 8192)
+	for i := 0; i < 8192; i++ {
 		f, _, _ := tx.encryptFrameTo(nil, make([]byte, 1400), nil)
 		frames = append(frames, f)
 	}
 	_ = frame
 	i := 0
-	if got := testing.AllocsPerRun(1000, func() {
+	if got := quietAllocs(1, func() {
 		_, _ = tr.handleData(frames[i])
 		i++
 	}); got > 1 {
@@ -189,8 +189,8 @@ func TestObserverAddsNoAllocationsToTheStreamDataPath(t *testing.T) {
 		t.Fatalf("send with an observer allocates %v times per record, want 0", got)
 	}
 
-	frames := make([][]byte, 0, 4096)
-	for i := 0; i < 4096; i++ {
+	frames := make([][]byte, 0, 8192)
+	for i := 0; i < 8192; i++ {
 		f, _, err := tx.encryptFrameTo(nil, payload, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -200,7 +200,7 @@ func TestObserverAddsNoAllocationsToTheStreamDataPath(t *testing.T) {
 	recv := &Transport{session: rx, codec: protocol.NewCodec()}
 	buf := make([]byte, 0, 2048)
 	i := 0
-	if got := testing.AllocsPerRun(1000, func() {
+	if got := quietAllocs(0, func() {
 		_, _ = recv.handleDataTo(buf[:0], frames[i])
 		i++
 	}); got != 0 {

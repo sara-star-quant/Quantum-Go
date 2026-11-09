@@ -14,8 +14,8 @@ func TestHandleDataToAllocations(t *testing.T) {
 	}
 	tx, rx := inplaceSessionPair(t)
 	tr := &Transport{session: rx, codec: protocol.NewCodec()}
-	frames := make([][]byte, 0, 4096)
-	for i := 0; i < 4096; i++ {
+	frames := make([][]byte, 0, 8192)
+	for i := 0; i < 8192; i++ {
 		f, _, err := tx.encryptFrameTo(nil, bytes.Repeat([]byte{byte(i)}, 1400), nil)
 		if err != nil {
 			t.Fatal(err)
@@ -24,7 +24,7 @@ func TestHandleDataToAllocations(t *testing.T) {
 	}
 	buf := make([]byte, 0, 2048)
 	i := 0
-	got := testing.AllocsPerRun(1000, func() {
+	got := quietAllocs(0, func() {
 		out, err := tr.handleDataTo(buf[:0], frames[i])
 		if err != nil || len(out) != 1400 || out[0] != byte(i) {
 			t.Fatalf("record %d: len %d err %v", i, len(out), err)
