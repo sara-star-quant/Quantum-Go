@@ -7,7 +7,8 @@ Two transports share the crypto core: a TCP/stream transport (length-prefixed fr
 ## How these numbers were produced
 
 - **CI runners:** the [Benchmarks workflow](../.github/workflows/bench.yml) runs on GitHub-hosted Linux x86-64, Linux arm64, macOS arm64 and Windows x86-64 runners. These are shared 3 to 4 vCPU virtual machines, so treat them as indicative, not as the ceiling of the hardware.
-- **Laptop:** Apple M1 Pro, loopback, Go 1.26.
+- **Laptop:** Apple M1 Pro, loopback, Go 1.27, quiet machine, network-filtering software turned off.
+- **Hygiene:** measure with network-filtering software (a VPN client, antivirus or endpoint-security agent) turned off. Such software can sit on every socket call, loopback included: on the laptop used here, quitting one VPN client roughly doubled 60 KB-record throughput (about 1.2 to 2.5 GB/s) and tripled 8 KB-record throughput. Check that the machine is idle before a run, alternate the builds you compare, and repeat each run.
 - **Container:** Linux arm64 VM with 8 cores (Docker Desktop), loopback.
 - **Reproduce:** `quantum-tunnel bench --handshakes N --datagram-handshakes N --throughput` ([CLI reference](usage/CLI.md#benchmark-mode)), or `go test ./test/benchmark/ -bench Handshake` and `go test ./pkg/tunnel/ -bench DatagramEndToEnd`.
 
@@ -38,40 +39,41 @@ Handshake latency is round-trip bound, so faster hardware only shrinks the crypt
 
 ## Data plane
 
-AES-256-GCM seals at about 2.5 GB/s per core and ChaCha20-Poly1305 at about 0.7 GB/s (raw AEAD, Apple M1 Pro). The stream transport reaches about 690 MB/s (5.5 Gb/s) single tunnel, sustained across rekeys; the record size moves this a lot, see the next section. Per-record overhead on the stream is 29 bytes (16 B AEAD tag, nonce derived and not transmitted, plus a 13 B frame header).
+AES-256-GCM seals at about 2.5 GB/s per core and ChaCha20-Poly1305 at about 0.7 GB/s (raw AEAD, Apple M1 Pro). The stream transport reaches about 2.5 GB/s on a single tunnel with 60 KB records on a quiet laptop; the record size moves this a lot, see the next section. Per-record overhead on the stream is 29 bytes (16 B AEAD tag, nonce derived and not transmitted, plus a 13 B frame header).
 
 The datagram data path is syscall-bound, not crypto-bound: the isolated send path runs at about 3 GB/s on a laptop, so throughput is set by the send and receive system calls. Two features attack that cost.
 
 ### Throughput by record size and cost against plain TCP
 
-`quantum-tunnel bench --throughput --baseline --chunk <size>` moves the same bytes in the same record size over a plain TCP stream and over a tunnel, on loopback, in one process. Apple M1 Pro, Go 1.27.3, AES-256-GCM, decimal MB/s, two 1 GiB runs per row averaged, machine otherwise idle:
+`quantum-tunnel bench --throughput --baseline --chunk <size>` moves the same bytes in the same record size over a plain TCP stream and over a tunnel, on loopback, in one process. Apple M1 Pro, Go 1.27.3, AES-256-GCM, decimal MB/s, two 4 GiB runs per row averaged, quiet machine with network-filtering software turned off:
 
 | Record size | Tunnel | Plain TCP | Tunnel as share of plain TCP | CPU per GiB, tunnel vs plain TCP |
 |-------------|--------|-----------|------------------------------|----------------------------------|
-| 8 KB | 337 MB/s | 401 MB/s | 84% | 5.8 vs 4.5 CPU-s (1.3x) |
-| 16 KB | 489 MB/s | 621 MB/s | 79% | 4.1 vs 3.2 CPU-s (1.3x) |
-| 60 KB | 964 MB/s | 1198 MB/s | 80% | 2.2 vs 1.1 CPU-s (2.0x) |
+| 8 KB | 1185 MB/s | 1982 MB/s | 60% | 1.62 vs 0.93 CPU-s (1.7x) |
+| 16 KB | 1520 MB/s | 3068 MB/s | 50% | 1.25 vs 0.60 CPU-s (2.1x) |
+| 60 KB | 2558 MB/s | 4947 MB/s | 52% | 0.77 vs 0.35 CPU-s (2.2x) |
 
-The two runs of each row agreed within 2 points. On a busy machine (a browser open) the share moved by up to 5 points, so close other applications before measuring.
+The tunnel's two runs of each row agreed within 1%; the plain TCP reference moved more (at 16 KB it read 3145 and 2992 MB/s).
 
 A dataset-sized transfer, 10 GiB of synthetic bytes (a repeating pattern; the tunnel does not compress, so the content does not matter) as a size class, not a real dataset, through one tunnel:
 
 | Record size | Tunnel | Plain TCP |
 |-------------|--------|-----------|
-| 60 KB | 11.2 s (958 MB/s) | 9.1 s (1181 MB/s) |
-| 8 KB | 31.8 s (338 MB/s) | 26.6 s (404 MB/s) |
+| 60 KB | 4.2 s (2545 MB/s) | 2.2 s (4869 MB/s) |
+| 8 KB | 9.0 s (1195 MB/s) | 5.3 s (2031 MB/s) |
 
-The rate matched the 1 GiB runs, so it does not fall off with more data. Read these with four limits in mind:
+The rate matched the shorter runs, so it does not fall off with more data. Read these with three limits in mind:
 - Loopback has no network limit. On a real link the network usually sets the rate and the tunnel's share of it is higher. `bench --serve` and `bench --connect` run the same test across two hosts, which is how to measure it.
-- Client and server share one process and one CPU here, so the CPU figures cover both ends. On separate hosts each side pays about half.
-- The throughput of the large-record Go benchmark and the earlier 690 MB/s headline were not reconciled with these numbers in this change; the CLI figures are what this tool measures today.
+- Client and server share one process and one set of cores here, so the CPU figures cover both ends. On separate hosts each side pays about half.
 - The datagram transport is not in this table: it does not retransmit application data, so a transfer time is not meaningful there. Its goodput is in the section above.
+
+The in-process Go benchmark (`BenchmarkStreamReceiveLargeRecords`, 2335 MB/s at 60 KB on this laptop) and this tool agree to within about 10%.
 
 Receive timing starts at the first byte, not at `Accept`.
 
 ### Batching small stream records
 
-For small records the cost is the syscall, not the bytes: on macOS, 86% of CPU in the small-record benchmark is `read` and `write`. `Tunnel.SendBatch` seals a burst under one lock and writes it. Small records go out in one vectored write, bulky ones one at a time, so a batch is always contiguous and in order. The cut-over is per platform and comes from measurement: no limit on macOS, 4 KB average record size on Windows, 2 KB elsewhere. The receiver sees ordinary records and needs no change.
+For small records the cost is the syscall, not the bytes: on macOS, 88% of CPU in the small-record benchmark is `read` and `write`. `Tunnel.SendBatch` seals a burst under one lock and writes it. Small records go out in one vectored write, bulky ones one at a time, so a batch is always contiguous and in order. The cut-over is per platform and comes from measurement: no limit on macOS, 4 KB average record size on Windows, 2 KB elsewhere. The receiver sees ordinary records and needs no change.
 
 A batch of 8 against one `Send` per record, `BenchmarkStreamSendBatch` over loopback on the bench workflow's runners (4 shared vCPUs). Each cell is the median of two runs of three samples. Shared runners drift by 10% or more between runs, so treat the figures as direction:
 
@@ -88,7 +90,7 @@ In short:
 - Bulky records take the same path as `Send`, so they land at about 1.0x. One cell stayed low in both runs (Windows, 32 records of 16 KB: 0.85x and 0.95x). From 8 KB up, use `Send`.
 - A batch of 8 gets nearly all of the benefit; larger batches add little.
 
-On an idle M1 Pro laptop, where syscalls cost more, a batch of 8 gave 9.1x at 256 B and 6.5x at 1400 B. That is the best case.
+On a quiet Apple M1 Pro laptop a batch of 8 gave 3.4x at 256 B, 2.4x at 1400 B and 1.6x at 8 KB, in line with the macOS runner.
 
 I also tried a receive-side read-ahead, so one `read` serves many records, and left it out. On Linux loopback it raised batched throughput by up to 1.7x but cut plain per-record sends to about 0.45x, and a heuristic that turns it on only for bursts did not avoid that. Loopback charges the sender for waking a faster receiver, so it cannot settle receiver policy; that needs two hosts.
 
@@ -117,11 +119,11 @@ End to end with `bench --throughput`, alternating the old and new build on the s
 
 Both Linux architectures were consistent from run to run. macOS and Windows moved by tens of percent between runs, so only their direction is meaningful. Windows at 60 KB was lower in both runs (-5% and -7%); that is the one cell that looks like a real cost, and its cause has not been found.
 
-The receiver still allocates the plaintext it returns, so a receive call that fills a caller's buffer would remove the last allocation. Earlier profiles put garbage collection at about 3% of CPU and suggested this change would not matter; the measurement says memory traffic from the buffers cost more than the collector's share showed. The throughput tables above predate this change.
+`Receive` returns a fresh plaintext for every record. `ReceiveInto(buf[:0])` appends it to a buffer you reuse instead and allocates nothing once the buffer is large enough. With it and a `SendBatch` that reuses its working lists, the same quiet laptop gained a further 11% throughput at 60 KB records (2310 to 2562 MB/s), 4% at 16 KB and 6% at 8 KB, with 21%, 11% and 14% less CPU per GiB. Stream send, stream batch send, datagram send, datagram batch send and receive into a reused buffer now allocate nothing per record in steady state, with or without an observer attached, and tests assert it. `Observer.OnEncrypt` and `OnDecrypt` report after the record finishes instead of returning a closure, which is what made an attached observer allocate.
 
 ### Where stream time goes
 
-A CPU profile of 60 KB records over loopback TCP (`BenchmarkStreamReceiveLargeRecords`) shows 52 to 65% of CPU in `read` and `write` system calls, about 1% in AES-GCM, and about 6% in background GC. Each record allocates roughly 3.2 times its payload (sealed ciphertext, the wrapping frame, and the plaintext returned to the caller). Sealing straight into a reusable frame buffer, as the datagram path does, could remove two of those copies, but the expected gain is a few percent on a path that is limited by system calls, so it has not been done. Small records (64 B to 1 KB) cost about 8 allocations each and are dominated by the per-record read.
+A CPU profile of 60 KB records over loopback (`BenchmarkStreamReceiveLargeRecords`, quiet laptop) shows about 66% of CPU in `read` and `write` system calls, about 4.5% in AES-GCM, and most of the rest in scheduler and netpoll waits; for 1 KB records it is 88% system calls. The tunnel runs at about half of plain TCP. A record costs a header read and a payload read, where the plain TCP loop reads 64 KB at once, so receive-side read-ahead is the obvious next lever. It helped bursts of records and hurt single records in Linux loopback tests, where the sender pays for waking a faster receiver, and loopback cannot settle that, so it was not shipped; it needs a two-host measurement.
 
 ### Datagram goodput, single flow (CI runners, Linux)
 

@@ -95,7 +95,7 @@ quantum-tunnel bench --handshakes 100 --throughput --size 500MB
 - **Handshakes (stream/TCP)**: ~1,450/sec (~670us each, full CH-KEM, sequential)
 - **Handshakes (datagram/UDP)**: ~1,300/sec (~760us each, full CH-KEM, sequential)
 - **Cipher throughput**: ~2.5 GB/s AES-256-GCM raw AEAD (ARMv8 Crypto Extensions); ~0.7 GB/s ChaCha20-Poly1305
-- **Single-tunnel throughput (stream/TCP)**: ~690 MB/s (5.5 Gb/s) end-to-end over TCP, sustained across automatic rekeys; it depends on the record size, see [PERFORMANCE.md](../PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp)
+- **Single-tunnel throughput (stream/TCP)**: ~2.5 GB/s with 60 KB records and ~1.2 GB/s with 8 KB records, end-to-end over TCP on loopback; it depends on the record size, see [PERFORMANCE.md](../PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp)
 - **Datagram data path (UDP)**: encrypted, zero-alloc send (~3 GB/s isolated on M1 Pro darwin); one-way single-flow delivered goodput ~58 MB/s on macOS loopback (a loopback artifact) and ~280 MB/s (~2.2 Gb/s) on Linux (container arm64, indicative)
 - **Datagram aggregate (UDP, Linux `SO_REUSEPORT`)**: a single receive goroutine tops out ~365 MB/s aggregate; spreading receive across 8 sockets lifts it ~1.6x to ~565 MB/s on an 8-core container, scaling further on a many-core host
 
