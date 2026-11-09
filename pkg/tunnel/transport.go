@@ -39,6 +39,11 @@ type Transport struct {
 	// goroutine.
 	readBuf []byte
 
+	// nonceScratch is the AEAD nonce for the receive path. Receive is single-reader, and
+	// a field is heap memory already, where a local array would escape to the heap on
+	// every record.
+	nonceScratch [constants.AESNonceSize]byte
+
 	// Timeouts
 	readTimeout  time.Duration
 	writeTimeout time.Duration
@@ -238,6 +243,35 @@ func (t *Transport) SendBatch(payloads [][]byte) error {
 	return nil
 }
 
+// framePool recycles the buffers records are sealed into. A frame is only needed until
+// the connection's Write returns (net.Conn forbids retaining the slice), so one buffer
+// serves record after record instead of allocating two per record.
+var framePool = sync.Pool{New: func() any { b := make([]byte, 0, 4<<10); return &b }}
+
+// getFrame returns a pooled buffer with room for a frame of n bytes plus the AEAD nonce
+// scratch kept in the last AESNonceSize bytes of its capacity, beyond anything the
+// frame occupies (see frameNonce).
+func getFrame(n int) *[]byte {
+	p := framePool.Get().(*[]byte)
+	if cap(*p) < n+constants.AESNonceSize {
+		*p = make([]byte, 0, n+constants.AESNonceSize)
+	}
+	*p = (*p)[:0]
+	return p
+}
+
+// frameNonce returns the nonce scratch at the tail of a pooled frame buffer. It lies
+// past the bytes the sealed frame occupies, so sealing never touches it.
+func frameNonce(p *[]byte) []byte {
+	b := (*p)[:cap(*p)]
+	return b[len(b)-constants.AESNonceSize:]
+}
+
+func putFrame(p *[]byte) { framePool.Put(p) }
+
+// frameSize is the buffer size a data frame for an n-byte plaintext needs.
+func frameSize(n int) int { return protocol.HeaderSize + 8 + n + constants.AESTagSize }
+
 // vectoredBatchMaxAvg is the largest average record size SendBatch coalesces into one
 // vectored write; above it the records are written one at a time under the same lock.
 // Measured on the bench workflow's runners with a direct-reading peer: the vectored
@@ -275,20 +309,27 @@ func (t *Transport) sealAndWriteBatch(payloads [][]byte) error {
 	}
 
 	msgs := make(net.Buffers, 0, len(payloads))
+	frames := make([]*[]byte, 0, len(payloads))
+	defer func() {
+		for _, f := range frames { // the writev below has returned by the time this runs
+			putFrame(f)
+		}
+	}()
 	var sealErr error
 	for _, p := range payloads {
-		ciphertext, seq, err := t.session.Encrypt(p)
+		bp := getFrame(frameSize(len(p)))
+		frame, _, err := t.session.encryptFrameTo(*bp, p, frameNonce(bp))
 		if err != nil {
+			putFrame(bp)
+			if err == qerrors.ErrMessageTooLarge {
+				t.recordProtocolError(err)
+			}
 			sealErr = err
 			break
 		}
-		msg, err := t.codec.EncodeData(seq, ciphertext)
-		if err != nil {
-			t.recordProtocolError(err)
-			sealErr = err
-			break
-		}
-		msgs = append(msgs, msg)
+		*bp = frame[:0]
+		frames = append(frames, bp)
+		msgs = append(msgs, frame)
 	}
 	// Records sealed before a failure already consumed sequence numbers; write them so
 	// the stream stays consistent, then report the failure.
@@ -307,16 +348,7 @@ func (t *Transport) sealAndWriteBatch(payloads [][]byte) error {
 // the batch stays contiguous and in order exactly as with the vectored path.
 func (t *Transport) sealAndWriteEach(payloads [][]byte) error {
 	for _, p := range payloads {
-		ciphertext, seq, err := t.session.Encrypt(p)
-		if err != nil {
-			return err
-		}
-		msg, err := t.codec.EncodeData(seq, ciphertext)
-		if err != nil {
-			t.recordProtocolError(err)
-			return err
-		}
-		if err := t.writeLocked(msg); err != nil {
+		if err := t.sealAndWriteLocked(p); err != nil {
 			return err
 		}
 	}
@@ -331,17 +363,23 @@ func (t *Transport) sealAndWriteEach(payloads [][]byte) error {
 func (t *Transport) sealAndWrite(data []byte) error {
 	t.writeMu.Lock()
 	defer t.writeMu.Unlock()
+	return t.sealAndWriteLocked(data)
+}
 
-	ciphertext, seq, err := t.session.Encrypt(data)
+// sealAndWriteLocked seals one record straight into a pooled frame and writes it. The
+// caller holds writeMu.
+func (t *Transport) sealAndWriteLocked(data []byte) error {
+	bp := getFrame(frameSize(len(data)))
+	defer putFrame(bp)
+	frame, _, err := t.session.encryptFrameTo(*bp, data, frameNonce(bp))
 	if err != nil {
+		if err == qerrors.ErrMessageTooLarge {
+			t.recordProtocolError(err)
+		}
 		return err
 	}
-	msg, err := t.codec.EncodeData(seq, ciphertext)
-	if err != nil {
-		t.recordProtocolError(err)
-		return err
-	}
-	return t.writeLocked(msg)
+	*bp = frame[:0] // keep a grown buffer for the next record
+	return t.writeLocked(frame)
 }
 
 // writeFrame writes a pre-encoded message to the connection under the write lock.
@@ -474,7 +512,9 @@ func (t *Transport) handleData(msg []byte) ([]byte, error) {
 	// Note: receive-side key activation during rekey is handled lazily inside
 	// Decrypt via trial decryption (try current cipher, fall back to the pending
 	// new cipher), so there is no fragile sequence-number-based flip here.
-	plaintext, err := t.session.Decrypt(ciphertext, seq)
+	// The sender authenticated the sequence number exactly as it appears in the frame
+	// header, so those bytes serve as the additional data without a separate buffer.
+	plaintext, err := t.session.decryptDataTo(nil, ciphertext, seq, msg[protocol.HeaderSize:protocol.HeaderSize+8], t.nonceScratch[:])
 	if err != nil {
 		return nil, err
 	}

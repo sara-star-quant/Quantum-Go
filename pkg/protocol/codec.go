@@ -500,6 +500,15 @@ func (c *Codec) EncodeData(seq uint64, payload []byte) ([]byte, error) {
 	return buf, nil
 }
 
+// AppendDataHeader appends the data-message header and sequence number to dst for a
+// payload of payloadLen bytes (the ciphertext and tag), so a caller can seal the payload
+// straight after it. The layout matches EncodeData.
+func (c *Codec) AppendDataHeader(dst []byte, seq uint64, payloadLen int) []byte {
+	dst = append(dst, byte(MessageTypeData), 0, 0, 0, 0)
+	binary.BigEndian.PutUint32(dst[len(dst)-4:], uint32(8+payloadLen)) // #nosec G115 -- callers bound payloadLen by MaxPayloadSize
+	return binary.BigEndian.AppendUint64(dst, seq)
+}
+
 // DecodeData deserializes a data message.
 func (c *Codec) DecodeData(data []byte) (uint64, []byte, error) {
 	if len(data) < HeaderSize+8 {

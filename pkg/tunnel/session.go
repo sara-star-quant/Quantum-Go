@@ -349,47 +349,9 @@ func (s *Session) InitializeKeys(masterSecret []byte, cipherSuite constants.Ciph
 
 // Encrypt encrypts data for sending.
 func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
-	// Get the sequence number first
-	seq := s.sendSeq.Add(1) - 1
-
-	// The send cipher is switched to the new key explicitly at rekey time (initiator in
-	// ProcessRekeyResponse; responder in ActivateRekeySend after its response is sent),
-	// never lazily by sequence number — see the rekey trial-decryption design in Decrypt.
-	// Read the cipher, nonce prefix, and epoch start together so the key-wear guard and
-	// the derived nonce stay consistent with one another across a concurrent rekey.
-	s.mu.RLock()
-	cipher := s.sendCipher
-	prefix := s.sendNoncePrefix
-	startSeq := s.sendEpochStartSeq.Load()
-	s.mu.RUnlock()
-
-	observer := s.observer
-	var done func(error)
-	if observer != nil {
-		_, done = observer.OnEncrypt(context.Background(), len(plaintext))
-	}
-
-	if cipher == nil {
-		if observer != nil {
-			observer.OnProtocolError(qerrors.ErrInvalidState)
-		}
-		if done != nil {
-			done(qerrors.ErrInvalidState)
-		}
-		return nil, 0, qerrors.ErrInvalidState
-	}
-
-	// Hard cap on how many records this epoch's key seals. NeedsRekey starts a rekey
-	// well before this; reaching the cap means it could not complete, so refuse rather
-	// than overrun the key's safe usage limit. (The AEAD's own counter no longer tracks
-	// this because the stream uses SealWithNonce.) The seq >= startSeq guard avoids a
-	// uint64 underflow at the rekey boundary, where this seq was assigned just before a
-	// concurrent rekey advanced sendEpochStartSeq (seq < startSeq, so per-epoch count 0).
-	if seq >= startSeq && seq-startSeq >= constants.MaxPacketsBeforeRekey {
-		if done != nil {
-			done(qerrors.ErrNonceExhausted)
-		}
-		return nil, 0, qerrors.ErrNonceExhausted
+	seq, cipher, prefix, done, err := s.sealPrep(len(plaintext))
+	if err != nil {
+		return nil, 0, err
 	}
 
 	// Use sequence number as additional authenticated data, and derive the AEAD nonce
@@ -406,21 +368,117 @@ func (s *Session) Encrypt(plaintext []byte) ([]byte, uint64, error) {
 		}
 		return nil, 0, err
 	}
+	s.sealDone(done, len(plaintext))
+	return ciphertext, seq, nil
+}
+
+// dataFrameCodec builds data frame headers; it holds no state.
+var dataFrameCodec = protocol.NewCodec()
+
+// encryptFrameTo seals plaintext as a complete stream DATA frame appended to dst:
+// header, sequence number, then ciphertext and tag. The sequence number in the header
+// is also the AEAD additional data, so nothing is allocated beyond dst's own growth.
+// The bytes are identical to Encrypt followed by Codec.EncodeData. nonce is caller-owned
+// scratch of AESNonceSize bytes (the array would otherwise escape to the heap through the
+// AEAD interface); pass nil to have one allocated.
+func (s *Session) encryptFrameTo(dst, plaintext, nonce []byte) ([]byte, uint64, error) {
+	ctLen := len(plaintext) + constants.AESTagSize
+	if ctLen > constants.MaxPayloadSize {
+		return dst, 0, qerrors.ErrMessageTooLarge // checked before a sequence number is consumed
+	}
+	seq, cipher, prefix, done, err := s.sealPrep(len(plaintext))
+	if err != nil {
+		return dst, 0, err
+	}
+	start := len(dst)
+	dst = dataFrameCodec.AppendDataHeader(dst, seq, ctLen)
+	aad := dst[start+protocol.HeaderSize : start+protocol.HeaderSize+8]
+
+	if nonce == nil {
+		nonce = make([]byte, constants.AESNonceSize)
+	}
+	buildAEADNonce(nonce, prefix, seq)
+	out, err := cipher.SealWithNonceTo(dst, nonce, plaintext, aad)
+	if err != nil {
+		if done != nil {
+			done(err)
+		}
+		return dst[:start], 0, err
+	}
+	s.sealDone(done, len(plaintext))
+	return out, seq, nil
+}
+
+// sealPrep assigns the next sequence number and captures the send cipher state for one
+// record, enforcing the per-epoch key-wear cap. done is the observer callback to finish
+// with (nil without an observer); on error it has already been called.
+func (s *Session) sealPrep(n int) (seq uint64, cipher *crypto.AEAD, prefix []byte, done func(error), err error) {
+	seq = s.sendSeq.Add(1) - 1
+
+	// The send cipher is switched to the new key explicitly at rekey time (initiator in
+	// ProcessRekeyResponse; responder in ActivateRekeySend after its response is sent),
+	// never lazily by sequence number, see the rekey trial-decryption design in Decrypt.
+	// Read the cipher, nonce prefix, and epoch start together so the key-wear guard and
+	// the derived nonce stay consistent with one another across a concurrent rekey.
+	s.mu.RLock()
+	cipher = s.sendCipher
+	prefix = s.sendNoncePrefix
+	startSeq := s.sendEpochStartSeq.Load()
+	s.mu.RUnlock()
+
+	if s.observer != nil {
+		_, done = s.observer.OnEncrypt(context.Background(), n)
+	}
+
+	if cipher == nil {
+		if s.observer != nil {
+			s.observer.OnProtocolError(qerrors.ErrInvalidState)
+		}
+		if done != nil {
+			done(qerrors.ErrInvalidState)
+		}
+		return 0, nil, nil, nil, qerrors.ErrInvalidState
+	}
+
+	// Hard cap on how many records this epoch's key seals. NeedsRekey starts a rekey
+	// well before this; reaching the cap means it could not complete, so refuse rather
+	// than overrun the key's safe usage limit. (The AEAD's own counter no longer tracks
+	// this because the stream uses SealWithNonce.) The seq >= startSeq guard avoids a
+	// uint64 underflow at the rekey boundary, where this seq was assigned just before a
+	// concurrent rekey advanced sendEpochStartSeq (seq < startSeq, so per-epoch count 0).
+	if seq >= startSeq && seq-startSeq >= constants.MaxPacketsBeforeRekey {
+		if done != nil {
+			done(qerrors.ErrNonceExhausted)
+		}
+		return 0, nil, nil, nil, qerrors.ErrNonceExhausted
+	}
+	return seq, cipher, prefix, done, nil
+}
+
+// sealDone finishes the accounting for a record that was sealed.
+func (s *Session) sealDone(done func(error), plaintextLen int) {
 	if done != nil {
 		done(nil)
 	}
-
-	s.BytesSent.Add(int64(len(plaintext)))
+	s.BytesSent.Add(int64(plaintextLen))
 	s.PacketsSent.Add(1)
 	s.mu.Lock()
 	s.LastActivity = time.Now()
 	s.mu.Unlock()
-
-	return ciphertext, seq, nil
 }
 
 // Decrypt decrypts received data.
 func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
+	aad := make([]byte, 8)
+	binary.BigEndian.PutUint64(aad, seq)
+	return s.decryptDataTo(nil, ciphertext, seq, aad, nil)
+}
+
+// decryptDataTo is Decrypt with the additional data supplied and the plaintext appended
+// to dst. The stream receive path passes the sequence-number bytes of the frame header
+// as aad, which are exactly what the sender authenticated, so no separate buffer is
+// built. nonce is scratch of AESNonceSize bytes owned by the caller, or nil.
+func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce []byte) ([]byte, error) {
 	s.mu.RLock()
 	cipher := s.recvCipher
 	pendingCipher := s.pendingRecvCipher
@@ -451,12 +509,12 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 	// Use sequence number as additional authenticated data, and derive the AEAD nonce
 	// as prefix || seq (the sender did not transmit it). The same nonce serves both the
 	// current and the pending cipher; only the key differs.
-	aad := make([]byte, 8)
-	binary.BigEndian.PutUint64(aad, seq)
-	var nonce [constants.AESNonceSize]byte
-	buildAEADNonce(nonce[:], prefix, seq)
+	if nonce == nil {
+		nonce = make([]byte, constants.AESNonceSize)
+	}
+	buildAEADNonce(nonce, prefix, seq)
 
-	plaintext, err := cipher.OpenWithNonce(nonce[:], ciphertext, aad)
+	plaintext, err := cipher.OpenWithNonceTo(dst, nonce, ciphertext, aad)
 	if err != nil && pendingCipher != nil {
 		// Rekey trial decryption: the peer may have switched to its new send key
 		// before our matching receive key took over. Try the pending (new) cipher;
@@ -464,7 +522,7 @@ func (s *Session) Decrypt(ciphertext []byte, seq uint64) ([]byte, error) {
 		// receive cipher. On an in-order stream this happens exactly once, at the
 		// old->new boundary. (Rekey state/master-secret finalization is independent
 		// and already done at our own send-cipher switch.)
-		if pt, perr := pendingCipher.OpenWithNonce(nonce[:], ciphertext, aad); perr == nil {
+		if pt, perr := pendingCipher.OpenWithNonceTo(dst, nonce, ciphertext, aad); perr == nil {
 			s.promotePendingRecvCipher()
 			plaintext, err = pt, nil
 		}

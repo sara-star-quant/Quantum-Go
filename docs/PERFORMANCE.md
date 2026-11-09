@@ -94,6 +94,31 @@ I also tried a receive-side read-ahead, so one `read` serves many records, and l
 
 `SendBatch` is aimed at a VPN reading packets from a TUN device in bursts.
 
+### Allocations per stream record
+
+A stream record used to allocate about three times its own size: a ciphertext buffer and a second frame buffer on send, and the plaintext plus a small additional-data buffer on receive. Records are now sealed straight into a pooled frame, the sequence number in the frame header serves as the AEAD additional data, and the nonce uses memory that is already on the heap. The wire format is unchanged: a frame from the new path is byte-identical to the old one and opens on an unchanged receiver, and the reverse.
+
+`BenchmarkStreamReceiveLargeRecords` and `BenchmarkStreamReceiveSmallRecords` (sender and receiver in one process, Apple M1 Pro, median of three runs, with network-filtering software such as a VPN client or antivirus turned off, because those tax every socket call including loopback):
+
+| Record size | Allocated per record, before to after | Allocations per record | Throughput |
+|-------------|---------------------------------------|------------------------|------------|
+| 60 KB | 196,674 to 65,592 B | 8 to 2 | 1465 to 2335 MB/s (+59%) |
+| 16 KB | 53,305 to 16,396 B | 8 to 2 | 993 to 1474 MB/s (+48%) |
+| 1 KB | 3,384 to 1,029 B | 8 to 2 | 174 to 199 MB/s (+14%) |
+
+End to end with `bench --throughput`, alternating the old and new build on the same quiet machine (two rounds that agreed within 1%), throughput rose 55% at 60 KB records (1486 to 2310 MB/s), 46% at 16 KB (1005 to 1470) and 43% at 8 KB (795 to 1137), and CPU per GiB fell 41%, 35% and 32% (1.64 to 0.96, 2.16 to 1.40, 2.71 to 1.83).
+
+| Platform | 16 KB records | 60 KB records | 1 KB records |
+|----------|---------------|---------------|--------------|
+| Linux arm64 | 922 to 1385 MB/s (+50%) | 931 to 1636 MB/s (+76%) | 332 to 402 MB/s (+21%) |
+| Linux x86-64 | 865 to 1169 MB/s (+35%) | 962 to 1451 MB/s (+51%) | 281 to 269 MB/s (-4%, the two runs disagreed in sign) |
+| macOS arm64 | 775 to 1346 MB/s (+74%) | 1056 to 1773 MB/s (+68%) | 198 to 261 MB/s (+32%) |
+| Windows x86-64 | 526 to 962 MB/s (+83%) | 696 to 651 MB/s (-6%) | 112 to 148 MB/s (+32%) |
+
+Both Linux architectures were consistent from run to run. macOS and Windows moved by tens of percent between runs, so only their direction is meaningful. Windows at 60 KB was lower in both runs (-5% and -7%); that is the one cell that looks like a real cost, and its cause has not been found.
+
+The receiver still allocates the plaintext it returns, so a receive call that fills a caller's buffer would remove the last allocation. Earlier profiles put garbage collection at about 3% of CPU and suggested this change would not matter; the measurement says memory traffic from the buffers cost more than the collector's share showed. The throughput tables above predate this change.
+
 ### Where stream time goes
 
 A CPU profile of 60 KB records over loopback TCP (`BenchmarkStreamReceiveLargeRecords`) shows 52 to 65% of CPU in `read` and `write` system calls, about 1% in AES-GCM, and about 6% in background GC. Each record allocates roughly 3.2 times its payload (sealed ciphertext, the wrapping frame, and the plaintext returned to the caller). Sealing straight into a reusable frame buffer, as the datagram path does, could remove two of those copies, but the expected gain is a few percent on a path that is limited by system calls, so it has not been done. Small records (64 B to 1 KB) cost about 8 allocations each and are dominated by the per-record read.
