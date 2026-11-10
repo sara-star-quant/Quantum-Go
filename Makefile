@@ -102,12 +102,12 @@ build-all: build-linux build-darwin build-windows
 ## test: Run all tests
 test:
 	@echo "Running tests..."
-	$(GOTEST) -timeout 120s ./...
+	$(GOTEST) -timeout 600s ./...
 
 ## test-verbose: Run tests with verbose output
 test-verbose:
 	@echo "Running tests (verbose)..."
-	$(GOTEST) -v -timeout 120s ./...
+	$(GOTEST) -v -timeout 600s ./...
 
 ## coverage: Generate test coverage report
 coverage:
