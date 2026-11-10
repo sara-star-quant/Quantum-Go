@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
-## [0.0.22][] - 2026-11-09
+## [0.0.23][] - 2026-11-10
 
-**Theme:** Allocation-free data paths and cleaner measurements. Stream records are sealed and opened without extra buffers, which cut CPU per GiB by more than half at 60 KB records on a laptop, and every send path, plus receive into a reused buffer, now allocates nothing per record in steady state. Two public interfaces change, and the throughput figures in the docs were re-measured after a network filter turned out to be distorting the laptop numbers. There is no wire change.
+**Theme:** Allocation-free data paths and cleaner measurements. Stream records are sealed and opened without extra buffers, which cut CPU per GiB by more than half at 60 KB records on a laptop, and every send path, plus receive into a reused buffer, now allocates nothing per record in steady state. Two public interfaces change, and the throughput figures in the docs were re-measured after a network filter turned out to be distorting the laptop numbers. There is no wire change. The v0.0.22 tag exists but its release run failed before publishing, so this release carries everything v0.0.22 was meant to ship.
 
 ### Added
 - **`ReceiveInto(dst)`**: appends a record's plaintext to the caller's buffer, so a loop that reuses one buffer receives without allocating once the buffer is large enough. `Receive` is unchanged.
@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking, `Observer.OnEncrypt` and `OnDecrypt`**: they now take the length, the duration and the error after the record finishes, instead of returning a context and a closure, so an attached observer no longer allocates per record. Per-record trace spans are gone; each one was a root span started from a background context.
 - **Breaking, `Session.DatagramSealTo` and `DatagramOpenTo`**: they take a nonce scratch parameter, and `nil` allocates one. The datagram connection passes its own, so datagram send and batch send allocate nothing.
 - **Throughput figures re-measured**: the docs and README quote numbers from a quiet machine with network-filtering software (a VPN client, antivirus or endpoint-security agent) turned off. With it running, every socket call paid a tax that roughly halved large-record throughput and cut 8 KB records to a third, so earlier laptop figures understated the tunnel. The README headline moves from 690 MB/s to about 2.5 GB/s at 60 KB records on a laptop.
+
+### Fixed
+- **Release gate timeout**: `make test` ran with a 120 second limit and the tunnel package outgrew it on a runner, which stopped the v0.0.22 release; the limit is now 600 seconds.
+- **Receive allocation tests**: they now tolerate background goroutines instead of failing on a stray allocation count.
 
 ### Notes
 - A receive-side read-ahead was tried and left out: in container-bridge tests it gained 29% for batched small records and cost plain 2 KB sends 15%. The measurements are in `docs/PERFORMANCE.md`.
@@ -470,8 +474,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.22...HEAD
-[0.0.22]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.21...v0.0.22
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.23...HEAD
+[0.0.23]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.21...v0.0.23
 [0.0.21]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.20...v0.0.21
 [0.0.20]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.19...v0.0.20
 [0.0.19]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.18...v0.0.19
