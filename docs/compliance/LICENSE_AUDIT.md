@@ -1,18 +1,18 @@
 # Licensing audit
 
-Checked 2026-10-30 against every release tag (v0.0.1 to v0.0.16) and the current main.
+First checked 2026-10-30 against every release tag then published (v0.0.1 to v0.0.16) and main. Re-checked 2026-11-11 against every current tag (through v0.0.23) and main for the project license, dependencies, design-source terms, the container image and the copyright notice; the full-repository scan is dated separately below.
 This is an engineering record, not legal advice.
 
 ## Project license
 
 - v0.0.1 to v0.0.14 shipped under the MIT License.
 - v0.0.15 and later ship under the Apache License 2.0 (relicensed 2026-06-19 for the express patent grant).
-- The copyright holder is the sole author of the code. The only other committer is dependabot (version bumps).
+- The holder is named in `LICENSE` for the MIT releases (v0.0.1 to v0.0.14) and in `NOTICE` since the Apache relicensing (the Apache `LICENSE` text names no holder, only its unfilled appendix template). It is an individual in v0.0.1 to v0.0.16. `NOTICE` first named SARA STAR QUANT LLC on 2026-10-30 (the exact legal-name spelling on 2026-10-31), and v0.0.17 is the first release that carries it. All human commits (554 of 558 across all refs on 2026-11-11) are by one individual author; the other four are dependabot version bumps. See the chain-of-title item under Other risks.
 - Releases already published stay under the license they shipped with.
 
 ## Third-party modules
 
-Every module version used by any release tag was checked. All are permissive and compatible with Apache-2.0 (and were with MIT). No copyleft, no source-available, no license changes across the versions used.
+Every module version referenced by `go.mod` in any tag or on main was checked (28 versions on 2026-11-11: 18 BSD-3-Clause, 9 Apache-2.0, 1 MIT). All are permissive and compatible with Apache-2.0 (and were with MIT). No copyleft, no source-available, no unlicensed or unclassified module, no license change across the versions used. The table lists the modules that are compiled into shipped builds, taken as the union over linux, darwin and windows and the `fips` and `otel` build tags (`x/net` is Linux only, the OpenTelemetry modules need the `otel` tag). Modules that appear only in the module graph or in tests (for example testify) are not shipped.
 
 | Module | License | Used for |
 |---|---|---|
@@ -33,12 +33,14 @@ No third-party code is copied into the repository (no vendor directory, no copie
 | Source | Terms |
 |---|---|
 | TLS 1.3 (RFC 8446), RFC 7748, FIPS 202/203 | public standards |
-| Post-quantum WireGuard (ePrint 2020/379) | CC BY 4.0 |
-| X-Wing (ePrint 2024/039) | CC BY 4.0 |
-| Rosenpass (code) | Apache-2.0 / MIT |
-| Kudelski pq-wireguard (code) | MIT |
+| Post-quantum WireGuard (ePrint 2020/379) | CC BY 4.0 (page checked 2026-11-11) |
+| X-Wing (ePrint 2024/039) | CC BY 4.0 (page checked 2026-11-11) |
+| WireGuard hybridization analysis (USENIX Security 2025) | cited for concepts; open-access paper, license not relied on |
+| Rosenpass whitepaper | cited for concepts; paper license not recorded |
+| Rosenpass (code) | Apache-2.0 per GitHub's license field, checked 2026-11-11; concepts only, no code used |
+| Kudelski pq-wireguard (code) | MIT per GitHub's license field and a `COPYING` file, checked 2026-11-11; archived repository; concepts only, no code used |
 
-Deliberately not used: RKEM / Rebar (patent risk), Dagger KEM (not standardized), and papers published under non-derivative terms (for example ePrint 2026/1581, CC BY-NC-ND).
+Deliberately not used: ratcheted and reinforced KEM constructions (licensing position unclear), non-standardized KEMs, and papers published under non-derivative or non-commercial terms (for example ePrint 2026/1581, whose page shows CC BY-NC-ND, checked 2026-11-11). Author lists and titles in `docs/DESIGN_INFLUENCES.md` were checked against the publisher or paper page on the same date.
 
 ## Patent research from public sources
 
@@ -55,11 +57,11 @@ Method: query the IETF Datatracker IPR database (`/api/v1/ipr/iprdocrel/`, contr
 Consequences for the design:
 - Keep ML-KEM exactly as FIPS 203 specifies it. No compressed or modified variants.
 - Authentication additions stay symmetric (PSK) and follow public RFC mechanisms until a patent opinion covers KEM-based client authentication.
-- Do not build on constructions from PQShield (Rebar / reinforced KEM) or on papers published under non-derivative terms.
+- Do not build on ratcheted or reinforced KEM constructions, or on papers published under non-derivative terms, until counsel has reviewed the licensing position.
 
 ## Scanner result
 
-ScanCode Toolkit 32.5.0 (Apache-2.0) scanned all 312 files in the repository (licenses, copyrights, package manifests) on 2026-10-30.
+ScanCode Toolkit 32.5.0 (Apache-2.0) scanned all 312 files in the repository (licenses, copyrights, package manifests) on 2026-10-30. That is the last full-repository scan; the `license-scan` workflow runs on every pull request and release, and the 2026-11-11 re-check above covers dependencies, the image and the sources, not a fresh full scan.
 
 - No Go source or script carries a third-party license text or copyright. The only copyright holder detected is the project author.
 - The other licenses detected are mentions in docs (this audit record, the changelog, the contribution guide), not license texts embedded in code.
@@ -73,10 +75,10 @@ Every release now runs the scan (`license-scan` job in `.github/workflows/releas
 |---|---|
 | Name | Searched public sources on 2026-10-30: no trademark registration or filing found for "Quantum-Go" or "QuantumGo". A commercial service called QuantumVPN uses a different name. A web search cannot confirm registration status; check USPTO, EUIPO, and WIPO Global Brand Database before relying on the name as a brand. |
 | Contributor chain | Contributions need a DCO sign-off (`CONTRIBUTING.md`); the `DCO` workflow fails outside pull requests without one. No contributor agreement. |
-| Copyright holder | The notice names the project author personally. Confirm whether the author or an employing company owns the work before relying on that. |
+| Chain of title | The named holder changes between published releases (an individual through v0.0.16, SARA STAR QUANT LLC from v0.0.17, the first tag after the 2026-10-30 `NOTICE` change), while every human commit is by that one individual. The MIT and early Apache releases stay under the terms they shipped with. Confirm in writing that the individual assigned or licensed the earlier work to the company, including the code carried forward from before v0.0.17, and that no employer holds a claim, before relying on the current notice. This is a question for counsel, not something the repository can show. |
 | Liability | Apache-2.0 disclaims warranty and limits liability (sections 7 and 8). |
 
 ## Residual items
 
 - Public disclosures are checked above; no counsel review has happened. Get an opinion before shipping a KEMTLS-style or other paper-derived design.
-- The container image bundles Alpine (busybox is GPL-2.0, musl is MIT) as a separate component; it is distributed as an aggregate, not linked with Quantum-Go.
+- The published container image is built on Alpine and carries GPL-2.0 components that Quantum-Go does not use (busybox, apk-tools, alpine-baselayout), plus musl (MIT) and the CA bundle (MPL-2.0). It is distributed as an aggregate, not linked with Quantum-Go, and we do not modify those packages; corresponding source is available from Alpine for the pinned digest in the `Dockerfile`. Issue #205 moves the image to `FROM scratch`, which removes the aggregate.
