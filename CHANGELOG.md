@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.25][] - 2026-11-11
+
+**Theme:** The release pipeline catches up. Each release now ships its signed SLSA provenance as a file, so Scorecard's Signed-Releases check and `gh attestation verify` both find it, and the GitHub Actions in every workflow move to current majors that run on Node 24. There is no library, CLI or wire change in this release; it exists to prove the new pipeline on a real tag.
+
+### Added
+- **`provenance.intoto.jsonl` release asset**: the Sigstore bundle holding the signed SLSA provenance statement for the archives and the checksums file. The release notes now show the `gh attestation verify` command. A missing bundle warns instead of failing the release.
+
+### Changed
+- **GitHub Actions**: 15 actions move to current majors, each pinned by commit and checked against its tag, which takes `softprops/action-gh-release` (v3.0.4) off Node 20 and clears the deprecation warning on the release run. The Alpine digest in the image base is refreshed. The release workflow quotes its output redirections.
+
 ## [0.0.24][] - 2026-11-11
 
 **Theme:** Datagram loss you can see, and measurements you can reproduce. A burst from a batched receive used to overflow a 64-entry inbox and then the default socket buffer, losing 5 to 7 percent of datagrams at 1 to 4 Gbps between two cloud hosts. The inbox is now 256 entries, `ListenDatagram` asks for a 4 MiB receive buffer, and a new counter shows any drop that remains. The bench gains parallel flows and a datagram mode, and one script runs the whole matrix on AWS or Google Cloud and tears it down. There is no wire change. `golang.org/x/crypto` moves to v0.59.0 to clear an advisory against a package we never import.
@@ -497,7 +507,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.24...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.25...HEAD
+[0.0.25]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.24...v0.0.25
 [0.0.24]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.23...v0.0.24
 [0.0.23]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.21...v0.0.23
 [0.0.22]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.21...v0.0.22

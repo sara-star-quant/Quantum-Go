@@ -5,10 +5,10 @@
 
 ---
 
-## Current Status: v0.0.24
+## Current Status: v0.0.25
 
 > **Direction (Q4 2026).** Protocol 6.0 (one-round-trip handshake), batched datagram sends with UDP
-> offload, per-client PSKs and signed, attested releases have shipped (v0.0.17 and v0.0.18); v0.0.19 added the test-depth suites and fixed two concurrency bugs they found. v0.0.20 made KEM suites registrable from outside the module and let a client choose its first-offered suite. v0.0.21 added stream `SendBatch`, matchable sentinel errors and two-host throughput tooling. v0.0.23 (v0.0.22 never published) removed the per-record allocations from the stream and datagram paths and corrected the throughput figures. v0.0.24 fixed a 5 to 7 percent datagram loss at 1 to 4 Gbps (a larger inbox and receive buffer, plus an `InboxDropped` counter), gave the two-host bench parallel flows and a datagram mode, and shipped a script that reproduces the cloud measurements on AWS or Google Cloud. The
+> offload, per-client PSKs and signed, attested releases have shipped (v0.0.17 and v0.0.18); v0.0.19 added the test-depth suites and fixed two concurrency bugs they found. v0.0.20 made KEM suites registrable from outside the module and let a client choose its first-offered suite. v0.0.21 added stream `SendBatch`, matchable sentinel errors and two-host throughput tooling. v0.0.23 (v0.0.22 never published) removed the per-record allocations from the stream and datagram paths and corrected the throughput figures. v0.0.24 fixed a 5 to 7 percent datagram loss at 1 to 4 Gbps (a larger inbox and receive buffer, plus an `InboxDropped` counter), gave the two-host bench parallel flows and a datagram mode, and shipped a script that reproduces the cloud measurements on AWS or Google Cloud. v0.0.25 changed only the release pipeline: provenance ships as a release asset and the workflow actions moved to Node 24. The
 > **assurance tier** is well underway: a written wire specification, published conformance vectors,
 > machine-checked ProVerif proofs and an audit-readiness package are in place. What remains is a
 > **third-party audit** and **real FIPS 140-3 / CMVP validation**, plus a test-depth push (tamper sweeps,
