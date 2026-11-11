@@ -9,10 +9,46 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels that PR's older run; runs on main always finish.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Docs-only pull requests skip the heavy jobs. A skipped job reports as success to
+  # branch protection, so no ruleset change is needed. README.md still counts as code
+  # because the lint job checks its line-count claim. Static analysis (gosec, CodeQL)
+  # is the exception and always runs, because OpenSSF Scorecard's SAST check counts the
+  # recent commits that had an analysis run.
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect code changes
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          code=true
+          if [ "$EVENT" = pull_request ]; then
+            other=$(git diff --name-only "$BASE_SHA" HEAD | grep -vE '^$|^(docs/|\.claude/)|^(CHANGELOG|ROADMAP|CONTRIBUTING|SECURITY|CODE_OF_CONDUCT)\.md$|^(LICENSE|NOTICE)$' || true)
+            [ -n "$other" ] || code=false
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   test:
     name: Test
     runs-on: ${{ matrix.os }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -62,6 +98,8 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -83,6 +121,8 @@ jobs:
   vuln:
     name: Vulnerability Scan
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -100,6 +140,8 @@ jobs:
   fips:
     name: FIPS Build & Test
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -132,7 +174,8 @@ jobs:
   build:
     name: Build
     runs-on: ${{ matrix.os }}
-    needs: [test]
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       matrix:
         include:
@@ -247,7 +290,8 @@ jobs:
   docker:
     name: Docker Build & SBOM
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -322,3 +366,19 @@ jobs:
           name: compliance-bundle
           path: compliance-bundle.zip
           retention-days: 14
+
+  # One check that stands for the whole workflow: it fails when any job failed or was
+  # cancelled and passes when the rest succeeded or were skipped. Require this one in the
+  # branch rules and the jobs above can change names or shape without a ruleset edit.
+  ci-ok:
+    name: CI result
+    if: always()
+    needs: [changes, test, lint, vuln, fips, build, security, codeql, docker, compliance]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check every job
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success" or .result == "skipped")' > /dev/null
