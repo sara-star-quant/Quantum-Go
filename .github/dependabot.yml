@@ -1,5 +1,8 @@
 # Routine version updates, grouped weekly so they arrive as a few reviewable pull requests.
 # Security updates are separate and stay enabled in the repository settings.
+# The hash-locked ScanCode requirements are not listed: Dependabot cannot maintain a
+# uv-compiled lock (it dropped hashes and rewrote extras), so regenerate it with the uv
+# command documented in .github/workflows/license-scan.yml.
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -21,10 +24,5 @@ updates:
 
   - package-ecosystem: docker
     directory: /
-    schedule:
-      interval: weekly
-
-  - package-ecosystem: pip
-    directory: /.github/requirements
     schedule:
       interval: weekly
