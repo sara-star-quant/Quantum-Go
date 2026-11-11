@@ -1,0 +1,508 @@
+package main
+
+import (
+	"bufio"
+	"encoding/hex"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"os"
+	"os/signal"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"github.com/sara-star-quant/quantum-go/pkg/chkem"
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
+)
+
+// Each tunnel record carries a one-byte frame type, so a TCP half-close travels through the
+// tunnel (which has no half-close of its own) without any change to the wire protocol.
+const (
+	frameData byte = 0x00
+	frameEOF  byte = 0x01
+
+	// forwardChunk is the largest record we send, frame byte included. It stays under the
+	// tunnel's 65,507 byte limit and matches the record size the benchmarks use.
+	forwardChunk = 60 << 10
+
+	pskHexLen = 64 // a 32-byte pre-shared key as hex
+)
+
+// forwardLimits bounds what one forwarder will hold open.
+type forwardLimits struct {
+	maxConns    int
+	idleTimeout time.Duration
+	dialTimeout time.Duration
+}
+
+// forwarder is a running client or server side of a forwarding pair.
+type forwarder struct {
+	addr    net.Addr
+	closeFn func() error
+	closed  atomic.Bool
+	wg      sync.WaitGroup
+}
+
+func (f *forwarder) Addr() net.Addr { return f.addr }
+
+// Close stops accepting and waits for the accept loop to finish. Connections already
+// piping run to their own end.
+func (f *forwarder) Close() error {
+	f.closed.Store(true)
+	err := f.closeFn()
+	f.wg.Wait()
+	return err
+}
+
+// startForwardServer accepts tunnels on addr and hands each one to the single fixed
+// upstream. The peer never chooses a destination, so this cannot act as an open relay.
+func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim forwardLimits, logf func(string, ...any)) (*forwarder, error) {
+	ln, err := tunnel.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	ln.SetConfig(cfg)
+	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close}
+	sem := make(chan struct{}, lim.maxConns)
+	f.wg.Go(func() {
+		for {
+			t, err := ln.Accept()
+			if err != nil {
+				if f.closed.Load() {
+					return
+				}
+				logf("accept: %v", err) // a failed handshake or a rate-limited peer; keep serving
+				continue
+			}
+			select {
+			case sem <- struct{}{}:
+			default:
+				logf("rejecting %v: %d connections already open", t.RemoteAddr(), lim.maxConns)
+				_ = t.Close()
+				continue
+			}
+			go func() {
+				defer func() { <-sem }()
+				serveOne(t, upstream, lim, logf)
+			}()
+		}
+	})
+	return f, nil
+}
+
+func serveOne(t *tunnel.Tunnel, upstream string, lim forwardLimits, logf func(string, ...any)) {
+	defer func() { _ = t.Close() }()
+	start := time.Now()
+	conn, err := net.DialTimeout("tcp", upstream, lim.dialTimeout)
+	if err != nil {
+		logf("upstream %s: %v", upstream, err)
+		return
+	}
+	defer func() { _ = conn.Close() }()
+	sent, recv := pipe(conn, t, lim.idleTimeout)
+	logf("closed %v after %s: %d bytes to upstream, %d back", t.RemoteAddr(), time.Since(start).Round(time.Millisecond), recv, sent)
+}
+
+// startForwardClient accepts plain TCP on listen and carries each connection to connect
+// through its own tunnel.
+func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim forwardLimits, logf func(string, ...any)) (*forwarder, error) {
+	ln, err := net.Listen("tcp", listen)
+	if err != nil {
+		return nil, err
+	}
+	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close}
+	sem := make(chan struct{}, lim.maxConns)
+	f.wg.Go(func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				if f.closed.Load() {
+					return
+				}
+				logf("accept: %v", err)
+				continue
+			}
+			select {
+			case sem <- struct{}{}:
+			default:
+				logf("rejecting %v: %d connections already open", conn.RemoteAddr(), lim.maxConns)
+				_ = conn.Close()
+				continue
+			}
+			go func() {
+				defer func() { <-sem }()
+				defer func() { _ = conn.Close() }()
+				start := time.Now()
+				t, err := tunnel.DialWithConfig("tcp", connect, cfg)
+				if err != nil {
+					logf("tunnel to %s: %v", connect, err)
+					return
+				}
+				defer func() { _ = t.Close() }()
+				sent, recv := pipe(conn, t, lim.idleTimeout)
+				logf("closed %v after %s: %d bytes sent, %d received", conn.RemoteAddr(), time.Since(start).Round(time.Millisecond), sent, recv)
+			}()
+		}
+	})
+	return f, nil
+}
+
+// pipe copies both directions between a TCP connection and a tunnel until each side has
+// finished, or until either fails, and returns the byte counts (TCP to tunnel, tunnel to TCP).
+func pipe(conn net.Conn, t *tunnel.Tunnel, idle time.Duration) (sent, recv int64) {
+	var once sync.Once
+	abort := func() {
+		once.Do(func() {
+			_ = conn.Close()
+			_ = t.Close()
+		})
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() { // TCP to tunnel
+		defer wg.Done()
+		buf := make([]byte, forwardChunk)
+		for {
+			if idle > 0 {
+				_ = conn.SetReadDeadline(time.Now().Add(idle))
+			}
+			n, err := conn.Read(buf[1:])
+			if n > 0 {
+				buf[0] = frameData
+				if serr := t.Send(buf[:n+1]); serr != nil {
+					abort()
+					return
+				}
+				atomic.AddInt64(&sent, int64(n))
+			}
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					if serr := t.Send([]byte{frameEOF}); serr != nil {
+						abort()
+					}
+					return
+				}
+				abort()
+				return
+			}
+		}
+	}()
+
+	go func() { // tunnel to TCP
+		defer wg.Done()
+		buf := make([]byte, 0, forwardChunk)
+		for {
+			data, err := t.ReceiveInto(buf[:0])
+			if err != nil || len(data) == 0 {
+				abort()
+				return
+			}
+			switch data[0] {
+			case frameData:
+				if len(data) > 1 {
+					if idle > 0 {
+						_ = conn.SetWriteDeadline(time.Now().Add(idle))
+					}
+					if _, werr := conn.Write(data[1:]); werr != nil {
+						abort()
+						return
+					}
+					atomic.AddInt64(&recv, int64(len(data)-1))
+				}
+			case frameEOF:
+				if tc, ok := conn.(*net.TCPConn); ok {
+					_ = tc.CloseWrite()
+				}
+				return
+			default:
+				abort()
+				return
+			}
+		}
+	}()
+
+	wg.Wait()
+	abort()
+	return atomic.LoadInt64(&sent), atomic.LoadInt64(&recv)
+}
+
+// forwardAuth holds the authentication choices from the command line.
+type forwardAuth struct {
+	pskFile     string
+	clientsFile string
+	identity    string
+	serverKey   string
+	pin         string
+	insecure    bool
+}
+
+// buildForwardConfig turns the flags into a transport config. Authentication is mandatory:
+// the server needs a PSK source (otherwise anyone could reach the upstream) and the client
+// needs a PSK, unless --insecure-no-auth is given for tests and development.
+func buildForwardConfig(server bool, a forwardAuth, idle time.Duration) (tunnel.TransportConfig, error) {
+	cfg := tunnel.DefaultTransportConfig()
+	if idle > 0 {
+		cfg.ReadTimeout = idle
+	}
+	if a.identity == "" {
+		a.identity = "default"
+	}
+
+	switch {
+	case a.insecure:
+		return cfg, nil
+	case server && a.pskFile == "" && a.clientsFile == "":
+		return cfg, errors.New("the server needs --psk-file or --clients-file so only authorized clients can reach the upstream (or --insecure-no-auth for development)")
+	case !server && a.pskFile == "":
+		return cfg, errors.New("the client needs --psk-file (or --insecure-no-auth for development)")
+	}
+
+	if a.pskFile != "" {
+		key, err := readPSKFile(a.pskFile)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.PSK = key
+		cfg.PSKIdentity = []byte(a.identity)
+	}
+	if server && a.clientsFile != "" {
+		table, err := readClientsFile(a.clientsFile)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.PSKLookup = func(identity []byte) []byte { return table[string(identity)] }
+	}
+	if server {
+		cfg.RequirePSK = true
+	}
+
+	if server && a.serverKey != "" {
+		data, err := os.ReadFile(a.serverKey)
+		if err != nil {
+			return cfg, fmt.Errorf("reading --server-key: %w", err)
+		}
+		kp, err := chkem.ParseTaggedKeyPair(data)
+		if err != nil {
+			return cfg, fmt.Errorf("parsing --server-key: %w", err)
+		}
+		cfg.StaticKeyPair = kp
+		cfg.RequireStaticAuth = true
+	}
+	if !server && a.pin != "" {
+		data, err := os.ReadFile(a.pin)
+		if err != nil {
+			return cfg, fmt.Errorf("reading --pin: %w", err)
+		}
+		pub, err := chkem.ParseTaggedPublicKey(data)
+		if err != nil {
+			return cfg, fmt.Errorf("parsing --pin: %w", err)
+		}
+		cfg.PinnedServerKey = pub
+	}
+	return cfg, nil
+}
+
+// checkSecretFile refuses a key file that other users can read. Windows reports permission
+// bits that mean nothing, so the check is skipped there.
+func checkSecretFile(path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", path)
+	}
+	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("%s is readable by other users (mode %#o); run: chmod 600 %s", path, fi.Mode().Perm(), path)
+	}
+	return nil
+}
+
+func decodePSK(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	if len(s) != pskHexLen {
+		return nil, fmt.Errorf("a PSK is %d hex characters (32 bytes), got %d; generate one with: openssl rand -hex 32", pskHexLen, len(s))
+	}
+	key, err := hex.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("a PSK must be hex: %w", err)
+	}
+	return key, nil
+}
+
+func readPSKFile(path string) ([]byte, error) {
+	if err := checkSecretFile(path); err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	key, err := decodePSK(string(data))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return key, nil
+}
+
+// readClientsFile reads "identity hexkey" lines, one client per line; '#' starts a comment.
+func readClientsFile(path string) (map[string][]byte, error) {
+	if err := checkSecretFile(path); err != nil {
+		return nil, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	table := make(map[string][]byte)
+	sc := bufio.NewScanner(f)
+	for n := 1; sc.Scan(); n++ {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			return nil, fmt.Errorf("%s line %d: want \"identity hexkey\"", path, n)
+		}
+		key, err := decodePSK(fields[1])
+		if err != nil {
+			return nil, fmt.Errorf("%s line %d: %w", path, n, err)
+		}
+		table[fields[0]] = key
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	if len(table) == 0 {
+		return nil, fmt.Errorf("%s has no clients", path)
+	}
+	return table, nil
+}
+
+// loopbackHost makes a bare ":port" bind to 127.0.0.1, so the plain side of a client never
+// listens on every interface by accident.
+func loopbackHost(addr string) (string, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", err
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return net.JoinHostPort(host, port), nil
+}
+
+func forwardCommand() {
+	fs := flag.NewFlagSet("forward", flag.ExitOnError)
+	listen := fs.String("listen", "", "Client side: accept plain TCP on this address (a bare :port binds 127.0.0.1)")
+	connect := fs.String("connect", "", "Client side: carry each connection to this --serve address through a tunnel")
+	serve := fs.String("serve", "", "Server side: accept tunnels on this address")
+	upstream := fs.String("upstream", "", "Server side: hand each tunnel to this single fixed TCP address")
+	pskFile := fs.String("psk-file", "", "File holding a 32-byte PSK as 64 hex characters (mode 0600); required on both sides")
+	clientsFile := fs.String("clients-file", "", "Server side: file of \"identity hexkey\" lines, one PSK per client (mode 0600)")
+	identity := fs.String("identity", "default", "PSK identity the client announces, and the server matches against --psk-file")
+	serverKey := fs.String("server-key", "", "Server side: static key file from keygen; clients must then pin it with --pin")
+	pin := fs.String("pin", "", "Client side: the server's public key file from keygen")
+	maxConns := fs.Int("max-conns", 1024, "Most connections held open at once")
+	idle := fs.Duration("idle-timeout", 5*time.Minute, "Close a connection after this long without data (0 disables)")
+	insecure := fs.Bool("insecure-no-auth", false, "Skip authentication. For tests and development only: anyone who can reach the server can reach the upstream")
+	verbose := fs.Bool("verbose", false, "Log every connection")
+
+	fs.Usage = func() {
+		fmt.Println(`USAGE: quantum-tunnel forward [options]
+
+Protect any TCP service with the post-quantum tunnel, without changing the service.
+Run the server side next to the service and the client side next to its users:
+
+    quantum-tunnel forward --serve :9000 --upstream 127.0.0.1:8080 --psk-file psk.hex
+    quantum-tunnel forward --listen 127.0.0.1:8080 --connect host:9000 --psk-file psk.hex
+
+Each accepted TCP connection gets its own tunnel (one handshake, one round trip). The
+server forwards only to its one upstream address. Half-close is preserved. UDP is not.
+
+OPTIONS:`)
+		fs.PrintDefaults()
+		fmt.Println(`
+EXAMPLES:
+    # A shared PSK (generate with: openssl rand -hex 32 > psk.hex && chmod 600 psk.hex)
+    quantum-tunnel forward --serve :9000 --upstream 127.0.0.1:5432 --psk-file psk.hex
+    quantum-tunnel forward --listen 127.0.0.1:5432 --connect db.example.com:9000 --psk-file psk.hex
+
+    # One PSK per client, and the server pinned by key (see: quantum-tunnel keygen --help)
+    quantum-tunnel forward --serve :9000 --upstream 127.0.0.1:8080 --clients-file clients.txt --server-key server.key
+    quantum-tunnel forward --listen 127.0.0.1:8080 --connect host:9000 --psk-file psk.hex --identity alice --pin server.pub`)
+	}
+	_ = fs.Parse(os.Args[2:])
+
+	isClient := *listen != "" || *connect != ""
+	isServer := *serve != "" || *upstream != ""
+	switch {
+	case isClient == isServer:
+		fmt.Fprintln(os.Stderr, "Choose one side: --listen with --connect, or --serve with --upstream")
+		os.Exit(2)
+	case isClient && (*listen == "" || *connect == ""):
+		fmt.Fprintln(os.Stderr, "The client side needs both --listen and --connect")
+		os.Exit(2)
+	case isServer && (*serve == "" || *upstream == ""):
+		fmt.Fprintln(os.Stderr, "The server side needs both --serve and --upstream")
+		os.Exit(2)
+	case *maxConns < 1:
+		fmt.Fprintln(os.Stderr, "--max-conns must be at least 1")
+		os.Exit(2)
+	}
+
+	cfg, err := buildForwardConfig(isServer, forwardAuth{
+		pskFile: *pskFile, clientsFile: *clientsFile, identity: *identity,
+		serverKey: *serverKey, pin: *pin, insecure: *insecure,
+	}, *idle)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(2)
+	}
+	if *insecure {
+		log.Println("WARNING: --insecure-no-auth is on: the tunnel is encrypted but nobody is authenticated")
+	}
+
+	logf := func(format string, args ...any) {
+		if *verbose || !strings.HasPrefix(format, "closed ") {
+			log.Printf(format, args...)
+		}
+	}
+	lim := forwardLimits{maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second}
+
+	var f *forwarder
+	if isServer {
+		f, err = startForwardServer(*serve, *upstream, cfg, lim, logf)
+		if err == nil {
+			log.Printf("forwarding tunnels on %v to %s", f.Addr(), *upstream)
+		}
+	} else {
+		var bind string
+		if bind, err = loopbackHost(*listen); err == nil {
+			f, err = startForwardClient(bind, *connect, cfg, lim, logf)
+		}
+		if err == nil {
+			log.Printf("forwarding plain TCP on %v through tunnels to %s", f.Addr(), *connect)
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+	log.Println("shutting down")
+	_ = f.Close()
+}
