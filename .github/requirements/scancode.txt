@@ -15,10 +15,11 @@ beartype==0.23.1 \
     --hash=sha256:4461b4dc57e3fdd6c8a8464b22cf118002eea107c33e9fef651c69068ab3cce3 \
     --hash=sha256:8b805f246b32931c74f2b321ea0939fe5bb2ff43c12a3eff19cc4c854b832e1d
     # via spdx-tools
-beautifulsoup4==4.15.0 \
+beautifulsoup4[chardet]==4.15.0 \
     --hash=sha256:288e3ca7d54b06f2ac191970bc275c1939cb46d450b255bf6718b04aa37ab4f7 \
     --hash=sha256:d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9
     # via
+    #   beautifulsoup4
     #   commoncode
     #   scancode-toolkit
 binaryornot==0.6.0 \
@@ -511,7 +512,7 @@ dparse2==0.7.0 \
     --hash=sha256:2b935161700cdad4f27fa7ada85900756739be65ba3ef614ac4436e7ba929102 \
     --hash=sha256:6bf6872aeaffedcac67ad0abb516630bad045dbdb58505b58d8f796ee91f0a73
     # via scancode-toolkit
-extractcode==31.1.0 \
+extractcode[full]==31.1.0 \
     --hash=sha256:147fa97096db5f51e27a7c6205d5ca1e073c98a7877538b7ec775b94ba889ac1 \
     --hash=sha256:e62b75ecf0379beea79cd54d5f1341ac05ec39974e5695ad21d0abb86a0ab6a4
     # via scancode-toolkit
@@ -607,10 +608,6 @@ jsonstreams==0.6.0 \
     --hash=sha256:721cda7391e9415b7b15cebd6cf92fc7f8788ca211eda7d64162a066ee45a72e \
     --hash=sha256:b2e609c2bc17eec77fe26dae4d32556ba59dafbbff30c9a4909f2e19fa5bb000
     # via scancode-toolkit
-lazy-importer==0.1.0 \
-    --hash=sha256:b2e296716ce015c0cd80e57b940e52727c5b934b34b8656d5ce06bdd0ee5fbdd \
-    --hash=sha256:bd93fab7bef18e842eea02b839410954d37889140dc64ca4d9680aec6880c739
-    # via importlib-metadata
 license-expression==30.4.4 \
     --hash=sha256:421788fdcadb41f049d2dc934ce666626265aeccefddd25e162a26f23bcbf8a4 \
     --hash=sha256:73448f0aacd8d0808895bdc4b2c8e01a8d67646e4188f887375398c761f340fd
@@ -1001,11 +998,11 @@ pkginfo2==30.1.0 \
     --hash=sha256:aab1222645196047b6e654f6ee0564fe946b1812030d0d4166e92a2f81e19933 \
     --hash=sha256:be1bb18ef34bcc73758d62aa0667013b3404a8f612f53cd331fbee9bd9381478
     # via scancode-toolkit
-pluggy==1.5.0 \
-    --hash=sha256:2cffa88e94fdc978c4c574f15f9e59b7f4201d439195c3715ca9e2486f1d0cf1 \
-    --hash=sha256:44e1ad92c8ca002de6377e165f3e0f1be63266ab4d554740532335b9d75ea669
+pluggy==1.7.0 \
+    --hash=sha256:7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec \
+    --hash=sha256:d1eaa46ebb595891b860ab086b4d09c8588af65ebd4361b8e8f4bb8920b90ba8
     # via
-    #   -r .github/requirements/scancode.in
+    #   -r scancode.in
     #   plugincode
     #   scancode-toolkit
 plugincode==32.0.0 \
@@ -1170,7 +1167,7 @@ rdflib==7.6.0 \
     --hash=sha256:30c0a3ebf4c0e09215f066be7246794b6492e054e782d7ac2a34c9f70a15e0dd \
     --hash=sha256:6c831288d5e4a5a7ece85d0ccde9877d512a3d0f02d7c06455d00d6d0ea379df
     # via spdx-tools
-requests==2.34.2 \
+requests[use-chardet-on-py3]==2.34.2 \
     --hash=sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0 \
     --hash=sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed
     # via
@@ -1190,7 +1187,7 @@ scancode-toolkit==32.5.0 \
     --hash=sha256:84c6ef71a693a2ee3c5f5b643a3a69d191443381a97a1b7e81ed9446852d91fc \
     --hash=sha256:b73eac8ae8aecff583d8eed79e1cb4270559c99938bb29ec08c96f2f417b420b \
     --hash=sha256:f6bc16880d495393c8475a77155ddc38a800c0b7f8f75e81a165a00fadb4ca06
-    # via -r .github/requirements/scancode.in
+    # via -r scancode.in
 semantic-version==2.10.0 \
     --hash=sha256:bdabb6d336998cbb378d4b9db3a4b56a1e3235701dc05ea2690d9a997ed5041c \
     --hash=sha256:de78a3b8e0feda74cabc54aab2da702113e33ac9d9eb9d2389bcf1f58b7d9177
@@ -1221,7 +1218,7 @@ toml==0.10.2 \
     --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
     --hash=sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
     # via dparse2
-typecode==30.2.0 \
+typecode[full]==30.2.0 \
     --hash=sha256:42b9477d7d05ba5668768dae46c2d2700d503b6e3791d2cd8003b5d10d0ea330 \
     --hash=sha256:5e59d65ea899b30926f66c32f43d811aa200e8ce1aa84f95b109cdabb4af2acd
     # via
@@ -1232,7 +1229,7 @@ typecode-libmagic==5.39.210531 \
     --hash=sha256:24ceecb5c1249ddbdb6a471a0d35fbc11008cbd3b71cad0966f94ff94918a1fa \
     --hash=sha256:ee001c8093dfa89a9d1fe6d9139ef9f367a1cb9af6fd02ffebf9246af994fbf7
     # via
-    #   -r .github/requirements/scancode.in
+    #   -r scancode.in
     #   typecode
 typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
