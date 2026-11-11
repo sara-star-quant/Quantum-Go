@@ -73,3 +73,6 @@ temp/
 
 # Logs
 *.log
+
+# raw cloud-bench output stays out of the repo
+cloud-bench-results/

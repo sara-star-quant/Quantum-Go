@@ -122,6 +122,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 | [Configuration](docs/usage/CONFIGURATION.md) | Timeouts, rate limiting, sessions, authentication |
 | [CLI reference](docs/usage/CLI.md) | `quantum-tunnel` demos, key generation and benchmarks |
 | [Performance](docs/PERFORMANCE.md) | Measured latency, handshake cost and throughput |
+| [Try it on AWS or Google Cloud](docs/usage/CLOUD_BENCH.md) | One script, two VMs, about ten minutes, torn down for you |
 | [Comparison](docs/COMPARISON.md) | Quantum-Go next to WireGuard, Rosenpass, IKEv2 and hybrid TLS |
 | [Datagram transport](docs/datagram-transport.md) and [DoS defences](docs/datagram-dos.md) | UDP transport design and limits |
 | [Architecture](docs/technical/ARCHITECTURE.md) | CH-KEM protocol and security design |
