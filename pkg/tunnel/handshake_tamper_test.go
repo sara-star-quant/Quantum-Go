@@ -1,8 +1,10 @@
 package tunnel
 
 import (
+	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,6 +28,27 @@ func tamperOffsets(n int) []int {
 		if i < 64 || i >= n-64 || i%3 == 0 {
 			out = append(out, i)
 		}
+	}
+	return out
+}
+
+// tamperChunks is how many parallel subtests each sweep splits into. It exceeds the core
+// count of a CI runner so the slowest chunk does not decide the wall time.
+const tamperChunks = 8
+
+// splitOffsets deals xs into at most n chunks round-robin, so every chunk gets a similar
+// mix of cheap and slow offsets and the slowest chunk does not decide the wall time.
+func splitOffsets(xs []int, n int) [][]int {
+	if n < 1 {
+		n = 1
+	}
+	var out [][]int
+	for k := 0; k < n && k < len(xs); k++ {
+		var chunk []int
+		for j := k; j < len(xs); j += n {
+			chunk = append(chunk, xs[j])
+		}
+		out = append(out, chunk)
 	}
 	return out
 }
@@ -103,6 +126,7 @@ func honestDgramLengths(t *testing.T) map[protocol.MessageType]int {
 // authenticated by the transcript or the Finished MACs.
 func TestDgramHandshakeRejectsEveryTamperedByte(t *testing.T) {
 	lens := honestDgramLengths(t)
+	masks := []byte{0x01, 0x80}
 	for _, typ := range []protocol.MessageType{
 		protocol.MessageTypeClientHello, protocol.MessageTypeServerHello,
 		protocol.MessageTypeServerFinished, protocol.MessageTypeClientFinished,
@@ -111,13 +135,31 @@ func TestDgramHandshakeRejectsEveryTamperedByte(t *testing.T) {
 		if !ok {
 			t.Fatalf("message type %v missing from the honest run", typ)
 		}
-		for _, off := range tamperOffsets(n) {
-			for _, mask := range []byte{0x01, 0x80} {
-				initDone, respDone := runDgramHandshakeTampered(t, typ, off, mask)
-				if initDone && respDone {
-					t.Fatalf("both sides completed after flipping bit mask %#x of byte %d of %v (%d bytes)", mask, off, typ, n)
-				}
+		offsets := tamperOffsets(n)
+		if len(offsets) == 0 {
+			t.Fatalf("no offsets to flip in %v (%d bytes): the sweep would pass without checking anything", typ, n)
+		}
+		var visited atomic.Int64
+		// The group waits for its parallel chunks, so the count below is final.
+		t.Run(fmt.Sprintf("%v", typ), func(t *testing.T) {
+			// Every iteration builds its own state machines, so the chunks run in parallel.
+			for i, chunk := range splitOffsets(offsets, tamperChunks) {
+				t.Run(fmt.Sprintf("chunk%d", i), func(t *testing.T) {
+					t.Parallel()
+					for _, off := range chunk {
+						for _, mask := range masks {
+							visited.Add(1)
+							initDone, respDone := runDgramHandshakeTampered(t, typ, off, mask)
+							if initDone && respDone {
+								t.Errorf("both sides completed after flipping bit mask %#x of byte %d of %v (%d bytes)", mask, off, typ, n)
+							}
+						}
+					}
+				})
 			}
+		})
+		if want := int64(len(offsets) * len(masks)); visited.Load() != want {
+			t.Fatalf("%v: ran %d tampered handshakes, want %d", typ, visited.Load(), want)
 		}
 	}
 }
@@ -204,21 +246,42 @@ func TestStreamHandshakeRejectsTamperedBytes(t *testing.T) {
 		name   string
 		n      int
 		client bool
-	}{{"client to server", cBytes, true}, {"server to client", sBytes, false}} {
+	}{{"client-to-server", cBytes, true}, {"server-to-client", sBytes, false}} {
+		var offsets []int
 		for _, off := range tamperOffsets(dir.n) {
 			if off >= 32 && off < dir.n-32 && off%61 != 0 {
 				continue // thin the stream sweep: the datagram sweep is exhaustive, this one covers the framing
 			}
-			cf, sf := -1, -1
-			if dir.client {
-				cf = off
-			} else {
-				sf = off
+			offsets = append(offsets, off)
+		}
+		if len(offsets) == 0 {
+			t.Fatalf("no offsets to flip in the %s stream (%d bytes): the sweep would pass without checking anything", dir.name, dir.n)
+		}
+		var visited atomic.Int64
+		t.Run(dir.name, func(t *testing.T) {
+			// Each run uses its own pipe and sessions, and most of the time goes to a short
+			// deadline on the cases a tamper leaves waiting, so the chunks overlap well.
+			for i, chunk := range splitOffsets(offsets, tamperChunks) {
+				t.Run(fmt.Sprintf("chunk%d", i), func(t *testing.T) {
+					t.Parallel()
+					for _, off := range chunk {
+						visited.Add(1)
+						cf, sf := -1, -1
+						if dir.client {
+							cf = off
+						} else {
+							sf = off
+						}
+						cOK, sOK, _, _ := runStreamHandshake(t, cf, sf, 0x01, 400*time.Millisecond)
+						if cOK && sOK {
+							t.Errorf("both sides completed after flipping byte %d of the %s stream (%d bytes)", off, dir.name, dir.n)
+						}
+					}
+				})
 			}
-			cOK, sOK, _, _ := runStreamHandshake(t, cf, sf, 0x01, 120*time.Millisecond)
-			if cOK && sOK {
-				t.Fatalf("both sides completed after flipping byte %d of the %s stream (%d bytes)", off, dir.name, dir.n)
-			}
+		})
+		if visited.Load() != int64(len(offsets)) {
+			t.Fatalf("%s: ran %d tampered handshakes, want %d", dir.name, visited.Load(), len(offsets))
 		}
 	}
 }

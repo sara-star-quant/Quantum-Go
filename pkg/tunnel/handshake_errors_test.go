@@ -265,6 +265,7 @@ func TestStreamHandshakeThroughTamperingProxy(t *testing.T) {
 				name = "client-to-server"
 			}
 			t.Run(name+"/"+time.Duration(off).String(), func(t *testing.T) {
+				t.Parallel() // own listener, proxy and sockets
 				ln, err := Listen("tcp", "127.0.0.1:0")
 				if err != nil {
 					t.Fatal(err)

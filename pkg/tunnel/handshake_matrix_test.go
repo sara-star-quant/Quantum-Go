@@ -170,7 +170,7 @@ func runDgramMatrix(t *testing.T, srv, cli hsSide, wantOK bool) hsResult {
 	res.clientErr = err
 	wait := 30 * time.Second
 	if err != nil {
-		wait = 300 * time.Millisecond // absence check: a rejected peer must not surface
+		wait = time.Second // absence check: a rejected peer must not surface; generous because the scenarios run in parallel
 	}
 	select {
 	case server := <-acc:
@@ -272,7 +272,7 @@ func TestHandshakeMatrix(t *testing.T) {
 	// skipped: other tests register permanent stand-ins that are not full suites.
 	type matrixSuite struct {
 		name string
-		gen  func() *chkem.KeyPair
+		gen  func(testing.TB) *chkem.KeyPair
 	}
 	var suites []matrixSuite
 	for _, id := range chkem.SupportedSuites() {
@@ -287,10 +287,11 @@ func TestHandshakeMatrix(t *testing.T) {
 		if name == "" {
 			name = fmt.Sprintf("suite-%04x", uint16(id))
 		}
-		suites = append(suites, matrixSuite{name: name, gen: func() *chkem.KeyPair {
+		suites = append(suites, matrixSuite{name: name, gen: func(tb testing.TB) *chkem.KeyPair {
+			tb.Helper()
 			kp, _, err := s.GenerateStaticKeyPair()
 			if err != nil {
-				t.Fatal(err)
+				tb.Fatal(err)
 			}
 			return kp
 		}})
@@ -303,7 +304,8 @@ func TestHandshakeMatrix(t *testing.T) {
 		for _, su := range suites {
 			for _, sc := range scenarios {
 				t.Run(rn.name+"/"+su.name+"/"+sc.name, func(t *testing.T) {
-					kp, other := su.gen(), su.gen()
+					t.Parallel() // each scenario owns its endpoints, keys and sockets
+					kp, other := su.gen(t), su.gen(t)
 					res := rn.run(t, sc.srv(kp, other), sc.cli(kp, other), sc.ok)
 					switch {
 					case sc.ok:
