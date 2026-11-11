@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -559,5 +560,67 @@ func TestAcceptShedsConnectionsBeyondPendingLimit(t *testing.T) {
 	var ne net.Error
 	if n != 0 || err == nil || (errors.As(err, &ne) && ne.Timeout()) {
 		t.Fatalf("second connection was not shed: n=%d err=%v", n, err)
+	}
+}
+
+type loadRecorder struct {
+	started, finished, shed atomic.Int64
+	lastShedIP              atomic.Value
+}
+
+func (r *loadRecorder) OnConnectionRateLimit(string) {}
+func (r *loadRecorder) OnHandshakeRateLimit(string)  {}
+func (r *loadRecorder) OnHandshakeStarted()          { r.started.Add(1) }
+func (r *loadRecorder) OnHandshakeFinished()         { r.finished.Add(1) }
+func (r *loadRecorder) OnHandshakeShed(ip string)    { r.shed.Add(1); r.lastShedIP.Store(ip) }
+
+// TestHandshakeLoadObserverSeesShedAndRelease checks the observer events around the pending
+// limit: the stalled first connection holds the slot, the second is reported shed with its
+// address, and closing the first releases the slot so started and finished balance.
+func TestHandshakeLoadObserverSeesShedAndRelease(t *testing.T) {
+	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+	defer func() { _ = listener.Close() }()
+	rec := &loadRecorder{}
+	cfg := tunnel.DefaultTransportConfig()
+	cfg.MaxPendingHandshakes = 1
+	cfg.HandshakeTimeout = 10 * time.Second
+	cfg.RateLimitObserver = rec
+	listener.SetConfig(cfg)
+	go func() { _, _ = listener.Accept() }()
+
+	first, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("first dial: %v", err)
+	}
+	waitFor(t, "first handshake start", func() bool { return rec.started.Load() == 1 })
+
+	second, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatalf("second dial: %v", err)
+	}
+	defer func() { _ = second.Close() }()
+	waitFor(t, "second connection shed", func() bool { return rec.shed.Load() == 1 })
+	if ip, _ := rec.lastShedIP.Load().(string); ip != "127.0.0.1" {
+		t.Fatalf("shed ip = %q, want 127.0.0.1", ip)
+	}
+	if rec.finished.Load() != 0 {
+		t.Fatal("handshake finished while the first connection still stalls")
+	}
+
+	_ = first.Close() // peer hangs up: the stalled handshake fails and frees its slot
+	waitFor(t, "slot release", func() bool { return rec.finished.Load() == 1 })
+}
+
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

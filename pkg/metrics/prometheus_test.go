@@ -172,6 +172,8 @@ func TestPrometheusExporterAllMetricTypes(t *testing.T) {
 		"packets_sent_total",
 		"packets_received_total",
 		"datagram_inbox_dropped_total",
+		"pending_handshakes",
+		"handshakes_shed_total",
 		"replay_attacks_blocked_total",
 		"auth_failures_total",
 		"rekeys_initiated_total",

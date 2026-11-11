@@ -80,6 +80,14 @@ func (e *PrometheusExporter) WriteMetrics(w io.Writer) {
 	e.writeType(pw, "packets_received_total", "counter")
 	e.writeMetric(pw, "packets_received_total", labels, float64(snap.PacketsRecv))
 
+	e.writeHelp(pw, "pending_handshakes", "Stream handshakes in flight now")
+	e.writeType(pw, "pending_handshakes", "gauge")
+	e.writeMetric(pw, "pending_handshakes", labels, float64(snap.PendingHandshakes))
+
+	e.writeHelp(pw, "handshakes_shed_total", "Connections closed on arrival because every handshake slot was taken")
+	e.writeType(pw, "handshakes_shed_total", "counter")
+	e.writeMetric(pw, "handshakes_shed_total", labels, float64(snap.HandshakesShed))
+
 	e.writeHelp(pw, "datagram_inbox_dropped_total", "Total datagrams dropped because a session inbox was full (datagram transport only)")
 	e.writeType(pw, "datagram_inbox_dropped_total", "counter")
 	e.writeMetric(pw, "datagram_inbox_dropped_total", labels, float64(snap.InboxDropped))

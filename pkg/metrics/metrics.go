@@ -23,11 +23,13 @@ type Collector struct {
 	handshakeLatency *Histogram
 
 	// Traffic metrics
-	bytesSent     atomic.Int64
-	bytesReceived atomic.Int64
-	packetsSent   atomic.Int64
-	packetsRecv   atomic.Int64
-	inboxDropped  atomic.Int64
+	bytesSent         atomic.Int64
+	bytesReceived     atomic.Int64
+	packetsSent       atomic.Int64
+	packetsRecv       atomic.Int64
+	inboxDropped      atomic.Int64
+	handshakesPending atomic.Int64 // live gauge: Reset leaves it alone
+	handshakesShed    atomic.Int64
 
 	// Security metrics
 	replayAttacksBlocked atomic.Int64
@@ -149,6 +151,22 @@ func (c *Collector) RecordInboxDropped(n int64) {
 	c.inboxDropped.Add(n)
 }
 
+// RecordHandshakeStarted adds one to the pending-handshake gauge.
+func (c *Collector) RecordHandshakeStarted() {
+	c.handshakesPending.Add(1)
+}
+
+// RecordHandshakeFinished subtracts one from the pending-handshake gauge.
+func (c *Collector) RecordHandshakeFinished() {
+	c.handshakesPending.Add(-1)
+}
+
+// RecordHandshakeShed counts a connection the stream listener closed on arrival because
+// every handshake slot was taken.
+func (c *Collector) RecordHandshakeShed() {
+	c.handshakesShed.Add(1)
+}
+
 // --- Security Metrics ---
 
 // RecordReplayBlocked increments the replay attack counter.
@@ -237,6 +255,11 @@ type Snapshot struct {
 	PacketsRecv   int64
 	InboxDropped  int64
 
+	// PendingHandshakes is the number of stream handshakes in flight now. HandshakesShed counts
+	// connections closed on arrival because the limit was reached.
+	PendingHandshakes int64
+	HandshakesShed    int64
+
 	// Security metrics
 	ReplayAttacksBlocked int64
 	AuthFailures         int64
@@ -275,6 +298,8 @@ func (c *Collector) Snapshot() Snapshot {
 		PacketsSent:          c.packetsSent.Load(),
 		PacketsRecv:          c.packetsRecv.Load(),
 		InboxDropped:         c.inboxDropped.Load(),
+		PendingHandshakes:    c.handshakesPending.Load(),
+		HandshakesShed:       c.handshakesShed.Load(),
 		ReplayAttacksBlocked: c.replayAttacksBlocked.Load(),
 		AuthFailures:         c.authFailures.Load(),
 		RekeysInitiated:      c.rekeysInitiated.Load(),
@@ -302,6 +327,7 @@ func (c *Collector) Reset() {
 	c.packetsSent.Store(0)
 	c.packetsRecv.Store(0)
 	c.inboxDropped.Store(0)
+	c.handshakesShed.Store(0)
 	c.replayAttacksBlocked.Store(0)
 	c.authFailures.Store(0)
 	c.rekeysInitiated.Store(0)

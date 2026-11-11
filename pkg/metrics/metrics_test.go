@@ -245,3 +245,20 @@ func TestCollectorInboxDropped(t *testing.T) {
 		t.Fatalf("InboxDropped after Reset = %d, want 0", got)
 	}
 }
+
+func TestCollectorHandshakeLoad(t *testing.T) {
+	c := NewCollector(nil)
+	c.RecordHandshakeStarted()
+	c.RecordHandshakeStarted()
+	c.RecordHandshakeFinished()
+	c.RecordHandshakeShed()
+	s := c.Snapshot()
+	if s.PendingHandshakes != 1 || s.HandshakesShed != 1 {
+		t.Fatalf("pending=%d shed=%d, want 1 and 1", s.PendingHandshakes, s.HandshakesShed)
+	}
+	c.Reset()
+	s = c.Snapshot()
+	if s.PendingHandshakes != 1 || s.HandshakesShed != 0 {
+		t.Fatalf("after Reset pending=%d shed=%d, want the live gauge kept and the counter zeroed", s.PendingHandshakes, s.HandshakesShed)
+	}
+}

@@ -35,7 +35,10 @@ type RateLimitObserver struct {
 	logger    *Logger
 }
 
-var _ tunnel.RateLimitObserver = (*RateLimitObserver)(nil)
+var (
+	_ tunnel.RateLimitObserver     = (*RateLimitObserver)(nil)
+	_ tunnel.HandshakeLoadObserver = (*RateLimitObserver)(nil)
+)
 
 // NewRateLimitObserver creates a rate limit observer that records metrics and logs events.
 func NewRateLimitObserver(collector *Collector, logger *Logger) *RateLimitObserver {
@@ -71,3 +74,13 @@ func (o *RateLimitObserver) OnHandshakeRateLimit(remoteIP string) {
 	}
 	o.logger.Warn("handshake rate limit exceeded")
 }
+
+// OnHandshakeStarted raises the pending-handshake gauge.
+func (o *RateLimitObserver) OnHandshakeStarted() { o.collector.RecordHandshakeStarted() }
+
+// OnHandshakeFinished lowers the pending-handshake gauge.
+func (o *RateLimitObserver) OnHandshakeFinished() { o.collector.RecordHandshakeFinished() }
+
+// OnHandshakeShed counts a shed connection. The counter is the signal, so nothing is logged:
+// a flood of shed connections would otherwise flood the log too.
+func (o *RateLimitObserver) OnHandshakeShed(string) { o.collector.RecordHandshakeShed() }

@@ -981,6 +981,7 @@ func (l *Listener) startAcceptLoop() {
 
 // acceptLoop accepts raw connections and hands each to its own handshake goroutine.
 func (l *Listener) acceptLoop() {
+	load, _ := l.config.RateLimitObserver.(HandshakeLoadObserver) // nil when not implemented
 	for {
 		conn, err := l.listener.Accept()
 		if err != nil {
@@ -990,7 +991,13 @@ func (l *Listener) acceptLoop() {
 		}
 		select {
 		case l.pending <- struct{}{}:
+			if load != nil {
+				load.OnHandshakeStarted()
+			}
 		default:
+			if load != nil {
+				load.OnHandshakeShed(extractRemoteIP(conn))
+			}
 			_ = conn.Close() // too many connections in flight: shed load
 			continue
 		}
@@ -998,6 +1005,9 @@ func (l *Listener) acceptLoop() {
 			t, err := l.handshakeConn(conn)
 			l.deliver(acceptResult{tunnel: t, err: err})
 			<-l.pending
+			if load != nil {
+				load.OnHandshakeFinished()
+			}
 		}()
 	}
 }
