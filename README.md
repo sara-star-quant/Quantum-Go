@@ -93,7 +93,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 |--------|--------|
 | Stream throughput, two Google Cloud hosts (`c3-standard-8`, 20 Gbps link) | one tunnel flow: 10.1 Gbps at 8 KB records, 14.3 Gbps at 60 KB; four or more flows: 20.4 Gbps, the same as plain TCP |
 | Stream throughput, two AWS hosts (`c7i-flex.large`) | two or more flows: 12.4 Gbps, the instance limit, within 0.4% of plain TCP |
-| Datagram loss, two Google Cloud hosts, 1 to 4 Gbps offered | under 0.01% with the 256-entry inbox and 4 MiB receive buffer (raise `rmem_max`); 5 to 7% on a stock host |
+| Datagram loss, two Google Cloud hosts, 1 to 4 Gbps offered | under 0.01% with the 256-entry inbox and 4 MiB receive buffer (raise `rmem_max`); 5 to 7% on a stock host. A 2 vCPU AWS pair loses 0.2% to 0.5% at 4 Gbps, because the receiver runs out of CPU first |
 | Client can send data after | 1 RTT (stream and datagram), under 1 ms of crypto |
 | Handshake CPU, both sides | 340 to 610 µs (Linux, macOS, Windows runners); static-key auth adds about 35 to 50% |
 | Stream throughput, single tunnel | about 2.5 GB/s at 60 KB records, about 1.2 GB/s at 8 KB (laptop, loopback); depends on record size |

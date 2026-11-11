@@ -11,7 +11,7 @@ Two transports share the crypto core: a TCP/stream transport (length-prefixed fr
 - **Hygiene:** measure with network-filtering software (a VPN client, antivirus or endpoint-security agent) turned off. Such software can sit on every socket call, loopback included: on the laptop used here, quitting one VPN client roughly doubled 60 KB-record throughput (about 1.2 to 2.5 GB/s) and tripled 8 KB-record throughput. Check that the machine is idle before a run, alternate the builds you compare, and repeat each run.
 - **Container:** Linux arm64 VM with 8 cores (Docker Desktop), loopback.
 - **Container bridge:** `scripts/docker-bench.sh [repetitions]` runs the throughput bench between two containers on a bridge network and prints the tunnel against plain TCP per record size, with the spread between runs. It is closer to two hosts than loopback, but it is still one machine.
-- **Cloud:** two VMs in one zone on AWS (`eu-north-1`, `c7i-flex.large`) and Google Cloud (`europe-north1`, `c3-standard-8`), private addresses, `quantum-tunnel bench --serve` on one and `--connect` on the other, one 10 s run per cell. The laptop only sent commands, so no laptop VPN or filter touched these numbers. Single runs, not medians: treat them as indicative. See [Between two cloud hosts](#between-two-cloud-hosts).
+- **Cloud:** two VMs in one zone on AWS (`eu-north-1`, `c7i-flex.large`) and Google Cloud (`europe-north1`, `c3-standard-8`), private addresses, `quantum-tunnel bench --serve` on one and `--connect` on the other, one 10 s run per cell. The laptop only sent commands, so no laptop VPN or filter touched these numbers. Single runs, not medians: treat them as indicative; repeat runs on the same instance types agreed within about 5%. [`scripts/cloud-bench.sh`](usage/CLOUD_BENCH.md) reproduces them on your own account. See [Between two cloud hosts](#between-two-cloud-hosts).
 - **Reproduce:** `quantum-tunnel bench --handshakes N --datagram-handshakes N --throughput` ([CLI reference](usage/CLI.md#benchmark-mode)), or `go test ./test/benchmark/ -bench Handshake` and `go test ./pkg/tunnel/ -bench DatagramEndToEnd`.
 
 ## Connection setup
@@ -175,12 +175,15 @@ Receiver-delivered rate, one tunnel (or plain TCP stream) per flow, 10 s per cel
 | 8 | 20.7 | 20.4 | 20.5 | 20.2 |
 | 16 | 20.4 | 20.4 | 20.4 | 20.4 |
 
+A re-run with the cloud script on the dependency-updated build matched the table: 9.7 Gbps (8 KB) and 14.2 Gbps (60 KB) on one flow, 20.4 Gbps on four.
+
 **AWS, `c7i-flex.large` pair, same zone (2 vCPUs, up to 12.5 Gbps):** one flow reached 9.5 Gbps for plain TCP and the tunnel at both record sizes, and two or more flows reached 12.4 Gbps for both, which is the instance limit. A different pair of the same type topped out at 4.96 Gbps on one flow, so single-flow numbers depend on placement; compare flow counts within one pair.
 
 What this says:
 
 - **One tunnel flow is CPU-bound on a fast link.** On the 20 Gbps link a single tunnel flow stops at 10.1 Gbps with 8 KB records and 14.3 Gbps with 60 KB, because one goroutine does both the reads and the AES-GCM open. With four or more flows the tunnel fills the link and matches plain TCP.
 - **Where the receiver's time goes** (8 KB records, Linux VM, loopback): about 49% in AES-GCM open, about 39% in the `read` syscall, and about 12% for framing, replay window, deadlines and clock calls. At 1 KB the `read` syscall is the largest item at about 30% and AES drops to about 5%. Allocation is one 5-byte allocation per record.
+- **Small records run out of CPU much earlier.** With 1400-byte records the 2-vCPU AWS pair reaches 7.2 to 8.2 Gbps over four flows against 12.4 for plain TCP, and the 8-vCPU GCP pair 12.9 to 13.5 against 20.6. One flow does 3.8 to 4.3 Gbps on GCP against 12.7 to 12.9 for plain TCP. The tunnel needs about 1.7 to 2.8 CPU-seconds per GiB on the receiving side at that size, against about 0.4 to 1.0 for plain TCP, so size the host by cores, not by link speed, when your records are small. [Batching](#batching-small-stream-records) narrows the gap.
 - **CPU per GiB** (AWS, four flows, 60 KB records): tunnel receiver 0.69 and sender 0.40 CPU-seconds, against 0.40 and 0.12 for plain TCP.
 
 **Datagram transport** (Google Cloud `c3-standard-8` pair, 1100-byte records, offload on, 16 datagrams per `SendBatch`, `--rate` pacing), loss at a fixed offered load:
@@ -190,6 +193,8 @@ What this says:
 | 1 Gbps | 6.9% | under 0.01% |
 | 2 Gbps | 5.1% | under 0.01% |
 | 4 Gbps | 7.3% | under 0.01% |
+
+On the smaller AWS pair (2 vCPUs, up to 12.5 Gbps) the same tuned setup loses 0.00% at 1 Gbps offered but 0.2% to 0.5% at 4 Gbps, because two vCPUs are the receiver's limit before the link is; its unpaced blast delivers 4.4 Gbps with 0.02% to 0.09% loss. The table above is the 8-vCPU GCP pair, so read its "under 0.01%" as a property of a receiver with CPU to spare, not of the library alone.
 
 Receiver CPU stayed low and the kernel's `RcvbufErrors` counter barely moved during the stock-host runs, so the drops were inside the library, and the change in the right column fixes them. See [Socket buffers at high rates](datagram-transport.md#socket-buffers-at-high-rates) for the setting. An unpaced blast delivers about 6.1 to 6.5 Gbps with 15% to 22% loss in both columns, because the receiver is CPU-bound there. Without offload, `SendBatch` sent at the same rate for batch sizes 1 and 16 (about 480 MB/s on this pair), so batching only paid off with offload on.
 
