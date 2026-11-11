@@ -11,7 +11,7 @@ Two transports share the crypto core: a TCP/stream transport (length-prefixed fr
 - **Hygiene:** measure with network-filtering software (a VPN client, antivirus or endpoint-security agent) turned off. Such software can sit on every socket call, loopback included: on the laptop used here, quitting one VPN client roughly doubled 60 KB-record throughput (about 1.2 to 2.5 GB/s) and tripled 8 KB-record throughput. Check that the machine is idle before a run, alternate the builds you compare, and repeat each run.
 - **Container:** Linux arm64 VM with 8 cores (Docker Desktop), loopback.
 - **Container bridge:** `scripts/docker-bench.sh [repetitions]` runs the throughput bench between two containers on a bridge network and prints the tunnel against plain TCP per record size, with the spread between runs. It is closer to two hosts than loopback, but it is still one machine.
-- **Cloud:** two VMs in one zone on AWS (`eu-north-1`, `c7i-flex.large`) and Google Cloud (`europe-north1`, `c3-standard-8`), private addresses, `quantum-tunnel bench --serve` on one and `--connect` on the other, one 10 s run per cell. The laptop only sent commands, so no laptop VPN or filter touched these numbers. Single runs, not medians: treat them as indicative; repeat runs on the same instance types agreed within about 5%. [`scripts/cloud-bench.sh`](usage/CLOUD_BENCH.md) reproduces them on your own account. See [Between two cloud hosts](#between-two-cloud-hosts).
+- **Cloud:** two VMs in one zone on AWS (`eu-north-1`, `c7i-flex.large`) and Google Cloud (`europe-north1`, `c3-standard-8`), private addresses, `quantum-tunnel bench --serve` on one and `--connect` on the other, one 10 s run per cell. The laptop only sent commands, so no laptop VPN or filter touched these numbers. Single runs, not medians: treat them as indicative; multi-flow figures agreed within about 2% across repeat runs on the same instance types, while single-flow figures swung by up to about 20% (Google Cloud, 60 KB records, one flow: 14.2, 14.3 and 17.6 Gbps over three runs). [`scripts/cloud-bench.sh`](usage/CLOUD_BENCH.md) reproduces them on your own account. See [Between two cloud hosts](#between-two-cloud-hosts).
 - **Reproduce:** `quantum-tunnel bench --handshakes N --datagram-handshakes N --throughput` ([CLI reference](usage/CLI.md#benchmark-mode)), or `go test ./test/benchmark/ -bench Handshake` and `go test ./pkg/tunnel/ -bench DatagramEndToEnd`.
 
 ## Connection setup
@@ -175,7 +175,7 @@ Receiver-delivered rate, one tunnel (or plain TCP stream) per flow, 10 s per cel
 | 8 | 20.7 | 20.4 | 20.5 | 20.2 |
 | 16 | 20.4 | 20.4 | 20.4 | 20.4 |
 
-A re-run with the cloud script on the dependency-updated build matched the table: 9.7 Gbps (8 KB) and 14.2 Gbps (60 KB) on one flow, 20.4 Gbps on four.
+A re-run with the cloud script on the dependency-updated build gave 9.7 Gbps (8 KB) and 14.2 Gbps (60 KB) on one flow and 20.4 Gbps on four; an earlier script run measured 11.2 and 17.6 on one flow, so read single-flow figures as a range and the multi-flow ones as stable.
 
 **AWS, `c7i-flex.large` pair, same zone (2 vCPUs, up to 12.5 Gbps):** one flow reached 9.5 Gbps for plain TCP and the tunnel at both record sizes, and two or more flows reached 12.4 Gbps for both, which is the instance limit. A different pair of the same type topped out at 4.96 Gbps on one flow, so single-flow numbers depend on placement; compare flow counts within one pair.
 

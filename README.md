@@ -91,7 +91,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 
 | Metric | Result |
 |--------|--------|
-| Stream throughput, two Google Cloud hosts (`c3-standard-8`, 20 Gbps link) | one tunnel flow: 10.1 Gbps at 8 KB records, 14.3 Gbps at 60 KB; four or more flows: 20.4 Gbps, the same as plain TCP |
+| Stream throughput, two Google Cloud hosts (`c3-standard-8`, 20 Gbps link) | one tunnel flow: about 10 to 11 Gbps at 8 KB records and 14 to 18 Gbps at 60 KB (it varies between runs); four or more flows: about 20.4 Gbps, the same as plain TCP |
 | Stream throughput, two AWS hosts (`c7i-flex.large`) | two or more flows: 12.4 Gbps, the instance limit, within 0.4% of plain TCP |
 | Datagram loss, two Google Cloud hosts, 1 to 4 Gbps offered | under 0.01% with the 256-entry inbox and 4 MiB receive buffer (raise `rmem_max`); 5 to 7% on a stock host. A 2 vCPU AWS pair loses 0.2% to 0.5% at 4 Gbps, because the receiver runs out of CPU first |
 | Client can send data after | 1 RTT (stream and datagram), under 1 ms of crypto |
@@ -123,6 +123,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 | [CLI reference](docs/usage/CLI.md) | `quantum-tunnel` demos, key generation and benchmarks |
 | [Performance](docs/PERFORMANCE.md) | Measured latency, handshake cost and throughput |
 | [Try it on AWS or Google Cloud](docs/usage/CLOUD_BENCH.md) | One script, two VMs, about ten minutes, torn down for you |
+| [AI and cloud workloads](docs/usage/AI_AND_CLOUD.md) | Where post-quantum transport fits for model and data movement, and where TLS already covers you |
 | [Comparison](docs/COMPARISON.md) | Quantum-Go next to WireGuard, Rosenpass, IKEv2 and hybrid TLS |
 | [Datagram transport](docs/datagram-transport.md) and [DoS defences](docs/datagram-dos.md) | UDP transport design and limits |
 | [Architecture](docs/technical/ARCHITECTURE.md) | CH-KEM protocol and security design |
