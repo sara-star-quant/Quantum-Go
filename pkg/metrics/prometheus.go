@@ -80,6 +80,10 @@ func (e *PrometheusExporter) WriteMetrics(w io.Writer) {
 	e.writeType(pw, "packets_received_total", "counter")
 	e.writeMetric(pw, "packets_received_total", labels, float64(snap.PacketsRecv))
 
+	e.writeHelp(pw, "datagram_inbox_dropped_total", "Total datagrams dropped because a session inbox was full (datagram transport only)")
+	e.writeType(pw, "datagram_inbox_dropped_total", "counter")
+	e.writeMetric(pw, "datagram_inbox_dropped_total", labels, float64(snap.InboxDropped))
+
 	// --- Security Metrics ---
 	e.writeHelp(pw, "replay_attacks_blocked_total", "Total replay attacks blocked")
 	e.writeType(pw, "replay_attacks_blocked_total", "counter")

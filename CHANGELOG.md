@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `quantum-tunnel bench --serve` and `--connect` gain `--flows N` (parallel connections, counted in one shared window), `--datagram` with `--batch`, `--offload` and `--rate Mbps` (UDP transport between two hosts, loss reported from sequence numbers). Flags that only apply with `--serve` or `--connect` now fail instead of being ignored.
+- Datagram: `Session.Stats().InboxDropped` counts authenticated datagrams dropped because a session inbox was full (a subset of `PacketsRecv`). `metrics.Collector.RecordInboxDropped(n)` and the `datagram_inbox_dropped_total` series carry it, fed by your own polling of the session stats. Other drops (replays, bad tags, early data) are not counted yet.
 
 ### Changed
 

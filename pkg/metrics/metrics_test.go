@@ -232,3 +232,16 @@ func TestCollectorConcurrency(t *testing.T) {
 		t.Errorf("expected 0 active sessions, got %d", snap.SessionsActive)
 	}
 }
+
+func TestCollectorInboxDropped(t *testing.T) {
+	c := NewCollector(Labels{})
+	c.RecordInboxDropped(1)
+	c.RecordInboxDropped(4)
+	if got := c.Snapshot().InboxDropped; got != 5 {
+		t.Fatalf("InboxDropped = %d, want 5", got)
+	}
+	c.Reset()
+	if got := c.Snapshot().InboxDropped; got != 0 {
+		t.Fatalf("InboxDropped after Reset = %d, want 0", got)
+	}
+}

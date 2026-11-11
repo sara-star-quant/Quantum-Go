@@ -136,6 +136,9 @@ func BenchmarkDatagramEndToEnd(b *testing.B) {
 	if got := atomic.LoadInt64(&received); got < int64(b.N)-window {
 		b.Fatalf("delivered %d of %d datagrams: drops are inflating the throughput number", got, b.N)
 	}
+	if d := server.getSession().InboxDropped.Load(); d != 0 {
+		b.Fatalf("the library dropped %d datagrams from a full inbox: the window is too large", d)
+	}
 }
 
 // BenchmarkDatagramEndToEndBatch is BenchmarkDatagramEndToEnd with SendBatch, with
@@ -197,6 +200,9 @@ func BenchmarkDatagramEndToEndBatch(b *testing.B) {
 			close(stopDrain)
 			if got := atomic.LoadInt64(&received); got < int64(b.N)*batch-window {
 				b.Fatalf("delivered %d of %d datagrams: drops are inflating the throughput number", got, int64(b.N)*batch)
+			}
+			if d := server.getSession().InboxDropped.Load(); d != 0 {
+				b.Fatalf("the library dropped %d datagrams from a full inbox: the window is too large", d)
 			}
 		})
 	}

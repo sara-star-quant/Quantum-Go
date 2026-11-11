@@ -983,7 +983,8 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 		sess.PacketsRecv.Add(1)
 		select {
 		case ds.recvCh <- pt:
-		default: // slow reader: drop (UDP semantics)
+		default: // slow reader: drop (UDP semantics), but count it so the loss is visible
+			sess.InboxDropped.Add(1)
 		}
 		return nil
 	case protocol.DatagramFrameClose:

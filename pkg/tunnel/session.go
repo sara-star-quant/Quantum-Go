@@ -164,6 +164,10 @@ type Session struct {
 	BytesReceived atomic.Int64
 	PacketsSent   atomic.Int64
 	PacketsRecv   atomic.Int64
+	// InboxDropped counts authenticated datagrams the receive loop dropped because the
+	// reader fell behind and the session inbox was full (datagram transport only). They
+	// are still included in PacketsRecv and BytesReceived, which count what arrived.
+	InboxDropped atomic.Int64
 
 	// Handshake transcript for key derivation
 	transcriptHash []byte //nolint:unused // Reserved for future session verification
@@ -712,10 +716,13 @@ type Stats struct {
 	BytesReceived int64
 	PacketsSent   int64
 	PacketsRecv   int64
-	Duration      time.Duration
-	State         SessionState
-	CipherSuite   constants.CipherSuite
-	FIPSMode      bool
+	// InboxDropped is the number of datagrams dropped because the inbox was full, a
+	// subset of PacketsRecv. Other drops (replays, bad tags, early data) are not counted.
+	InboxDropped int64
+	Duration     time.Duration
+	State        SessionState
+	CipherSuite  constants.CipherSuite
+	FIPSMode     bool
 }
 
 // Stats returns current session statistics.
@@ -725,6 +732,7 @@ func (s *Session) Stats() Stats {
 		BytesReceived: s.BytesReceived.Load(),
 		PacketsSent:   s.PacketsSent.Load(),
 		PacketsRecv:   s.PacketsRecv.Load(),
+		InboxDropped:  s.InboxDropped.Load(),
 		Duration:      time.Since(s.CreatedAt),
 		State:         s.State(),
 		CipherSuite:   s.CipherSuite,

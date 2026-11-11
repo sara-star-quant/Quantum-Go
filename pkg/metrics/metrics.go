@@ -27,6 +27,7 @@ type Collector struct {
 	bytesReceived atomic.Int64
 	packetsSent   atomic.Int64
 	packetsRecv   atomic.Int64
+	inboxDropped  atomic.Int64
 
 	// Security metrics
 	replayAttacksBlocked atomic.Int64
@@ -141,6 +142,13 @@ func (c *Collector) RecordPacketReceived() {
 	c.packetsRecv.Add(1)
 }
 
+// RecordInboxDropped adds n to the counter of datagrams dropped because a session inbox
+// was full. Nothing feeds it automatically: call it with the change in
+// Session.Stats().InboxDropped each time you poll a session.
+func (c *Collector) RecordInboxDropped(n int64) {
+	c.inboxDropped.Add(n)
+}
+
 // --- Security Metrics ---
 
 // RecordReplayBlocked increments the replay attack counter.
@@ -227,6 +235,7 @@ type Snapshot struct {
 	BytesReceived int64
 	PacketsSent   int64
 	PacketsRecv   int64
+	InboxDropped  int64
 
 	// Security metrics
 	ReplayAttacksBlocked int64
@@ -265,6 +274,7 @@ func (c *Collector) Snapshot() Snapshot {
 		BytesReceived:        c.bytesReceived.Load(),
 		PacketsSent:          c.packetsSent.Load(),
 		PacketsRecv:          c.packetsRecv.Load(),
+		InboxDropped:         c.inboxDropped.Load(),
 		ReplayAttacksBlocked: c.replayAttacksBlocked.Load(),
 		AuthFailures:         c.authFailures.Load(),
 		RekeysInitiated:      c.rekeysInitiated.Load(),
@@ -291,6 +301,7 @@ func (c *Collector) Reset() {
 	c.bytesReceived.Store(0)
 	c.packetsSent.Store(0)
 	c.packetsRecv.Store(0)
+	c.inboxDropped.Store(0)
 	c.replayAttacksBlocked.Store(0)
 	c.authFailures.Store(0)
 	c.rekeysInitiated.Store(0)
