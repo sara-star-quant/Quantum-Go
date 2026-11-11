@@ -189,6 +189,26 @@ ep, _ := tunnel.ListenDatagram("udp", addr,
 )
 ```
 
+### Socket buffers at high rates
+
+UDP has no flow control, so a receiver that falls behind a burst loses datagrams
+silently. `ListenDatagram` asks the kernel for a 4 MiB receive buffer on its sockets
+(`WithDatagramRecvBuffer` changes it, and applies it to a socket you pass to
+`NewDatagramEndpoint`, which is otherwise left alone). Linux clamps the request to
+`net.core.rmem_max`, about 208 KiB by default, and does not say so. In a two-host
+cloud run with offload and 16-datagram batches, a stock host lost 5% to 7% of the
+datagrams at 1 to 4 Gbps; with the request honored the same load lost none. For
+sustained rates above a few hundred Mbps, raise the limit on the receiving host to at
+least the request:
+
+```sh
+sysctl -w net.core.rmem_max=4194304
+```
+
+The per-session inbox between the receive loop and `Recv` holds 256 datagrams;
+anything beyond that when the reader stalls is dropped, as UDP allows. A responder
+session allocates it only once the handshake completes.
+
 This only pins capacity and DoS-posture knobs. The cryptography (ML-KEM-1024 +
 X25519 CH-KEM) is fixed and already at the high-assurance tier, matching the
 conservative posture BSI / US-federal guidance favors. It is **not** a certified

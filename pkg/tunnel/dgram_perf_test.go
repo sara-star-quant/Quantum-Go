@@ -326,7 +326,7 @@ func runFlowGoodput(b *testing.B, clients []*DatagramConn, servers []*datagramSe
 	b.Helper()
 	flows := len(clients)
 	payload := make([]byte, constants.DatagramMaxDataPayload)
-	const window = 16 // per-flow in-flight bound; well below dataInboxCap (64)
+	const window = 16 // per-flow in-flight bound; well below dataInboxCap
 	var received int64
 	stopDrain := make(chan struct{})
 	var drainWG sync.WaitGroup

@@ -77,7 +77,6 @@ func (e *DatagramEndpoint) deliverHandshake(src net.Addr, h protocol.DatagramHan
 	reserved, won := e.registry.reserveSource(src.String(), func() *datagramSession {
 		ds := &datagramSession{
 			inbox:  make(chan inboundMsg, inboxCap),
-			recvCh: make(chan []byte, dataInboxCap),
 			closed: make(chan struct{}),
 		}
 		ds.setPeerAddr(src)

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Changed
+
+- Datagram: the per-session inbox grows from 64 to 256 datagrams and a responder allocates it only after the handshake completes. `ListenDatagram` requests a 4 MiB socket receive buffer (clamped by `net.core.rmem_max`), and the new `WithDatagramRecvBuffer` option does the same for a socket passed to `NewDatagramEndpoint`. A two-host cloud run lost 5% to 7% of datagrams at 1 to 4 Gbps before and none after; raise `rmem_max` to at least 4 MiB, see `docs/datagram-transport.md`.
+
 ## [0.0.23][] - 2026-11-10
 
 **Theme:** Allocation-free data paths and cleaner measurements. Stream records are sealed and opened without extra buffers, which cut CPU per GiB by more than half at 60 KB records on a laptop, and every send path, plus receive into a reused buffer, now allocates nothing per record in steady state. Two public interfaces change, and the throughput figures in the docs were re-measured after a network filter turned out to be distorting the laptop numbers. There is no wire change. The v0.0.22 tag exists but its release run failed before publishing, so this release carries everything v0.0.22 was meant to ship.
