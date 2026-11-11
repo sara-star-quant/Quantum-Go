@@ -78,6 +78,10 @@ Use descriptive branch names:
 - `docs/update-api-examples`
 - `test/add-fuzz-coverage`
 
+### Keep the scope table current
+
+[docs/SCOPE.md](docs/SCOPE.md) lists every capability as shipped, planned or out of scope, and `llms.txt` points readers and AI tools at it. If your change ships, closes or reshapes something listed there, update its row in the same pull request. When a change adds a capability that a GitHub topic would describe (for example `zero-trust` once #196 ships, or `grpc` once #219 ships), say so in the pull request so the maintainer can add the topic.
+
 ### Code Style
 
 - Follow standard Go conventions and `gofmt` formatting

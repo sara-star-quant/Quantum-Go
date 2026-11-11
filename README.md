@@ -121,6 +121,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 | [Quick Start](docs/usage/QUICKSTART.md) | Installation and basic usage |
 | [Configuration](docs/usage/CONFIGURATION.md) | Timeouts, rate limiting, sessions, authentication |
 | [CLI reference](docs/usage/CLI.md) | `quantum-tunnel` demos, key generation and benchmarks |
+| [Scope and status](docs/SCOPE.md) | What is shipped, planned or out of scope, and what the project is not |
 | [Performance](docs/PERFORMANCE.md) | Measured latency, handshake cost and throughput |
 | [Try it on AWS or Google Cloud](docs/usage/CLOUD_BENCH.md) | One script, two VMs, about ten minutes, torn down for you |
 | [AI and cloud workloads](docs/usage/AI_AND_CLOUD.md) | Where post-quantum transport fits for model and data movement, and where TLS already covers you |
