@@ -19,3 +19,5 @@ require (
 	go.opentelemetry.io/otel/log v1.47.0 // indirect
 	go.opentelemetry.io/otel/metric v1.47.0 // indirect
 )
+
+retract v0.0.22 // tag only: the release run failed before publishing archives and signatures; use v0.0.23 or later
