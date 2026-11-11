@@ -310,8 +310,10 @@ func buildForwardConfig(server bool, a forwardAuth, idle time.Duration) (tunnel.
 	return cfg, nil
 }
 
-// checkSecretFile refuses a key file that other users can read. Windows reports permission
-// bits that mean nothing, so the check is skipped there.
+// checkSecretFile refuses a key file that its group can write or that others can touch. Group
+// read stays allowed because mounted container secrets arrive group-owned with mode 0440;
+// on a shared host, use 0600. Windows reports permission bits that mean nothing, so the
+// check is skipped there.
 func checkSecretFile(path string) error {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -320,8 +322,8 @@ func checkSecretFile(path string) error {
 	if !fi.Mode().IsRegular() {
 		return fmt.Errorf("%s is not a regular file", path)
 	}
-	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
-		return fmt.Errorf("%s is readable by other users (mode %#o); run: chmod 600 %s", path, fi.Mode().Perm(), path)
+	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o027 != 0 {
+		return fmt.Errorf("%s is writable by its group or accessible by others (mode %#o); run: chmod 600 %s", path, fi.Mode().Perm(), path)
 	}
 	return nil
 }

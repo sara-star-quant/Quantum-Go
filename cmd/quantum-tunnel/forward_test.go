@@ -26,6 +26,9 @@ func writeSecret(t *testing.T, name, content string, mode os.FileMode) string {
 	if err := os.WriteFile(p, []byte(content), mode); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(p, mode); err != nil { // WriteFile applies the umask, which would hide the mode under test
+		t.Fatal(err)
+	}
 	return p
 }
 
@@ -368,9 +371,15 @@ func TestForwardKeyFiles(t *testing.T) {
 		t.Fatalf("a valid PSK file was refused: %v", err)
 	}
 	if runtime.GOOS != "windows" {
-		open := writeSecret(t, "open.hex", randomPSK(t), 0o644)
-		if _, err := readPSKFile(open); err == nil || !strings.Contains(err.Error(), "chmod 600") {
-			t.Fatalf("a world-readable PSK file was accepted: %v", err)
+		for mode, accepted := range map[os.FileMode]bool{0o600: true, 0o400: true, 0o440: true, 0o640: true, 0o644: false, 0o620: false, 0o666: false} {
+			p := writeSecret(t, "mode.hex", randomPSK(t), mode)
+			_, err := readPSKFile(p)
+			if accepted && err != nil {
+				t.Fatalf("mode %#o was refused: %v", mode, err)
+			}
+			if !accepted && (err == nil || !strings.Contains(err.Error(), "chmod 600")) {
+				t.Fatalf("mode %#o was accepted: %v", mode, err)
+			}
 		}
 	}
 	short := writeSecret(t, "short.hex", "abcd", 0o600)
