@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+
+- `quantum-tunnel bench --serve` and `--connect` gain `--flows N` (parallel connections, counted in one shared window), `--datagram` with `--batch`, `--offload` and `--rate Mbps` (UDP transport between two hosts, loss reported from sequence numbers). Flags that only apply with `--serve` or `--connect` now fail instead of being ignored.
+
 ### Changed
 
 - Datagram: the per-session inbox grows from 64 to 256 datagrams and a responder allocates it only after the handshake completes. `ListenDatagram` requests a 4 MiB socket receive buffer (clamped by `net.core.rmem_max`), and the new `WithDatagramRecvBuffer` option does the same for a socket passed to `NewDatagramEndpoint`. A two-host cloud run lost 5% to 7% of datagrams at 1 to 4 Gbps before and none after; raise `rmem_max` to at least 4 MiB, see `docs/datagram-transport.md`.

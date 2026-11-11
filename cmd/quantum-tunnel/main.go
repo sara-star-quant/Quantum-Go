@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	pkgversion "github.com/sara-star-quant/quantum-go/pkg/version"
 )
@@ -137,6 +138,19 @@ EXAMPLES:
 	runDemo(*mode, *addr, *message, *verbose, *obsAddr, *logLevel, *logFormat, *tracing)
 }
 
+// benchFlagError rejects flag combinations that would otherwise run a different
+// benchmark from the one asked for: remote-only flags without --serve or --connect,
+// and --baseline alongside them.
+func benchFlagError(remote, baseline bool, remoteOnly []string) error {
+	if !remote && len(remoteOnly) > 0 {
+		return fmt.Errorf("%s only apply with --serve or --connect", strings.Join(remoteOnly, ", "))
+	}
+	if remote && baseline {
+		return fmt.Errorf("--baseline does not apply with --serve or --connect; run again with --plain for the plain TCP reference")
+	}
+	return nil
+}
+
 func benchCommand() {
 	fs := flag.NewFlagSet("bench", flag.ExitOnError)
 	handshakes := fs.Int("handshakes", 0, "Number of stream (TCP) handshakes to benchmark (0 = skip)")
@@ -149,6 +163,11 @@ func benchCommand() {
 	serve := fs.String("serve", "", "Receive a throughput test on this address (e.g., :9000); run --connect on another host")
 	connect := fs.String("connect", "", "Send a throughput test to a --serve address (e.g., host:9000)")
 	plain := fs.Bool("plain", false, "With --serve or --connect, use plain TCP instead of the tunnel")
+	flows := fs.Int("flows", 1, "With --serve or --connect, parallel connections (one flow is capped by some clouds, e.g. 5 Gbps on AWS)")
+	datagram := fs.Bool("datagram", false, "With --serve or --connect, test the datagram (UDP) transport; reports loss; records up to the datagram payload limit")
+	batch := fs.Int("batch", 1, "With --datagram --connect, datagrams per SendBatch call")
+	rate := fs.Float64("rate", 0, "With --datagram --connect, offered load in Mbps (0 = as fast as possible); use it to read loss at a fixed rate")
+	offload := fs.Bool("offload", false, "With --datagram, enable Linux UDP segmentation and receive offload")
 	baseline := fs.Bool("baseline", false, "Also run a plain TCP baseline with the same records and report the tunnel's overhead against it")
 
 	fs.Usage = func() {
@@ -176,14 +195,46 @@ EXAMPLES:
     quantum-tunnel bench --serve :9000
     quantum-tunnel bench --connect host:9000 --size 10GB --duration 5m --chunk 60KB
 
+    # Same, over several parallel flows (the server needs the same --flows)
+    quantum-tunnel bench --serve :9000 --flows 4
+    quantum-tunnel bench --connect host:9000 --flows 4 --size 10GB --duration 30s
+
+    # Datagram transport between two hosts, batched sends with offload; reports loss
+    quantum-tunnel bench --serve :9000 --datagram --offload
+    quantum-tunnel bench --connect host:9000 --datagram --batch 16 --offload --chunk 1100 --duration 10s
+
+    # Same at a fixed offered load of 2000 Mbps, to read loss below the receiver's limit
+    quantum-tunnel bench --connect host:9000 --datagram --rate 2000 --chunk 1100 --duration 10s
+
     # Run all benchmarks
     quantum-tunnel bench --handshakes 100 --throughput --size 500MB`)
 	}
 
 	_ = fs.Parse(os.Args[2:])
 
-	if *serve != "" || *connect != "" {
-		runRemoteBench(*serve, *connect, *plain, *size, *duration, *chunk)
+	remote := *serve != "" || *connect != ""
+	chunkSet := false
+	var remoteOnly []string
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "chunk":
+			chunkSet = true
+		case "plain", "flows", "datagram", "batch", "rate", "offload":
+			remoteOnly = append(remoteOnly, "--"+f.Name)
+		}
+	})
+	if err := benchFlagError(remote, *baseline, remoteOnly); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	if remote {
+		// The default 8KB record does not fit a datagram, so datagram mode defaults to one that does.
+		chunkArg := *chunk
+		if *datagram && !chunkSet {
+			chunkArg = "1100"
+		}
+		runRemoteBench(*serve, *connect, remoteOpts{plain: *plain, datagram: *datagram, offload: *offload, flows: *flows, batch: *batch, rateMbps: *rate}, *size, *duration, chunkArg)
 		return
 	}
 
@@ -207,10 +258,25 @@ This command shows:
 	showExamples()
 }
 
+// remoteOpts are the options of a two-host throughput test beyond the addresses and sizes.
+type remoteOpts struct {
+	plain, datagram, offload bool
+	flows, batch             int
+	rateMbps                 float64
+}
+
 // runRemoteBench runs one side of a two-host throughput test.
-func runRemoteBench(serve, connect string, plain bool, sizeStr, durationStr, chunkStr string) {
+func runRemoteBench(serve, connect string, opts remoteOpts, sizeStr, durationStr, chunkStr string) {
 	if serve != "" && connect != "" {
 		fmt.Fprintln(os.Stderr, "Use either --serve or --connect, not both")
+		os.Exit(1)
+	}
+	if opts.datagram && (opts.plain || opts.flows > 1) {
+		fmt.Fprintln(os.Stderr, "--datagram does not combine with --plain or --flows")
+		os.Exit(1)
+	}
+	if opts.flows < 1 {
+		fmt.Fprintln(os.Stderr, "--flows must be at least 1")
 		os.Exit(1)
 	}
 	size, err := parseSize(sizeStr)
@@ -220,20 +286,43 @@ func runRemoteBench(serve, connect string, plain bool, sizeStr, durationStr, chu
 	}
 	chunkSize, err := parseSize(chunkStr)
 	if err != nil || chunkSize <= 0 {
-		fmt.Fprintf(os.Stderr, "Invalid --chunk %q: want a positive size such as 8KB or 60KB\n", chunkStr)
+		fmt.Fprintf(os.Stderr, "Invalid --chunk %q: want a positive size such as 1400, 8KB or 60KB\n", chunkStr)
 		os.Exit(1)
 	}
 	duration := parseDuration(durationStr)
 
 	if serve != "" {
 		ready := make(chan string, 1)
-		go func() { fmt.Printf("Listening on %s, waiting for one sender...\n", <-ready) }()
-		res, err := serveThroughput(serve, plain, duration, ready)
+		go func() { fmt.Printf("Listening on %s, waiting for %d sender(s)...\n", <-ready, opts.flows) }()
+		if opts.datagram {
+			res, err := serveDatagram(serve, opts.offload, duration, ready)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			printDatagramResult("Receiver", res)
+			return
+		}
+		res, err := serveFlows(serve, opts.plain, duration, opts.flows, ready)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		printRemoteResult("Receiver", plain, res)
+		printRemoteResult("Receiver", opts.plain, res)
+		if res.flows < opts.flows {
+			fmt.Fprintf(os.Stderr, "Warning: only %d of %d flows connected; the figures cover those flows\n", res.flows, opts.flows)
+		}
+		return
+	}
+
+	if opts.datagram {
+		fmt.Printf("Sending datagrams to %s in %s records, %d per batch, for %v\n", connect, formatSize(chunkSize), max(opts.batch, 1), duration)
+		res, err := connectDatagram(connect, opts.offload, duration, int(chunkSize), opts.batch, 50, opts.rateMbps)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		printDatagramResult("Sender", res)
 		return
 	}
 
@@ -241,11 +330,13 @@ func runRemoteBench(serve, connect string, plain bool, sizeStr, durationStr, chu
 	for i := range chunk {
 		chunk[i] = byte(i % 256)
 	}
-	fmt.Printf("Sending %s to %s in %s records for up to %v\n", formatSize(size), connect, formatSize(chunkSize), duration)
-	res, err := connectThroughput(connect, plain, size, duration, chunk, 50)
+	fmt.Printf("Sending %s to %s in %s records over %d flow(s) for up to %v\n", formatSize(size), connect, formatSize(chunkSize), opts.flows, duration)
+	res, err := connectFlows(connect, opts.plain, size, duration, chunk, 50, opts.flows)
+	if res.sent > 0 {
+		printRemoteResult("Sender", opts.plain, res)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	printRemoteResult("Sender", plain, res)
 }

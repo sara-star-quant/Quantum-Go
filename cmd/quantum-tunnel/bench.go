@@ -256,6 +256,7 @@ type throughputResult struct {
 	sendDur, recvDur time.Duration
 	cpu              time.Duration // user+system CPU of this process (both ends), 0 if unavailable
 	cipher           string        // negotiated cipher, empty for plain TCP
+	flows            int           // connections the receiver accepted, 0 when not counted
 }
 
 func (r throughputResult) recvMBps() float64 {
