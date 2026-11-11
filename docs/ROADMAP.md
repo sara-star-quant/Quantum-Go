@@ -5,10 +5,10 @@
 
 ---
 
-## Current Status: v0.0.23
+## Current Status: v0.0.24
 
 > **Direction (Q4 2026).** Protocol 6.0 (one-round-trip handshake), batched datagram sends with UDP
-> offload, per-client PSKs and signed, attested releases have shipped (v0.0.17 and v0.0.18); v0.0.19 added the test-depth suites and fixed two concurrency bugs they found. v0.0.20 made KEM suites registrable from outside the module and let a client choose its first-offered suite. v0.0.21 added stream `SendBatch`, matchable sentinel errors and two-host throughput tooling. v0.0.23 (v0.0.22 never published) removed the per-record allocations from the stream and datagram paths and corrected the throughput figures. The
+> offload, per-client PSKs and signed, attested releases have shipped (v0.0.17 and v0.0.18); v0.0.19 added the test-depth suites and fixed two concurrency bugs they found. v0.0.20 made KEM suites registrable from outside the module and let a client choose its first-offered suite. v0.0.21 added stream `SendBatch`, matchable sentinel errors and two-host throughput tooling. v0.0.23 (v0.0.22 never published) removed the per-record allocations from the stream and datagram paths and corrected the throughput figures. v0.0.24 fixed a 5 to 7 percent datagram loss at 1 to 4 Gbps (a larger inbox and receive buffer, plus an `InboxDropped` counter), gave the two-host bench parallel flows and a datagram mode, and shipped a script that reproduces the cloud measurements on AWS or Google Cloud. The
 > **assurance tier** is well underway: a written wire specification, published conformance vectors,
 > machine-checked ProVerif proofs and an audit-readiness package are in place. What remains is a
 > **third-party audit** and **real FIPS 140-3 / CMVP validation**, plus a test-depth push (tamper sweeps,
@@ -24,8 +24,8 @@ Tracked as GitHub issues, in this order:
    x cipher matrix, untested public options, stream and pool fault injection, datagram rekey lifecycle,
    crypto fault injection.
 2. Path-MTU discovery for the datagram transport.
-3. Throughput on real hardware. A bench mode that runs client and server on separate hosts, and Linux numbers from CI, because loopback has already misled us once. Then in-place seal and open on the stream path to drop the per-record allocations.
-4. Striped multi-flow sessions. Document striping over `Pool` first; build a one-handshake bundle only if the Linux and two-host numbers show parallel flows gain enough to justify it.
+3. Throughput on real hardware (done in v0.0.21 to v0.0.24). A bench mode that runs client and server on separate hosts, Linux numbers from CI, in-place seal and open on the stream path, and a cloud script that reproduces the two-host numbers on AWS and Google Cloud.
+4. Striped multi-flow sessions. Document striping over `Pool` first; build a one-handshake bundle only if the Linux and two-host numbers show parallel flows gain enough to justify it. The cloud numbers now say they do: one tunnel flow stops at 10 to 14 Gbps on a 20 Gbps link while four flows fill it, and pipelining the receive across two cores (#193) is the alternative to weigh.
 5. A second independent implementation checked against the conformance vectors.
 6. A decision on the experimental resumption API: wire it into `Dial` and `Listen`, or remove it.
 7. Third-party audit and FIPS 140-3 validation (owner-driven, not an open task).

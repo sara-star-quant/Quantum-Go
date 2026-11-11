@@ -7,14 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
-### Added
+## [0.0.24][] - 2026-11-11
 
-- `quantum-tunnel bench --serve` and `--connect` gain `--flows N` (parallel connections, counted in one shared window), `--datagram` with `--batch`, `--offload` and `--rate Mbps` (UDP transport between two hosts, loss reported from sequence numbers). Flags that only apply with `--serve` or `--connect` now fail instead of being ignored.
-- Datagram: `Session.Stats().InboxDropped` counts authenticated datagrams dropped because a session inbox was full (a subset of `PacketsRecv`). `metrics.Collector.RecordInboxDropped(n)` and the `datagram_inbox_dropped_total` series carry it, fed by your own polling of the session stats. Other drops (replays, bad tags, early data) are not counted yet.
+**Theme:** Datagram loss you can see, and measurements you can reproduce. A burst from a batched receive used to overflow a 64-entry inbox and then the default socket buffer, losing 5 to 7 percent of datagrams at 1 to 4 Gbps between two cloud hosts. The inbox is now 256 entries, `ListenDatagram` asks for a 4 MiB receive buffer, and a new counter shows any drop that remains. The bench gains parallel flows and a datagram mode, and one script runs the whole matrix on AWS or Google Cloud and tears it down. There is no wire change. `golang.org/x/crypto` moves to v0.59.0 to clear an advisory against a package we never import.
+
+### Added
+- **`scripts/cloud-bench.sh`**: launches two small VMs on AWS or Google Cloud, runs the stream and datagram matrix against plain TCP, prints a table and deletes everything, in about ten minutes. It never creates a project or links billing, opens SSH to your own address only, tags every resource, and the VMs shut themselves down after 90 minutes. Usage is in `docs/usage/CLOUD_BENCH.md`.
+- **Bench modes**: `bench --serve` and `--connect` gain `--flows N` (parallel connections in one shared window) and `--datagram` with `--batch`, `--offload` and `--rate Mbps`, reporting loss from sequence numbers. Receivers keep draining after their window and end on their own if the peer goes quiet. Flags that only apply with `--serve` or `--connect` now fail instead of being ignored.
+- **`Session.Stats().InboxDropped`**: counts authenticated datagrams dropped because a session inbox was full, a subset of `PacketsRecv`. `metrics.Collector.RecordInboxDropped(n)` and the `datagram_inbox_dropped_total` series carry it; you feed them from your own polling of the session stats. Other drops (replays, bad tags, early data) are not counted yet.
+- **`WithDatagramRecvBuffer(n)`**: asks the kernel for an `n`-byte receive buffer on a socket passed to `NewDatagramEndpoint`, which is otherwise left alone.
+- **Weekly grouped Dependabot updates** for Go modules, GitHub Actions, Docker and the hash-locked ScanCode requirements, and `scripts/loc.sh --check`, which fails CI when the README's line count drifts more than 5%.
 
 ### Changed
-
-- Datagram: the per-session inbox grows from 64 to 256 datagrams and a responder allocates it only after the handshake completes. `ListenDatagram` requests a 4 MiB socket receive buffer (clamped by `net.core.rmem_max`), and the new `WithDatagramRecvBuffer` option does the same for a socket passed to `NewDatagramEndpoint`. A two-host cloud run lost 5% to 7% of datagrams at 1 to 4 Gbps before and none after; raise `rmem_max` to at least 4 MiB, see `docs/datagram-transport.md`.
+- **Datagram inbox and receive buffer**: the per-session inbox grows from 64 to 256 datagrams and a responder allocates it only after the handshake completes. `ListenDatagram` requests a 4 MiB socket receive buffer, which Linux clamps to `net.core.rmem_max`; raise that limit to at least 4 MiB for rates above a few hundred Mbps (see `docs/datagram-transport.md`). A two-host cloud run lost 5 to 7 percent at 1 to 4 Gbps before and under 0.01 percent after on an 8 vCPU receiver.
+- **Dependencies**: `golang.org/x/crypto` v0.59.0 and `golang.org/x/sys` v0.50.0 clear GO-2026-5932, which concerns the unmaintained `openpgp` package we never import. `circl` v1.6.5 carries input-validation fixes in packages we do not use, with no change to the ML-KEM or X-Wing code we do. OpenTelemetry v1.47.0 adds the `otel/log` module (Apache-2.0, in the third-party notices). The `go` directive stays at 1.26.9.
+- **Cloud numbers and their limits**: `docs/PERFORMANCE.md` and the README lead with cloud measurements. One tunnel flow runs out of CPU at 10 to 14 Gbps on a 20 Gbps link while four flows fill it. A 2 vCPU AWS receiver loses 0.2 to 0.5 percent of datagrams at 4 Gbps because it runs out of CPU first, and 1400-byte records reach the CPU limit much earlier than 8 KB ones.
+- **Design and license documents corrected**: author lists and titles in `docs/DESIGN_INFLUENCES.md` now match their sources, and `docs/compliance/LICENSE_AUDIT.md` is re-verified across every tag. It records that the copyright holder in `NOTICE` changed from an individual to the company at v0.0.17, and that the container image carries GPL components from its Alpine base (tracked in #205).
+- **CI**: the Linux and FIPS race suites run in parallel with their coverage jobs (those two jobs finish 31 and 45 percent sooner), docs-only changes skip the heavy jobs while static analysis always runs, superseded pull request runs cancel, pushes to main always finish, the ScanCode install is hash-locked, and a single `CI result` check stands for the workflow. The slowest handshake tests run in parallel.
 
 ## [0.0.23][] - 2026-11-10
 
@@ -483,7 +492,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.23...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.24...HEAD
+[0.0.24]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.23...v0.0.24
 [0.0.23]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.21...v0.0.23
 [0.0.21]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.20...v0.0.21
 [0.0.20]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.19...v0.0.20
