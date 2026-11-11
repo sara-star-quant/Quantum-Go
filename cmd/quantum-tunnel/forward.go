@@ -78,7 +78,9 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 				if f.closed.Load() {
 					return
 				}
-				logf("accept: %v", err) // a failed handshake or a rate-limited peer; keep serving
+				// A wrong PSK, a wrong pinned key, a rate-limited peer or a client that is not a
+				// tunnel peer all surface here; keep serving.
+				logf("handshake refused (a wrong PSK or key, a rate limit, or a peer that is not a tunnel client): %v", err)
 				continue
 			}
 			select {

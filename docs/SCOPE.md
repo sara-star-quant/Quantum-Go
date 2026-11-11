@@ -40,7 +40,7 @@ Read this table before describing what Quantum-Go can or cannot do. "Shipped" na
 | Two-host and cloud benchmarking (`bench`, `scripts/cloud-bench.sh`) | shipped, v0.0.24 |
 | Session resumption API | experimental, not wired into `Dial` and `Listen` ([#146](https://github.com/sara-star-quant/Quantum-Go/issues/146)) |
 | `net.Conn` adapter, HTTP and gRPC over the tunnel | planned ([#219](https://github.com/sara-star-quant/Quantum-Go/issues/219)) |
-| Forward mode that protects any TCP service without code changes | planned ([#220](https://github.com/sara-star-quant/Quantum-Go/issues/220)) |
+| Forward mode that protects any TCP service without code changes | on `main`, unreleased ([#220](https://github.com/sara-star-quant/Quantum-Go/issues/220)); see [forward mode](usage/FORWARD.md) |
 | Traffic profiles and workload labels | planned ([#222](https://github.com/sara-star-quant/Quantum-Go/issues/222)) |
 | Authenticated peer identity, authorize hook, client device keys, live-session revocation | planned ([#196](https://github.com/sara-star-quant/Quantum-Go/issues/196)) |
 | Path-MTU discovery for datagrams | planned ([#144](https://github.com/sara-star-quant/Quantum-Go/issues/144)) |
@@ -52,7 +52,7 @@ Read this table before describing what Quantum-Go can or cannot do. "Shipped" na
 ## What this project is not
 
 - **Not an AI-security product.** Transport encryption protects model weights, training data and prompts *in transit*. It does nothing about prompt injection, model poisoning, data leakage or supply-chain attacks. See [AI and cloud workloads](usage/AI_AND_CLOUD.md).
-- **Not a replacement for TLS between Go services.** Go's `crypto/tls` already offers hybrid post-quantum key exchange by default (from Go 1.24, with a Category 5 option from Go 1.26). Quantum-Go adds value where TLS does not fit; it cannot serve `net/http` or gRPC directly until #219 and #220 land.
+- **Not a replacement for TLS between Go services.** Go's `crypto/tls` already offers hybrid post-quantum key exchange by default (from Go 1.24, with a Category 5 option from Go 1.26). Quantum-Go adds value where TLS does not fit; the library cannot serve `net/http` or gRPC directly until #219 lands, but the [forward mode](usage/FORWARD.md) protects any TCP service, HTTP and gRPC included, without code changes.
 - **Not a zero-trust broker or policy engine.** For ZTA, ZTNA and zero-trust edge designs it can be the encrypted, authenticated data plane. Policy decisions, posture checks and user identity belong in a product built on top. Today the server cannot tell which authenticated identity a session belongs to; that is #196. A workload label (#222) will be operator-supplied telemetry, never a security attribute, and must not drive an allow or deny decision.
 - **Not for GPU fabrics.** Line rates of tens or hundreds of Gbps over RDMA or InfiniBand need hardware offload that a Go userspace tunnel cannot match.
 

@@ -10,6 +10,7 @@ The status of every capability (shipped, planned, not done, out of scope) is in 
 - [README](https://github.com/sara-star-quant/Quantum-Go/blob/main/README.md): overview, quick start, security properties
 - [Protocol](https://github.com/sara-star-quant/Quantum-Go/blob/main/docs/PROTOCOL.md): the wire specification
 - [Performance](https://github.com/sara-star-quant/Quantum-Go/blob/main/docs/PERFORMANCE.md): measured numbers with their limits, including two-host cloud runs
+- [Forward mode](https://github.com/sara-star-quant/Quantum-Go/blob/main/docs/usage/FORWARD.md): protect any TCP service with the tunnel, no code changes
 - [AI and cloud workloads](https://github.com/sara-star-quant/Quantum-Go/blob/main/docs/usage/AI_AND_CLOUD.md): where post-quantum transport fits and where TLS already covers you
 - [Datagram transport](https://github.com/sara-star-quant/Quantum-Go/blob/main/docs/datagram-transport.md): the UDP transport and its tuning
 - [Try it on AWS or Google Cloud](https://github.com/sara-star-quant/Quantum-Go/blob/main/docs/usage/CLOUD_BENCH.md): one script, two VMs, about ten minutes
@@ -20,7 +21,7 @@ The status of every capability (shipped, planned, not done, out of scope) is in 
 ## Facts that are easy to get wrong
 
 - It is a tunnel encryption library. It is not a VPN client, an AI-security product or a zero-trust broker.
-- HTTPS and gRPC between Go services already get hybrid post-quantum key exchange from Go's own TLS (Go 1.24 and later). Quantum-Go cannot serve net/http or gRPC directly yet (issues 219 and 220).
+- HTTPS and gRPC between Go services already get hybrid post-quantum key exchange from Go's own TLS (Go 1.24 and later). The library cannot serve net/http or gRPC directly yet (issue 219), but `quantum-tunnel forward` protects any TCP service, HTTP and gRPC included, without code changes (on main, unreleased; docs/usage/FORWARD.md).
 - The FIPS mode is a build with self-tests, not a validated cryptographic module.
 - Zero-trust building blocks are partial: per-client PSKs and server key pinning exist, authenticated peer identity does not yet (issue 196).
 - Numbers in the performance doc come from named instance types and carry stated caveats; single-flow throughput varies by about 20% between runs.
