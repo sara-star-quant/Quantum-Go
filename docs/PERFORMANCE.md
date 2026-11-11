@@ -11,6 +11,7 @@ Two transports share the crypto core: a TCP/stream transport (length-prefixed fr
 - **Hygiene:** measure with network-filtering software (a VPN client, antivirus or endpoint-security agent) turned off. Such software can sit on every socket call, loopback included: on the laptop used here, quitting one VPN client roughly doubled 60 KB-record throughput (about 1.2 to 2.5 GB/s) and tripled 8 KB-record throughput. Check that the machine is idle before a run, alternate the builds you compare, and repeat each run.
 - **Container:** Linux arm64 VM with 8 cores (Docker Desktop), loopback.
 - **Container bridge:** `scripts/docker-bench.sh [repetitions]` runs the throughput bench between two containers on a bridge network and prints the tunnel against plain TCP per record size, with the spread between runs. It is closer to two hosts than loopback, but it is still one machine.
+- **Cloud:** two VMs in one zone on AWS (`eu-north-1`, `c7i-flex.large`) and Google Cloud (`europe-north1`, `c3-standard-8`), private addresses, `quantum-tunnel bench --serve` on one and `--connect` on the other, one 10 s run per cell. The laptop only sent commands, so no laptop VPN or filter touched these numbers. Single runs, not medians: treat them as indicative. See [Between two cloud hosts](#between-two-cloud-hosts).
 - **Reproduce:** `quantum-tunnel bench --handshakes N --datagram-handshakes N --throughput` ([CLI reference](usage/CLI.md#benchmark-mode)), or `go test ./test/benchmark/ -bench Handshake` and `go test ./pkg/tunnel/ -bench DatagramEndToEnd`.
 
 ## Connection setup
@@ -161,6 +162,37 @@ A single receive goroutine demuxing and opening every datagram is the per-endpoi
 
 Optional handshake padding (`WithHandshakePadding`) costs roughly 42% more handshake bandwidth (a ClientHello flight grows from about 1,700 to 2,400 bytes) for uniform-size, fingerprint-resistant handshake datagrams. It never touches the data plane.
 
+## Between two cloud hosts
+
+Receiver-delivered rate, one tunnel (or plain TCP stream) per flow, 10 s per cell, in Gbps. A flow count above one means that many parallel connections on the same two hosts (`--flows`).
+
+**Google Cloud, `c3-standard-8` pair, same zone (the link measured 20.4 Gbps):**
+
+| Flows | 8 KB plain | 8 KB tunnel | 60 KB plain | 60 KB tunnel |
+|-------|-----------|-------------|-------------|--------------|
+| 1 | 20.5 | 10.1 | 20.5 | 14.3 |
+| 4 | 20.5 | 20.7 | 20.4 | 20.2 |
+| 8 | 20.7 | 20.4 | 20.5 | 20.2 |
+| 16 | 20.4 | 20.4 | 20.4 | 20.4 |
+
+**AWS, `c7i-flex.large` pair, same zone (2 vCPUs, up to 12.5 Gbps):** one flow reached 9.5 Gbps for plain TCP and the tunnel at both record sizes, and two or more flows reached 12.4 Gbps for both, which is the instance limit. A different pair of the same type topped out at 4.96 Gbps on one flow, so single-flow numbers depend on placement; compare flow counts within one pair.
+
+What this says:
+
+- **One tunnel flow is CPU-bound on a fast link.** On the 20 Gbps link a single tunnel flow stops at 10.1 Gbps with 8 KB records and 14.3 Gbps with 60 KB, because one goroutine does both the reads and the AES-GCM open. With four or more flows the tunnel fills the link and matches plain TCP.
+- **Where the receiver's time goes** (8 KB records, Linux VM, loopback): about 49% in AES-GCM open, about 39% in the `read` syscall, and about 12% for framing, replay window, deadlines and clock calls. At 1 KB the `read` syscall is the largest item at about 30% and AES drops to about 5%. Allocation is one 5-byte allocation per record.
+- **CPU per GiB** (AWS, four flows, 60 KB records): tunnel receiver 0.69 and sender 0.40 CPU-seconds, against 0.40 and 0.12 for plain TCP.
+
+**Datagram transport** (Google Cloud `c3-standard-8` pair, 1100-byte records, offload on, 16 datagrams per `SendBatch`, `--rate` pacing), loss at a fixed offered load:
+
+| Offered | Stock host: 64-entry inbox, default socket buffer | 256-entry inbox, 4 MiB receive buffer, `rmem_max` raised |
+|---------|---------------------------------------------------|----------------------------------------------------------|
+| 1 Gbps | 6.9% | under 0.01% |
+| 2 Gbps | 5.1% | under 0.01% |
+| 4 Gbps | 7.3% | under 0.01% |
+
+Receiver CPU stayed low and the kernel's `RcvbufErrors` counter barely moved during the stock-host runs, so the drops were inside the library, and the change in the right column fixes them. See [Socket buffers at high rates](datagram-transport.md#socket-buffers-at-high-rates) for the setting. An unpaced blast delivers about 6.1 to 6.5 Gbps with 15% to 22% loss in both columns, because the receiver is CPU-bound there. Without offload, `SendBatch` sent at the same rate for batch sizes 1 and 16 (about 480 MB/s on this pair), so batching only paid off with offload on.
+
 ## Comparison with other protocols
 
 Order-of-magnitude only: different hardware, different measurements.
@@ -177,6 +209,8 @@ Quantum-Go matches WireGuard on round trips. It is about ten times larger on the
 
 - **Batch your sends:** use `DatagramConn.SendBatch` with `WithDatagramOffload()` on Linux when you can hand over several packets at once.
 - **Spread receive across cores:** `ListenDatagram` uses `SO_REUSEPORT` sockets, one per core by default.
+- **Use several flows on a fast link:** one stream flow is CPU-bound at about 10 to 14 Gbps on a 20 Gbps link, and four or more flows fill it.
+- **Raise `net.core.rmem_max` for datagram receivers** above a few hundred Mbps, to at least 4 MiB; the setting and the numbers are in the [datagram transport doc](datagram-transport.md#socket-buffers-at-high-rates).
 - **Smaller handshakes:** choose the X-Wing suite or pin a static server key.
 - **Server concurrency:** stream handshakes run in their own goroutines (capped at 1,024 in flight), so one slow peer does not block others.
 

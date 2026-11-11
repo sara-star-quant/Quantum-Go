@@ -21,7 +21,7 @@ Traffic an attacker records today can be decrypted later by a quantum computer. 
 ## What you get
 
 - **Speed to first byte.** The client sends data after **1 round trip** on both transports: 21 ms on a 20 ms link, 101 ms on a 100 ms link. The handshake costs 340 to 610 µs of CPU for both sides.
-- **Throughput.** About **2.5 GB/s** on a single stream tunnel with 60 KB records on a laptop and 1.4 to 1.6 GB/s on Linux CI runners (loopback); the record size changes it a lot, see [PERFORMANCE.md](docs/PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp). `Tunnel.SendBatch` writes a burst of small stream records together, 2 to 3x faster for 256 B records on macOS, Windows and x86-64 Linux ([numbers](docs/PERFORMANCE.md#batching-small-stream-records)). On Linux, batched datagram sends with UDP offload reach **701 MB/s** (x86-64) and **528 MB/s** (arm64) per flow, up to 3.6 times a plain send.
+- **Throughput.** Between two cloud hosts, one tunnel flow reaches **10 to 14 Gbps** and four or more flows fill a 20 Gbps link at plain-TCP speed (Google Cloud; AWS reaches its 12.4 Gbps instance limit the same way). Locally, about **2.5 GB/s** on a single stream tunnel with 60 KB records on a laptop and 1.4 to 1.6 GB/s on Linux CI runners (loopback); the record size changes it a lot, see [PERFORMANCE.md](docs/PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp). `Tunnel.SendBatch` writes a burst of small stream records together, 2 to 3x faster for 256 B records on macOS, Windows and x86-64 Linux ([numbers](docs/PERFORMANCE.md#batching-small-stream-records)). On Linux, batched datagram sends with UDP offload reach **701 MB/s** (x86-64) and **528 MB/s** (arm64) per flow, up to 3.6 times a plain send.
 - **Top-tier post-quantum security.** ML-KEM-1024 is NIST security level 5. Prefer smaller handshakes? Set `KEMSuite` to the X-Wing suite (ML-KEM-768 + X25519), or register your own suite.
 - **Two transports, one API.** TCP, and a connectionless UDP transport with retransmission, reliable rekey, anti-DoS cookies and roaming across IP changes.
 - **Authentication you control.** Pin your server's key, or issue each client its own pre-shared key. A client with no key looks the same as one with a wrong key.
@@ -87,10 +87,13 @@ FIPS mode: `go build -tags fips ./...`. More in the [Quick Start guide](docs/usa
 
 ## Performance
 
-Measured on CI runners and a laptop; full tables, methodology and reproduction steps are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a laptop; cloud results come first because they cross a real network. Full tables, methodology and reproduction steps are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md#between-two-cloud-hosts).
 
 | Metric | Result |
 |--------|--------|
+| Stream throughput, two Google Cloud hosts (`c3-standard-8`, 20 Gbps link) | one tunnel flow: 10.1 Gbps at 8 KB records, 14.3 Gbps at 60 KB; four or more flows: 20.4 Gbps, the same as plain TCP |
+| Stream throughput, two AWS hosts (`c7i-flex.large`) | two or more flows: 12.4 Gbps, the instance limit, within 0.4% of plain TCP |
+| Datagram loss, two Google Cloud hosts, 1 to 4 Gbps offered | under 0.01% with the 256-entry inbox and 4 MiB receive buffer (raise `rmem_max`); 5 to 7% on a stock host |
 | Client can send data after | 1 RTT (stream and datagram), under 1 ms of crypto |
 | Handshake CPU, both sides | 340 to 610 µs (Linux, macOS, Windows runners); static-key auth adds about 35 to 50% |
 | Stream throughput, single tunnel | about 2.5 GB/s at 60 KB records, about 1.2 GB/s at 8 KB (laptop, loopback); depends on record size |
