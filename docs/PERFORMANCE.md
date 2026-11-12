@@ -214,15 +214,22 @@ Quantum-Go matches WireGuard on round trips. It is about ten times larger on the
 
 Pass `--suite x-wing` to the `forward` client, or set `KEMSuite` in Go. The server follows the client's offer. It trades security level for size: X-Wing is ML-KEM-768 (NIST level 3), CH-KEM-v1 is ML-KEM-1024 (level 5).
 
-| Per handshake | CH-KEM-v1 | X-Wing |
+| Size per handshake | CH-KEM-v1 | X-Wing |
 |---|---|---|
 | Key share (client to server) | 1,600 B | 1,216 B |
 | Ciphertext (server to client) | 1,600 B | 1,120 B |
-| Keygen | 97 us | 64 us |
-| Encapsulate | 104 us | 103 us |
-| Decapsulate | 81 us | 128 us |
 
-Sizes are exact. The timings come from `go test -bench Suites ./pkg/chkem` on an Apple M1 Pro, one run, and are indicative only: they cover the KEM, not a full handshake or a cloud link. X-Wing is not faster on CPU here, because its decapsulation is slower, so choose it for smaller packets and handshakes, for example on a constrained or high-latency link, not for speed. A whole-handshake and cloud comparison is not measured yet.
+| KEM time (median of 8 runs) | Apple M1 Pro, quiet | AMD EPYC 9V45, 4 vCPU CI runner |
+|---|---|---|
+| | CH-KEM-v1 / X-Wing | CH-KEM-v1 / X-Wing |
+| Keygen | 96.8 us / 63.8 us | 54.9 us / 30.8 us |
+| Encapsulate | 104.6 us / 103.2 us | 72.2 us / 47.3 us |
+| Decapsulate | 81.3 us / 127.5 us | 48.5 us / 54.8 us |
+| Sum for one handshake (keygen, encapsulate, decapsulate) | 282.7 us / 294.5 us | 175.6 us / 132.9 us |
+
+Sizes are exact. The timings come from `go test -bench Suites ./pkg/chkem` with `-benchtime=2s -count=8`, one machine per column: a laptop with the VPN app closed and no other load, and a GitHub Actions runner. The spread across the eight runs stayed under 1 percent on both. They cover the KEM only, not a full handshake, a network round trip or a cloud link, and the sum row is arithmetic on the three rows above it.
+
+What the numbers say: X-Wing sends about a quarter fewer bytes. On the x86 runner it also costs about 24 percent less KEM CPU per handshake; on the M1 it costs about 4 percent more, because its decapsulation is 57 percent slower there (13 percent slower on x86). The likely cause, not profiled, is that an X-Wing private key is a 32-byte seed and the library expands it again on every decapsulation; [#239](https://github.com/sara-star-quant/Quantum-Go/issues/239) tracks reusing the expanded key. Either way the difference is a few tens of microseconds against a network round trip, so choose X-Wing for smaller packets and handshakes, for example on a constrained or high-latency link, and not for speed. A whole-handshake and cloud-link comparison is not measured yet.
 
 ## Tuning
 
