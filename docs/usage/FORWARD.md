@@ -99,6 +99,10 @@ A key file is refused when its group can write it or when others can touch it. U
 - **Shutdown:** SIGINT and SIGTERM close the listener and cut open connections. There is no drain.
 - **Not yet measured on real hosts.** No throughput or latency numbers are published for this mode, and none should be assumed from the library's. Measure with your own workload.
 
+## Wire framing
+
+Forward mode sends each tunnel record's plaintext as one frame: a one-byte type followed by the bytes. Type `0x00` carries data and type `0x01` (no body) means the sender finished writing, which the other side turns into a TCP half-close. Any other type ends the connection. A record holds at most 60 KiB (61,440 bytes) including the type byte. After the end-of-stream frame, the tunnel stays open for control records until the peer closes it. The tunnel records themselves follow [the protocol specification](../PROTOCOL.md); the framing here is a convention of the forwarder, not of the protocol, so an independent client needs it to talk to a forward server.
+
 ## Flags
 
 | Flag | Side | Meaning |

@@ -35,6 +35,9 @@ Two framing functions are normative:
 
 - `KDF(domain, [in_1, ..., in_n], L)` = `SHAKE-256( len32(|domain|) || domain || len32(n) ||
   len32(|in_1|) || in_1 || ... || len32(|in_n|) || in_n )` read for `L` bytes. (`DeriveKeyMultiple`.)
+- `KDF1(domain, in, L)` = `SHAKE-256( len32(|domain|) || domain || len32(|in|) || in )` read for `L` bytes,
+  the single-input form (`DeriveKey`). It has no `len32(n)` count field, so `KDF1(d, x, L)` differs from
+  `KDF(d, [x], L)`. Section 5.4 uses `KDF1`.
 - `TH(c_1, ..., c_m)` = `SHA3-256( len32(m) || len32(|c_1|) || c_1 || ... || len32(|c_m|) || c_m )`.
   (`TranscriptHash`.)
 
@@ -87,7 +90,8 @@ transcript = TH( pk_x25519, pk_mlkem, ct_x25519_ephemeral, ct_mlkem, 0x0002, rol
 
 where `0x0002` is the 2-byte KEM combiner version and `role` is a single byte (initiator = 0x01,
 responder = 0x02). The encapsulator binds its own role; the decapsulator binds the peer's role, so a
-reflected or same-role exchange does not match. The shared secret is:
+reflected or same-role exchange does not match. In the one-round-trip handshake the responder encapsulates
+(it binds 0x02) and the initiator decapsulates (it also uses 0x02, the peer's role). The shared secret is:
 
 ```
 shared_secret = KDF( "CH-KEM-v1-SharedSecret", [ K_x, K_m, transcript ], 32 )
@@ -102,7 +106,10 @@ structured lattice or the elliptic-curve assumption holds.
 
 X-Wing encapsulation and decapsulation are exactly as specified by draft-connolly-cfrg-xwing-kem; the
 `role` argument is ignored (the combiner is spec-fixed). The 32-byte shared secret enters the key schedule
-identically to CH-KEM-v1.
+identically to CH-KEM-v1. Byte layouts, as the draft defines them: the public key is the ML-KEM-768
+encapsulation key (1184 bytes) followed by the X25519 public key (32 bytes), 1216 bytes in all; the
+ciphertext is the ML-KEM-768 ciphertext (1088 bytes) followed by the X25519 ephemeral public key (32 bytes),
+1120 bytes in all; the shared secret is `SHA3-256( ss_M || ss_X || ct_X || pk_X || "\.//^\" )`.
 
 ## 5. Handshake
 
@@ -128,9 +135,41 @@ HelloRetryRequest 0x05.
 
 Over a stream transport, ClientHello, ServerHello, and HelloRetryRequest are framed as
 `type(1) || len32(payload) || payload`. ClientFinished and ServerFinished are sent as encrypted records,
-`len32(ciphertext) || ciphertext`, where the ciphertext is the AEAD seal of the framed Finished message
-under the handshake key. Over the datagram transport the same logical messages are fragmented and
+`len32(L) || nonce(12) || aead_ct`, where `aead_ct` is the AEAD seal of the framed Finished message
+(`type(1) || len32(32) || verify_data`) under the sender's direction of the handshake key, with empty AAD.
+Unlike the data plane, the 12-byte nonce travels in the record: it is a 4-byte zero prefix followed by an
+8-byte big-endian counter that starts at 0 for each direction, so both Finished records carry an all-zero
+nonce. The handshake IVs of Section 5.4 are not used for these records. `L` is the length of
+`nonce || aead_ct`. Over the datagram transport the same logical messages are fragmented and
 reassembled (see `docs/datagram-transport.md`).
+
+#### Message layouts
+
+All multi-byte integers are big-endian. Each message is framed as `type(1) || len32(payload) || payload`;
+the payloads are:
+
+```
+ClientHello:
+  version(2) || random(32) || len8 sid || sid(<=255) ||
+  kem_suite(2) || len8 n || n * suite(2) ||               (the share's suite, then the supported list)
+  len16 pk_len || pk ||                                   (the KEM public key of kem_suite)
+  len16 c || c * cipher(2) ||                             (cipher suites, Section 6)
+  static_flag(1) [ len16 ct_len || ct ] ||                (flag 0: absent; flag 1: followed by the static-auth ciphertext)
+  psk_flag(1)    [ len8 id_len || id ]                    (flag 0: absent; flag 1: followed by the PSK identity)
+
+ServerHello:
+  version(2) || random(32) || len8 sid || sid ||
+  kem_suite(2) || len16 ct_len || ct || cipher(2)         (the sid is the server's own, not an echo)
+
+HelloRetryRequest:
+  version(2) || kem_suite(2)                              (frame header 05 00000004)
+```
+
+`version` is `major(1) || minor(1)`; protocol 6.0 is `06 00`. For CH-KEM-v1, `pk` is `x25519(32) ||
+mlkem1024(1568)` and `ct` is `x25519_ephemeral(32) || mlkem1024_ct(1568)`. The two flags are the last two
+fields of the payload, in the order shown; a receiver ignores any bytes after them, and a field placed
+anywhere else fails the handshake with a generic alert. The conformance vectors hold one
+encoded example of each message.
 
 ### 5.2 KEM-suite negotiation and HelloRetryRequest
 
@@ -157,7 +196,9 @@ The suite is therefore bound both by the explicit echo and by the transcript.
 
 The transcript is the concatenation of the handshake messages in order: the framed ClientHello(s) and
 ServerHello, then the plaintext Finished messages in the order ServerFinished, ClientFinished (Section 5.1), with the
-HelloRetryRequest substitution of Section 5.2 when a retry occurs.
+HelloRetryRequest substitution of Section 5.2 when a retry occurs. "Framed" means each message with its
+5-byte header (`type || len32(payload)`), and a Finished message in the transcript is the plaintext
+`type(1) || len32(32) || verify_data` before encryption.
 
 ```
 server_verify_data = KDF( "CH-KEM-Tunnel-ServerFinished", [ master_secret, transcript_through_ServerHello ], 32 )
@@ -175,9 +216,16 @@ authentication folds of Section 5.5 (in the unauthenticated case `master_secret 
 the master secret:
 
 ```
-handshake keys (init/resp key + IV) = KDF( "CH-KEM-Tunnel-Handshake", [ master_secret ], ... )
-traffic   keys (init/resp key)       = KDF( "CH-KEM-Tunnel-Traffic",   [ master_secret ], ... )
+handshake keys = KDF1( "CH-KEM-Tunnel-Handshake",    master_secret, 88 )
+                 = init_key(32) || resp_key(32) || init_iv(12) || resp_iv(12)
+traffic   keys = KDF1( "CH-KEM-Tunnel-Traffic",      master_secret, 64 )
+                 = init_key(32) || resp_key(32)
+nonce prefixes = KDF1( "CH-KEM-Tunnel-Stream-Nonce",  master_secret,  8 )   (stream)
+               = KDF1( "CH-KEM-Tunnel-Datagram-Nonce", master_secret,  8 )  (datagram)
+                 = init_prefix(4) || resp_prefix(4)
 ```
+
+These use the single-input `KDF1` of Section 2, not `KDF`.
 
 The handshake keys protect the Finished messages; the traffic keys protect the data plane. Per-direction
 AEAD nonce prefixes derive from the master secret with `"CH-KEM-Tunnel-Stream-Nonce"` (stream) and
@@ -190,8 +238,11 @@ sequence number and is not transmitted.
   suite, independent of the negotiated ephemeral suite) and folds the result:
   `master_secret = KDF( "CH-KEM-Tunnel-Authentication", [ ss, static_secret ], 32 )`. Only the holder of the
   matching private key derives the same secret; a wrong pin fails closed at the Finished MAC.
-- **Pre-shared key (mutual).** When both peers hold a PSK and the client advertises the matching identity,
-  the PSK folds via `"CH-KEM-Tunnel-PSK"`. An unknown or absent identity means no fold, so a client that
+- **Pre-shared key (mutual).** When both peers hold a PSK and the client advertises the matching identity
+  (the `psk_flag` field of the ClientHello, Section 5.1), the PSK folds after any static fold:
+  `master_secret = KDF( "CH-KEM-Tunnel-PSK", [ master_secret_so_far, psk ], 32 )`, with the two inputs in that
+  order and `psk` the 32-byte key. The identity is a label that selects the key; it is not an input to the
+  derivation. An unknown or absent identity means no fold, so a client that
   expected a PSK fails closed at the Finished MAC with no identity oracle. A responder may keep one PSK per
   client identity (a lookup) and may require a PSK. Under require, a client with no identity or an unknown one
   is not refused early: the responder folds a random key of the same size, so the handshake costs the same and
@@ -233,6 +284,8 @@ promotion of Section 8 does not reset it), so a replay of a rekey-boundary recor
 
 Key wear: an epoch's key seals at most `MaxPacketsBeforeRekey` (2^28) records. The implementation starts a
 rekey well before that; reaching the cap aborts rather than overrunning the key's safe usage.
+
+Sequence numbers start at 0 in each direction. The first data record a sender emits carries `seq` 0.
 
 Keepalive and shutdown: Ping (0x12) / Pong (0x13) keepalives, a Close (0x14) graceful-shutdown
 notification, and an Alert (0xF0) carrying a sanitized error code all share the record layer. Alert text

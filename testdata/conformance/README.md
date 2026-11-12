@@ -24,7 +24,10 @@ the SHA-256 of the canonical (compact) JSON with the `digest` field cleared.
 - `key_schedule`: a fixed `master_secret` (and a fixed `transcript`) -> the handshake
   keys/IVs, traffic keys, stream and datagram nonce prefixes, and the Finished
   verify_data values.
-- `auth_folds`: the static-key and PSK authentication folds.
+- `auth_folds`: the static-key and PSK authentication folds. The static fold is
+  `authenticated_secret = KDF("CH-KEM-Tunnel-Authentication", [ephemeral_secret, static_secret], 32)`. The
+  PSK fold is `psk_secret = KDF("CH-KEM-Tunnel-PSK", [psk_fold_master_secret, psk], 32)`, in that input
+  order, where `psk_fold_master_secret` is the same value as `key_schedule.master_secret`.
 - `wire_messages[]`: fixed message structs -> their exact encoded bytes.
 - `records[]`: a fixed traffic key + nonce prefix + sequence + plaintext -> the AEAD
   ciphertext and the assembled Data record, per cipher suite. The ChaCha20-Poly1305

@@ -73,6 +73,9 @@ type AuthFoldVec struct {
 	StaticSecret    string `json:"static_secret"`
 	AuthFolded      string `json:"authenticated_secret"`
 	PSK             string `json:"psk"`
+	// PSKMasterSecret is the first input of the PSK fold: the master secret so far, the same
+	// value as key_schedule.master_secret. psk_secret = KDF("CH-KEM-Tunnel-PSK", [master, psk], 32).
+	PSKMasterSecret string `json:"psk_fold_master_secret"`
 	PSKFolded       string `json:"psk_secret"`
 }
 
@@ -280,7 +283,7 @@ func authFoldVector(t *testing.T) AuthFoldVec {
 	}
 	return AuthFoldVec{
 		EphemeralSecret: hx(eph), StaticSecret: hx(stat), AuthFolded: hx(authFold),
-		PSK: hx(psk), PSKFolded: hx(pskFold),
+		PSK: hx(psk), PSKMasterSecret: hx(master), PSKFolded: hx(pskFold),
 	}
 }
 
