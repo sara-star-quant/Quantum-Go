@@ -310,6 +310,9 @@ type forwardAuth struct {
 	serverKey   string
 	pin         string
 	insecure    bool
+	// suite is the KEM suite a client offers first: "chkem-v1" (the default) or "x-wing".
+	// A server steers a client to a suite it supports, so it needs no setting.
+	suite string
 }
 
 // buildForwardConfig turns the flags into a transport config. Authentication is mandatory:
@@ -318,6 +321,16 @@ type forwardAuth struct {
 func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, error) {
 	cfg := tunnel.DefaultTransportConfig()
 	cfg.ReadTimeout = 0 // the idle timeout in pipe covers both directions; a per-read timeout would not
+	if a.suite != "" {
+		if server {
+			return cfg, errors.New("--suite is a client option: the server follows whatever suite the client offers")
+		}
+		suite, err := suiteByName(a.suite)
+		if err != nil {
+			return cfg, fmt.Errorf("--suite: %w", err)
+		}
+		cfg.KEMSuite = suite.ID()
+	}
 	if a.identity == "" {
 		a.identity = "default"
 	}
@@ -531,6 +544,7 @@ func forwardCommand() {
 	upstream := fs.String("upstream", "", "Server side: hand each tunnel to this single fixed TCP address")
 	pskFile := fs.String("psk-file", "", "File holding a 32-byte PSK as 64 hex characters (mode 0600); required on both sides")
 	clientsFile := fs.String("clients-file", "", "Server side: file of \"identity hexkey\" lines, one PSK per client (mode 0600)")
+	suite := fs.String("suite", "", "Client side: KEM suite to offer first, chkem-v1 (default, ML-KEM-1024) or x-wing (ML-KEM-768, smaller handshake)")
 	identity := fs.String("identity", "default", "PSK identity the client announces, and the server matches against --psk-file")
 	serverKey := fs.String("server-key", "", "Server side: static key file from keygen; clients must then pin it with --pin")
 	pin := fs.String("pin", "", "Client side: the server's public key file from keygen")
@@ -584,7 +598,7 @@ EXAMPLES:
 
 	auth := forwardAuth{
 		pskFile: *pskFile, clientsFile: *clientsFile, identity: *identity,
-		serverKey: *serverKey, pin: *pin, insecure: *insecure,
+		serverKey: *serverKey, pin: *pin, insecure: *insecure, suite: *suite,
 	}
 	cfg, err := buildForwardConfig(isServer, auth)
 	if err != nil {

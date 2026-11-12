@@ -54,6 +54,8 @@ Datagram endpoints use options instead: `tunnel.WithStaticIdentity(kp)`, `tunnel
 
 A client offers CH-KEM-v1 (ML-KEM-1024 + X25519) first. Choose another registered suite as the first offer; X-Wing (ML-KEM-768 + X25519) has a smaller key share and ciphertext (1216 and 1120 bytes against 1600 and 1600).
 
+From the command line, `quantum-tunnel forward --suite x-wing` on the client side does the same, and `quantum-tunnel keygen --suite x-wing` makes the matching static identity. In Go:
+
 ```go
 // Stream: offer X-Wing first.
 cfg := tunnel.DefaultTransportConfig()

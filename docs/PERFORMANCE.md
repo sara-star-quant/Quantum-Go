@@ -208,7 +208,21 @@ Order-of-magnitude only: different hardware, different measurements.
 | WireGuard | 1 RTT | 148 B initiation, 92 B response ([protocol](https://wireguard.com/protocol)) | No |
 | TLS 1.3 with X25519MLKEM768 | 1 RTT after TCP | adds about 1,176 B client and 1,088 B server ([Red Sift](https://redsift.com/blog/post-quantum-mlkem-performance)) | Yes |
 
-Quantum-Go matches WireGuard on round trips. It is about ten times larger on the wire because ML-KEM-1024 carries 1,568-byte keys and ciphertexts each way (NIST security level 5). The X-Wing suite (ML-KEM-768 plus X25519) is already supported and roughly halves that. CPU is small: published hybrid-TLS measurements put the ML-KEM cost under 0.1 ms per side.
+Quantum-Go matches WireGuard on round trips. It is about ten times larger on the wire because ML-KEM-1024 carries 1,568-byte keys and ciphertexts each way (NIST security level 5). The X-Wing suite (ML-KEM-768 plus X25519) cuts the key share and ciphertext by about a quarter; see below. CPU is small: published hybrid-TLS measurements put the ML-KEM cost under 0.1 ms per side.
+
+### Choosing the X-Wing suite
+
+Pass `--suite x-wing` to the `forward` client, or set `KEMSuite` in Go. The server follows the client's offer. It trades security level for size: X-Wing is ML-KEM-768 (NIST level 3), CH-KEM-v1 is ML-KEM-1024 (level 5).
+
+| Per handshake | CH-KEM-v1 | X-Wing |
+|---|---|---|
+| Key share (client to server) | 1,600 B | 1,216 B |
+| Ciphertext (server to client) | 1,600 B | 1,120 B |
+| Keygen | 97 us | 64 us |
+| Encapsulate | 104 us | 103 us |
+| Decapsulate | 81 us | 128 us |
+
+Sizes are exact. The timings come from `go test -bench Suites ./pkg/chkem` on an Apple M1 Pro, one run, and are indicative only: they cover the KEM, not a full handshake or a cloud link. X-Wing is not faster on CPU here, because its decapsulation is slower, so choose it for smaller packets and handshakes, for example on a constrained or high-latency link, not for speed. A whole-handshake and cloud comparison is not measured yet.
 
 ## Tuning
 

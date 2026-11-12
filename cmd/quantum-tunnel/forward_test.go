@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/sara-star-quant/quantum-go/pkg/chkem"
 )
 
 func nopLog(string, ...any) {}
@@ -593,5 +595,35 @@ func TestForwardRejectsBadIdentity(t *testing.T) {
 	clients := writeSecret(t, "clients.txt", strings.Repeat("x", 256)+" "+randomPSK(t)+"\n", 0o600)
 	if _, err := readClientsFile(clients); err == nil {
 		t.Fatal("a 256-byte client identity was accepted")
+	}
+}
+
+// --suite x-wing moves a whole pair onto the X-Wing suite with no config edits, and the
+// server needs no matching flag.
+func TestForwardSuiteFlag(t *testing.T) {
+	up, _ := startUpstream(t, echoHandler)
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	cliAuth := forwardAuth{pskFile: psk, suite: "x-wing"}
+	cfg, err := buildForwardConfig(false, cliAuth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.KEMSuite != chkem.SuiteXWing {
+		t.Fatalf("KEMSuite = %v, want x-wing", cfg.KEMSuite)
+	}
+	c := dial(t, startPair(t, up, forwardAuth{pskFile: psk}, cliAuth, testLimits))
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	if _, err := c.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	got := make([]byte, 5)
+	if _, err := io.ReadFull(c, got); err != nil || string(got) != "hello" {
+		t.Fatalf("echo through an x-wing pair: %q, %v", got, err)
+	}
+	if _, err := buildForwardConfig(true, forwardAuth{pskFile: psk, suite: "x-wing"}); err == nil {
+		t.Fatal("--suite on the server side was accepted")
+	}
+	if _, err := buildForwardConfig(false, forwardAuth{pskFile: psk, suite: "nope"}); err == nil {
+		t.Fatal("an unknown suite was accepted")
 	}
 }

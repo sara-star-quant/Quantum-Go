@@ -107,4 +107,5 @@ A key file is refused when its group can write it or when others can touch it. U
 | `--clients-file` | server | one PSK per client |
 | `--server-key`, `--pin` | server, client | static key pinning from `keygen` |
 | `--max-conns`, `--idle-timeout` | both | connection and idle limits |
+| `--suite` | client | KEM suite to offer first: `chkem-v1` (default) or `x-wing`; the server follows |
 | `--insecure-no-auth`, `--verbose` | both | development only; log every connection |
