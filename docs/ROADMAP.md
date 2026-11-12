@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: v0.0.27
+## Current Status: v0.0.28
 
 Pre-1.0 and unaudited. The goal now is a smaller, better evidenced core, not more features: reduce what a reviewer has to trust, then widen adoption. Every item below has a GitHub issue or is a documented decision; items without an issue yet are marked "to file".
 
@@ -33,9 +33,9 @@ Pre-1.0 and unaudited. The goal now is a smaller, better evidenced core, not mor
 4. Authorize hook and revocation pattern ([#233](https://github.com/sara-star-quant/Quantum-Go/issues/233)), revoke on reload and a session lifetime cap ([#234](https://github.com/sara-star-quant/Quantum-Go/issues/234)), key exporter ([#235](https://github.com/sara-star-quant/Quantum-Go/issues/235)).
 5. Forward operations: a loopback metrics and health endpoint, graceful drain, a tested container image and sidecar example, a runbook ([#254](https://github.com/sara-star-quant/Quantum-Go/issues/254) for the endpoint and drain, [#205](https://github.com/sara-star-quant/Quantum-Go/issues/205) for the image).
 6. Evidence for operators: datagram loss visibility ([#195](https://github.com/sara-star-quant/Quantum-Go/issues/195)), handshake latency across cloud zones ([#189](https://github.com/sara-star-quant/Quantum-Go/issues/189)), service levels ([#203](https://github.com/sara-star-quant/Quantum-Go/issues/203)), soak and kernel settings on real clouds ([#204](https://github.com/sara-star-quant/Quantum-Go/issues/204)), path-MTU discovery ([#144](https://github.com/sara-star-quant/Quantum-Go/issues/144)), and shrinking duplicated code ([#192](https://github.com/sara-star-quant/Quantum-Go/issues/192)).
-7. Supply chain: an SBOM as a release asset and a reproducible-build check (to file).
-8. Adoption layers that live outside the audited core (each small, none changes the protocol): a `net.Conn` adapter in its own package so Go services can run HTTP, gRPC and database drivers over a tunnel ([#219](https://github.com/sara-star-quant/Quantum-Go/issues/219), designed around real `net.Conn` semantics: partial reads, deadlines, half-close, concurrency); a Unix-socket listener for the plain side of the forwarder, so OS file permissions guard it instead of a loopback port (to file); a `quantum-tunnel inventory` command that prints version, commit, Go and module versions, protocol version, enabled suites, FIPS mode and the self-test result as JSON, for audit and procurement evidence (to file).
-9. A server-side allowlist of KEM suites (to file), so an operator can require ML-KEM-1024 only and refuse the smaller suite. This is the whole of "crypto policy" we need before pilots: a local setting, enforced at the handshake, with no distribution service.
+7. Supply chain: shipped in v0.0.28 (signed SBOM per release, reproducible binaries checked in CI, an automatic rerun when a macOS runner is lost). Still open: a second machine confirming a reproduction, and a hermetic toolchain pin.
+8. Adoption layers that live outside the audited core (each small, none changes the protocol): a `net.Conn` adapter in its own package so Go services can run HTTP, gRPC and database drivers over a tunnel ([#219](https://github.com/sara-star-quant/Quantum-Go/issues/219), designed around real `net.Conn` semantics: partial reads, deadlines, half-close, concurrency); the Unix-socket listener for the plain side of the forwarder and the `quantum-tunnel inventory` command shipped in v0.0.28.
+9. The KEM suite allowlist shipped in v0.0.28, so an operator can require ML-KEM-1024 only. That is the whole of "crypto policy" needed before pilots: a local setting enforced at the handshake, with no distribution service.
 10. Client device keys with mutual authentication ([#236](https://github.com/sara-star-quant/Quantum-Go/issues/236)): the one new capability that removes a real risk, because a server holding every client's PSK is a single point of failure. It adds protocol surface, so it starts only with a written spec and a formal model, after the pilots say it is needed.
 
 ### Later: after pilots or a review

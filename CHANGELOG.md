@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.28][] - 2026-11-12
+
+**Theme:** A security patch for connection pools. A `Pool` now applies its pinned server key, PSK and KEM suite allowlist; before, it connected without them. Upgrade if you use a `Pool` with a pin or a PSK. The release also adds a KEM suite allowlist, Unix sockets for `forward`, an `inventory` command, peer identity on the server session, reproducible binaries and a signed SBOM.
+
+### Fixed
+- **Pool ignored its security settings** (v0.0.12 and later): a `Pool` built its connections without the PSK, pinned server key or KEM suite allowlist in its transport config, so a pool that pinned a server key did not verify it, and a pool with a PSK could not reach a server that required one. Pools now authenticate exactly like `Dial` and bound the handshake with `HandshakeTimeout`. A GitHub security advisory covers it.
+- **Release binaries recorded `vcs.modified=true`**: the release job added untracked files, which Go stamps as a dirty tree. Builds now leave VCS state out and carry the commit through the build flags.
+- **Library version string**: `pkg/version.String()` returned the stale constant `v0.0.14` for every build, and `make build` without `VERSION` stamped `0.0.4`. The library now reads the version the Go toolchain recorded, `make` defaults to the nearest git tag, and the CLI always reports a leading `v`. The `Major`, `Minor` and `Patch` constants are deprecated.
+- **`forward --server-key` and `--pin` now load the files `keygen` writes** (v0.0.26 and v0.0.27): the forwarder read them as raw bytes while `keygen` writes base64, so every real key file was refused and server pinning through forward mode did not work. Both flags share keygen's loaders now, and a test pins with real keygen output for both suites.
+
 ### Added
 - **`quantum-tunnel inventory`**: prints one JSON document describing the build, for audit and procurement evidence: version, build time and commit, Go version, platform, protocol version, KEM and cipher suites, FIPS build mode, whether Go's FIPS mode is on, the self-test result and the module dependencies. It holds no keys or addresses and describes Quantum-Go itself, not the network around it.
 - **Unix sockets for `forward`**: `--listen unix:/path` on the client and `--upstream unix:/path` on the server, so file permissions guard the plain hop instead of a loopback port. The listener binds private in a staging directory (mode 0600, or 0660 with `--socket-mode`), replaces a socket left by a crash only when connecting to it is refused, and refuses a live socket, a regular file and a directory another user owns or others can write to. Not available on Windows.
@@ -16,12 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Reproducible release binaries**: builds use `-trimpath`, cgo off, a 12-character commit hash and the commit time as the build time, so two builds of one commit match byte for byte across directories, time zones and build caches on all five targets (checked in CI by `scripts/repro-check.sh`, one host and one Go version). The `build_time` a binary reports is now the commit time, or `unknown` outside a git checkout.
 - **Release SBOM**: each release ships a signed SPDX SBOM, and the release notes name the Go version to reproduce with.
-
-### Fixed
-- **Pool ignored its security settings** (v0.0.12 and later): a `Pool` built its connections without the PSK, pinned server key or KEM suite allowlist in its transport config, so a pool that pinned a server key did not verify it, and a pool with a PSK could not reach a server that required one. Pools now authenticate exactly like `Dial` and bound the handshake with `HandshakeTimeout`. A GitHub security advisory covers it.
-- **Release binaries recorded `vcs.modified=true`**: the release job added untracked files, which Go stamps as a dirty tree. Builds now leave VCS state out and carry the commit through the build flags.
-- **Library version string**: `pkg/version.String()` returned the stale constant `v0.0.14` for every build, and `make build` without `VERSION` stamped `0.0.4`. The library now reads the version the Go toolchain recorded, `make` defaults to the nearest git tag, and the CLI always reports a leading `v`. The `Major`, `Minor` and `Patch` constants are deprecated.
-- **`forward --server-key` and `--pin` now load the files `keygen` writes** (v0.0.26 and v0.0.27): the forwarder read them as raw bytes while `keygen` writes base64, so every real key file was refused and server pinning through forward mode did not work. Both flags share keygen's loaders now, and a test pins with real keygen output for both suites.
 
 ## [0.0.27][] - 2026-11-12
 
@@ -557,7 +561,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.27...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.28...HEAD
+[0.0.28]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.27...v0.0.28
 [0.0.27]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.26...v0.0.27
 [0.0.26]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.25...v0.0.26
 [0.0.25]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.24...v0.0.25
