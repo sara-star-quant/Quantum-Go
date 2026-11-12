@@ -459,3 +459,89 @@ func TestReadClientsFileRejectsDuplicateIdentity(t *testing.T) {
 		t.Fatalf("a duplicate identity was accepted: %v", err)
 	}
 }
+
+// A key rotation by SIGHUP: open connections keep working, a client that still holds the old
+// key is refused once the server reloads, and a bad file leaves the current keys in place.
+func TestForwardReloadRotatesKeys(t *testing.T) {
+	up, _ := startUpstream(t, echoHandler)
+	pskPath := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	auth := forwardAuth{pskFile: pskPath}
+
+	srvCfg, err := buildForwardConfig(true, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := startForwardServer("127.0.0.1:0", up, srvCfg, testLimits, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	cliCfg, err := buildForwardConfig(false, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli, err := startForwardClient("127.0.0.1:0", srv.Addr().String(), cliCfg, testLimits, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cli.Close() })
+
+	roundTrip := func(c *net.TCPConn) bool {
+		_ = c.SetDeadline(time.Now().Add(5 * time.Second))
+		if _, err := c.Write([]byte("x")); err != nil {
+			return false
+		}
+		_, err := io.ReadFull(c, make([]byte, 1))
+		return err == nil
+	}
+	open := dial(t, cli.Addr().String())
+	if !roundTrip(open) {
+		t.Fatal("the first connection should work")
+	}
+
+	// A bad file: the rebuild fails, so nothing is swapped and the old keys still work.
+	if err := os.WriteFile(pskPath, []byte("not a key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildForwardConfig(true, auth); err == nil {
+		t.Fatal("a corrupt PSK file was accepted on reload")
+	}
+	if !roundTrip(dial(t, cli.Addr().String())) {
+		t.Fatal("a failed reload broke the current keys")
+	}
+
+	// Rotate: write a new key and reload the server only.
+	if err := os.WriteFile(pskPath, []byte(randomPSK(t)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	next, err := buildForwardConfig(true, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.Reload(next)
+	if !roundTrip(open) {
+		t.Fatal("an open connection died on reload")
+	}
+	if roundTrip(dial(t, cli.Addr().String())) {
+		t.Fatal("a client with the old key got through after the server reloaded")
+	}
+
+	// Reload the client too: new connections work again.
+	nextCli, err := buildForwardConfig(false, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli.Reload(nextCli)
+	if !roundTrip(dial(t, cli.Addr().String())) {
+		t.Fatal("a connection with the rotated key failed")
+	}
+}
+
+func TestForwardServerRefusesSameIdentityInBothFiles(t *testing.T) {
+	k := randomPSK(t)
+	psk := writeSecret(t, "psk.hex", k+"\n", 0o600)
+	clients := writeSecret(t, "clients.txt", "default "+k+"\n", 0o600)
+	if _, err := buildForwardConfig(true, forwardAuth{pskFile: psk, clientsFile: clients}); err == nil {
+		t.Fatal("an identity in both files was accepted, so which key wins would be unclear")
+	}
+}

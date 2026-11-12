@@ -51,9 +51,17 @@ type forwarder struct {
 	// done closes when the accept loop ends, so the command can exit when a listener dies
 	// instead of idling with nothing to serve.
 	done chan struct{}
+	// cfg is the live transport config. A reload swaps it: new connections use the new keys,
+	// open ones keep the keys they started with.
+	cfg atomic.Pointer[tunnel.TransportConfig]
 }
 
 func (f *forwarder) Addr() net.Addr { return f.addr }
+
+// Reload makes next the config for connections that start from now on. A client takes the
+// whole config (PSK and pinned key). A server takes only the PSK table, because its listener
+// keeps the static key it started with; changing --server-key needs a restart.
+func (f *forwarder) Reload(next tunnel.TransportConfig) { f.cfg.Store(&next) }
 
 // Close stops accepting and waits for the accept loop to finish. Connections already
 // piping are cut when the process exits; there is no drain.
@@ -71,8 +79,16 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 	if err != nil {
 		return nil, err
 	}
-	ln.SetConfig(cfg)
 	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close, done: make(chan struct{})}
+	stored := cfg // the listener gets a copy whose lookup reads the live config
+	f.cfg.Store(&stored)
+	cfg.PSKLookup = func(identity []byte) []byte {
+		if lookup := f.cfg.Load().PSKLookup; lookup != nil {
+			return lookup(identity)
+		}
+		return nil
+	}
+	ln.SetConfig(cfg)
 	sem := make(chan struct{}, lim.maxConns)
 	f.wg.Go(func() {
 		defer close(f.done)
@@ -132,6 +148,7 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 		return nil, err
 	}
 	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close, done: make(chan struct{})}
+	f.cfg.Store(&cfg)
 	sem := make(chan struct{}, lim.maxConns)
 	f.wg.Go(func() {
 		defer close(f.done)
@@ -156,7 +173,7 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 				defer func() { <-sem }()
 				defer func() { _ = conn.Close() }()
 				start := time.Now()
-				t, err := tunnel.DialWithConfig("tcp", connect, cfg)
+				t, err := tunnel.DialWithConfig("tcp", connect, *f.cfg.Load())
 				if err != nil {
 					logf("tunnel to %s: %v", connect, err)
 					return
@@ -315,22 +332,35 @@ func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, err
 		return cfg, errors.New("the client needs --psk-file (or --insecure-no-auth for development)")
 	}
 
+	// A server holds every PSK in one lookup table, so a reload can swap it whole and the
+	// --psk-file identity and the --clients-file identities work together.
+	table := make(map[string][]byte)
 	if a.pskFile != "" {
 		key, err := readPSKFile(a.pskFile)
 		if err != nil {
 			return cfg, err
 		}
-		cfg.PSK = key
-		cfg.PSKIdentity = []byte(a.identity)
+		if server {
+			table[a.identity] = key
+		} else {
+			cfg.PSK = key
+			cfg.PSKIdentity = []byte(a.identity)
+		}
 	}
 	if server && a.clientsFile != "" {
-		table, err := readClientsFile(a.clientsFile)
+		clients, err := readClientsFile(a.clientsFile)
 		if err != nil {
 			return cfg, err
 		}
-		cfg.PSKLookup = func(identity []byte) []byte { return table[string(identity)] }
+		for id, key := range clients {
+			if _, dup := table[id]; dup {
+				return cfg, fmt.Errorf("identity %q is in both --psk-file and --clients-file", id)
+			}
+			table[id] = key
+		}
 	}
 	if server {
+		cfg.PSKLookup = func(identity []byte) []byte { return table[string(identity)] }
 		cfg.RequirePSK = true
 	}
 
@@ -519,10 +549,11 @@ EXAMPLES:
 		os.Exit(2)
 	}
 
-	cfg, err := buildForwardConfig(isServer, forwardAuth{
+	auth := forwardAuth{
 		pskFile: *pskFile, clientsFile: *clientsFile, identity: *identity,
 		serverKey: *serverKey, pin: *pin, insecure: *insecure,
-	})
+	}
+	cfg, err := buildForwardConfig(isServer, auth)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -560,11 +591,24 @@ EXAMPLES:
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	select {
-	case <-stop:
-	case <-f.done:
-		fmt.Fprintln(os.Stderr, "Error: the listener stopped")
-		os.Exit(1)
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	for waiting := true; waiting; {
+		select {
+		case <-stop:
+			waiting = false
+		case <-f.done:
+			fmt.Fprintln(os.Stderr, "Error: the listener stopped")
+			os.Exit(1)
+		case <-hup:
+			next, err := buildForwardConfig(isServer, auth)
+			if err != nil {
+				log.Printf("reload failed, keeping the current keys: %v", err)
+				continue
+			}
+			f.Reload(next)
+			log.Println("reloaded keys; open connections keep the keys they started with")
+		}
 	}
 	log.Println("shutting down")
 	_ = f.Close()
