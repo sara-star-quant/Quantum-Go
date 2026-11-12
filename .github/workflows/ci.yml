@@ -229,6 +229,17 @@ jobs:
       - name: Reproducible build check
         run: scripts/repro-check.sh
 
+      # The compliance bundle collects these binaries.
+      - name: Build release targets
+        run: make build-all VERSION=0.0.0-ci
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binaries-all
+          path: bin/
+          retention-days: 14
+
       # A dry run of the release step, so a broken SBOM fails here and not on a tag.
       - name: Generate source SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3

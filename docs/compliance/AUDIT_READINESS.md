@@ -72,10 +72,11 @@ vulnerabilities. License: Apache 2.0 (with a `NOTICE` file); dependencies are pe
 
 Every release ships a signed SPDX SBOM (`sbom.spdx.json`) beside the archives, the checksums, the Sigstore
 bundles and the SLSA provenance. The release binaries build with `-trimpath` and a build time taken from the
-commit, so two builds of one commit in different directories match byte for byte; `scripts/repro-check.sh`
-proves it for all five targets and CI runs it on every code change. To reproduce a release, check out the tag
-and run `make release VERSION=<version>` with the Go version named in the release notes (the toolchain is part
-of the input). The binaries inside the archives reproduce; the archives do not, because tar and gzip stamp times.
+commit, cgo off, so two builds of one commit in different directories, time zones and build caches match byte
+for byte; `scripts/repro-check.sh` checks all five targets on one host and CI runs it on every code change. That
+is a same-host, same-toolchain result. A reproduction on another machine needs the Go version and commit the
+release notes name and `make release VERSION=<version>`; no second machine has confirmed a match yet. The
+binaries inside the archives reproduce; the archives do not, because tar and gzip stamp times.
 
 ## 6. Known limitations (honest)
 

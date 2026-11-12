@@ -47,21 +47,28 @@ jobs:
     - name: Run tests
       run: make test
 
-    - name: Build release binaries
-      env:
-        VERSION: ${{ steps.get_version.outputs.VERSION }}
-      run: make release
-
-    # The SBOM lists the modules and versions the binaries were built from. It is signed and
-    # shipped with the release like the archives.
+    # The SBOM lists the modules and versions the binaries are built from. It is generated from the
+    # source tree before the build, so it holds the go.mod dependencies and not the binaries.
     - name: Generate SBOM
       uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
       with:
         path: .
         format: spdx-json
-        output-file: bin/release/sbom.spdx.json
+        output-file: sbom.spdx.json
         upload-artifact: false
         upload-release-assets: false
+
+    - name: Build release binaries
+      env:
+        VERSION: ${{ steps.get_version.outputs.VERSION }}
+      run: make release
+
+    # Ship the SBOM with the release: add it to the checksums and the provenance subjects.
+    - name: Add the SBOM to the release set
+      run: |
+        set -euo pipefail
+        cp sbom.spdx.json bin/release/sbom.spdx.json
+        (cd bin/release && shasum -a 256 sbom.spdx.json >> checksums-sha256.txt)
 
     - name: Attest build provenance
       id: attest
@@ -71,6 +78,7 @@ jobs:
           bin/release/*.tar.gz
           bin/release/*.zip
           bin/release/checksums-sha256.txt
+          bin/release/sbom.spdx.json
 
     # Scorecard's Signed-Releases check looks for a provenance file among the release assets,
     # not for the GitHub attestation. The attest step writes a Sigstore bundle holding the
@@ -121,7 +129,7 @@ jobs:
           echo
           echo "macOS (arm64): download \`quantum-tunnel-$VERSION-darwin-arm64.tar.gz\`. Windows (amd64): download \`quantum-tunnel-$VERSION-windows-amd64.zip\`."
           echo
-          echo "Built with $(go version | cut -d' ' -f3). To reproduce the binaries, check out the tag and run \`make release VERSION=$VERSION\` with the same Go version; the binaries inside the archives match, the archives themselves do not (tar and gzip stamp times)."
+          echo "Built from commit $(git rev-parse HEAD) with $(go version | cut -d' ' -f3), CGO disabled. The binaries inside the archives are reproducible from that commit with the same Go version, on any machine, using \`make release VERSION=$VERSION\`; the archives themselves are not, because tar and gzip stamp times."
           echo
           echo "### Verify checksums"
           echo '```bash'

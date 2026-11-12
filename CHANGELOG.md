@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased][]
 
 ### Changed
-- **Reproducible release binaries**: builds use `-trimpath` and take the build time from the commit, so two builds of one commit match byte for byte on all five targets, checked in CI by `scripts/repro-check.sh`. The `build_time` a binary reports is now the commit time.
+- **Reproducible release binaries**: builds use `-trimpath`, cgo off, a 12-character commit hash and the commit time as the build time, so two builds of one commit match byte for byte across directories, time zones and build caches on all five targets (checked in CI by `scripts/repro-check.sh`, one host and one Go version). The `build_time` a binary reports is now the commit time, or `unknown` outside a git checkout.
 - **Release SBOM**: each release ships a signed SPDX SBOM, and the release notes name the Go version to reproduce with.
 
 ### Added
