@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Release SBOM**: each release ships a signed SPDX SBOM, and the release notes name the Go version to reproduce with.
 
 ### Added
+- **KEM suite allowlist**: `TransportConfig.AllowedKEMSuites`, `WithAllowedKEMSuites` and `forward --allow-suite` let an endpoint restrict the suites it offers and accepts, so an operator can require ML-KEM-1024 and refuse the smaller X-Wing suite. A server steers the client to an allowed suite, a list that allows none fails at construction, and a pinned key keeps its own suite.
+
+### Added
 - **Peer identity on the server session**: `Tunnel.Peer()` and `DatagramConn.Peer()` return `PeerInfo{Identity, Suite, RemoteAddr}`, and `Session.PeerIdentity()` returns the PSK identity the peer proved it holds. The server records it only after the peer's Finished verifies, so a peer that failed authentication never appears. It is nil on a client and when no PSK identity was proven. The proof is possession of the key `PSKLookup` returns for that name, so give every identity its own key; the forwarder now refuses a clients file where two identities share one.
 
 ### Fixed

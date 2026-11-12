@@ -131,6 +131,10 @@ type Session struct {
 	// identity from a wrong key by response or timing.
 	RequirePSK bool
 
+	// AllowedKEMSuites restricts the KEM suites this endpoint offers and accepts for the ephemeral
+	// key exchange. Empty allows every supported suite.
+	AllowedKEMSuites []chkem.SuiteID
+
 	// peerIdentity is the PSK identity the peer proved it holds (responder only); guarded by mu.
 	peerIdentity []byte
 

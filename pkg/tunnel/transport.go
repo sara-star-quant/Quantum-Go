@@ -110,6 +110,13 @@ type TransportConfig struct {
 	// client with a HelloRetryRequest.
 	KEMSuite chkem.SuiteID
 
+	// AllowedKEMSuites, when set on either side, restricts the KEM suites this endpoint offers
+	// and accepts for the ephemeral key exchange. A server refuses a suite outside the list
+	// and steers the client to an allowed one; a client offers only allowed suites. Empty allows
+	// every supported suite. A non-empty list that allows no supported suite fails with
+	// ErrUnsupportedKEMSuite. A pinned or static key's own suite is not restricted by it.
+	AllowedKEMSuites []chkem.SuiteID
+
 	// PSK is a pre-shared key (constants.PSKSize bytes) folded into the master
 	// secret for mutual authentication. Set the same PSK and PSKIdentity on both
 	// the client (Dial) and server (Listen). Nil means no PSK (default).
@@ -877,7 +884,11 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 		return nil, err
 	}
 
-	suite, err := initiatorSuite(config.KEMSuite)
+	policy := kemPolicy(config.AllowedKEMSuites)
+	if err := policy.validate(); err != nil {
+		return nil, err
+	}
+	suite, err := policy.initiator(config.KEMSuite)
 	if err != nil {
 		return nil, err
 	}
@@ -901,6 +912,7 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 	session.PinnedServerKey = config.PinnedServerKey
 	session.PSK = config.PSK
 	session.PSKIdentity = config.PSKIdentity
+	session.AllowedKEMSuites = config.AllowedKEMSuites
 
 	// Perform handshake
 	if config.HandshakeTimeout > 0 {
@@ -1149,6 +1161,7 @@ func (l *Listener) createSession() (*Session, error) {
 	session.PSK = l.config.PSK
 	session.PSKIdentity = l.config.PSKIdentity
 	session.PSKLookup = l.config.PSKLookup
+	session.AllowedKEMSuites = l.config.AllowedKEMSuites
 	session.RequirePSK = l.config.RequirePSK
 	return session, nil
 }

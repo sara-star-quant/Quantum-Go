@@ -167,7 +167,7 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 		Version:        protocol.Current,
 		Random:         h.clientRandom,
 		KEMSuite:       uint16(h.session.kemSuite.ID()),
-		KEMSuites:      supportedKEMSuiteIDs(),
+		KEMSuites:      h.session.kemPolicy().ids(),
 		CHKEMPublicKey: h.session.LocalKeyPair.PublicKey().Bytes(),
 		CipherSuites:   protocol.SupportedCipherSuites(),
 	}
@@ -233,12 +233,12 @@ func (h *Handshake) ProcessHelloRetryRequest(data []byte) error {
 	if !msg.Version.IsCompatible(protocol.Current) {
 		return qerrors.ErrUnsupportedVersion
 	}
-	suite, err := resolveKEMSuite(msg.KEMSuite)
+	suite, err := h.session.kemPolicy().resolve(msg.KEMSuite)
 	if err != nil {
 		return err
 	}
 	// The retried suite must be one we offered, or the server is steering us off-list.
-	if !offeredKEMSuite(msg.KEMSuite) {
+	if !h.session.kemPolicy().offered(msg.KEMSuite) {
 		return qerrors.ErrUnsupportedKEMSuite
 	}
 
@@ -452,12 +452,12 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	// Negotiate the KEM suite before any heavy crypto. If we do not support the suite
 	// the client's key share uses, steer it with a HelloRetryRequest to a mutually
 	// supported suite (once). If there is no overlap, or we already retried, fail closed.
-	suite, err := resolveKEMSuite(msg.KEMSuite)
+	suite, err := h.session.kemPolicy().resolve(msg.KEMSuite)
 	if err != nil {
 		if h.hrrDone {
 			return err
 		}
-		mutual, ok := selectMutualKEMSuite(msg.KEMSuites)
+		mutual, ok := h.session.kemPolicy().mutual(msg.KEMSuites)
 		if !ok {
 			return qerrors.ErrUnsupportedKEMSuite
 		}
@@ -812,62 +812,18 @@ func selectCipherSuite(offered []constants.CipherSuite) constants.CipherSuite {
 	return 0 // No match
 }
 
-// supportedKEMSuiteIDs returns the locally supported KEM suite ids as wire uint16s,
-// for the ClientHello supported-suite list.
-func supportedKEMSuiteIDs() []uint16 {
-	ids := chkem.SupportedSuites()
-	out := make([]uint16, len(ids))
-	for i, id := range ids {
-		out[i] = uint16(id)
-	}
-	return out
-}
+// supportedKEMSuiteIDs returns every locally supported KEM suite id as wire uint16s.
+func supportedKEMSuiteIDs() []uint16 { return kemPolicy(nil).ids() }
 
-// initiatorSuite resolves a configured starting suite id. 0 means the default. Any
-// other id must be one this peer would offer anyway (resolveKEMSuite enforces it), so
-// a preference can never bypass the offer list.
-func initiatorSuite(id chkem.SuiteID) (chkem.Suite, error) {
-	if id == 0 {
-		return chkem.DefaultSuite(), nil
-	}
-	return resolveKEMSuite(uint16(id))
-}
+// initiatorSuite resolves a configured starting suite id with no allowlist. 0 means the default.
+func initiatorSuite(id chkem.SuiteID) (chkem.Suite, error) { return kemPolicy(nil).initiator(id) }
 
-// resolveKEMSuite returns the suite for a wire id, or an error if this peer would
-// not offer it (unregistered, or not FIPS approved in FIPS mode).
-func resolveKEMSuite(wireID uint16) (chkem.Suite, error) {
-	suite, ok := chkem.GetSuite(chkem.SuiteID(wireID))
-	if !ok || !offeredKEMSuite(wireID) {
-		return nil, qerrors.ErrUnsupportedKEMSuite
-	}
-	return suite, nil
-}
+// resolveKEMSuite returns the suite for a wire id, or an error if this peer would not offer it.
+// Static-key suites use it directly, because they are independent of the ephemeral allowlist.
+func resolveKEMSuite(wireID uint16) (chkem.Suite, error) { return kemPolicy(nil).resolve(wireID) }
 
-// offeredKEMSuite reports whether wireID is one of the suites this peer supports
-// (and therefore would have advertised), so a HelloRetryRequest cannot steer the
-// client to a suite it never offered.
-func offeredKEMSuite(wireID uint16) bool {
-	for _, id := range chkem.SupportedSuites() {
-		if uint16(id) == wireID {
-			return true
-		}
-	}
-	return false
-}
-
-// selectMutualKEMSuite picks the locally-supported suite (in this peer's preference
-// order) that also appears in the client's advertised list, or false if there is no
-// overlap. The server uses it to steer an unsupported client via HelloRetryRequest.
-func selectMutualKEMSuite(clientSuites []uint16) (chkem.SuiteID, bool) {
-	for _, local := range chkem.SupportedSuites() {
-		for _, offered := range clientSuites {
-			if uint16(local) == offered {
-				return local, true
-			}
-		}
-	}
-	return 0, false
-}
+// kemPolicy returns the session's allowlist for the ephemeral key exchange.
+func (s *Session) kemPolicy() kemPolicy { return kemPolicy(s.AllowedKEMSuites) }
 
 // cleanup zeroizes sensitive handshake data.
 func (h *Handshake) cleanup() {

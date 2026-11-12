@@ -68,6 +68,7 @@ ep, err := tunnel.NewDatagramEndpoint(conn, tunnel.WithKEMSuite(chkem.SuiteXWing
 
 - The zero value means CH-KEM-v1. A suite the peer would not offer (not registered, or not FIPS approved in a FIPS build) fails before any packet is sent with `tunnel.ErrUnsupportedKEMSuite`; on the datagram transport that is at endpoint construction.
 - A server that does not support the first-offered suite steers the client to a mutually supported one with a single HelloRetryRequest. The offered list is bound into the Finished transcript, so stripping a suite from it fails the handshake.
+- To restrict the suites an endpoint will use, set `TransportConfig.AllowedKEMSuites` (or `WithAllowedKEMSuites` on a datagram endpoint, or `forward --allow-suite`). A server then refuses a suite outside the list and steers the client to an allowed one with a HelloRetryRequest, and a client offers only allowed suites. For example, `AllowedKEMSuites: []chkem.SuiteID{chkem.SuiteCHKEMv1}` keeps every session on ML-KEM-1024 and refuses the smaller X-Wing suite. An empty list allows every supported suite, and a list that allows none fails at construction with `ErrUnsupportedKEMSuite`. A pinned or static key keeps its own suite: the list governs the ephemeral exchange only.
 - Pool connections still start on the default suite; `PoolConfig` has no suite option.
 
 #### Registering your own suite

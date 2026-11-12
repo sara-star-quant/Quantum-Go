@@ -114,6 +114,7 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, ds *datagramSession, fir
 	session.PSKIdentity = e.pskIdentity
 	session.PSKLookup = e.pskLookup
 	session.RequirePSK = e.requirePSK
+	session.AllowedKEMSuites = e.allowedKEMSuites
 	idx, err := e.registry.add(ds)
 	if err != nil {
 		e.registry.removeSource(src.String())
@@ -162,7 +163,7 @@ func (e *DatagramEndpoint) redeliverHellos(src net.Addr, ds *datagramSession) {
 // DialDatagram performs the initiator handshake to dst over ep (whose Serve loop
 // must be running) and returns the established session as a DatagramConn.
 func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
-	suite, err := initiatorSuite(ep.kemSuite)
+	suite, err := kemPolicy(ep.allowedKEMSuites).initiator(ep.kemSuite)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +171,7 @@ func DialDatagram(ep *DatagramEndpoint, dst net.Addr) (*DatagramConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	session.AllowedKEMSuites = ep.allowedKEMSuites
 	session.PinnedServerKey = ep.pinnedServerKey
 	session.PSK = ep.psk
 	session.PSKIdentity = ep.pskIdentity

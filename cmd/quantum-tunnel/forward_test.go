@@ -890,3 +890,28 @@ func TestForwardPinsWithKeygenFiles(t *testing.T) {
 		})
 	}
 }
+
+// --allow-suite chkem-v1 on the server refuses the smaller suite even when the client leads
+// with it, and the pair still connects on level 5. Bad names and a contradicting --suite fail
+// at startup.
+func TestForwardAllowSuite(t *testing.T) {
+	up, _ := startUpstream(t, echoHandler)
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	srvAuth := forwardAuth{pskFile: psk, allowSuites: "chkem-v1"}
+	cliAuth := forwardAuth{pskFile: psk, suite: "x-wing"}
+	c := dial(t, startPair(t, up, srvAuth, cliAuth, testLimits))
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	if _, err := c.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(c, make([]byte, 1)); err != nil {
+		t.Fatalf("a client leading with x-wing could not reach a server that allows only chkem-v1: %v", err)
+	}
+
+	if _, err := buildForwardConfig(true, forwardAuth{pskFile: psk, allowSuites: "nope"}); err == nil {
+		t.Fatal("an unknown suite name in --allow-suite was accepted")
+	}
+	if _, err := buildForwardConfig(false, forwardAuth{pskFile: psk, suite: "x-wing", allowSuites: "chkem-v1"}); err == nil {
+		t.Fatal("--suite outside --allow-suite was accepted")
+	}
+}

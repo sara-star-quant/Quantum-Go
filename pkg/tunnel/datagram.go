@@ -560,6 +560,8 @@ type DatagramEndpoint struct {
 
 	// kemSuite is the suite a dialing endpoint offers first (0 = CH-KEM-v1).
 	kemSuite chkem.SuiteID
+	// allowedKEMSuites mirrors TransportConfig.AllowedKEMSuites, set by WithAllowedKEMSuites.
+	allowedKEMSuites []chkem.SuiteID
 
 	// pskLookup and requirePSK mirror TransportConfig.PSKLookup / RequirePSK for the
 	// responder, set by WithPSKLookup and WithRequirePSK.
@@ -669,6 +671,14 @@ func WithKEMSuite(id chkem.SuiteID) DatagramEndpointOption {
 	return func(e *DatagramEndpoint) { e.kemSuite = id }
 }
 
+// WithAllowedKEMSuites restricts the KEM suites this endpoint offers and accepts for the
+// ephemeral key exchange, like TransportConfig.AllowedKEMSuites. A listener refuses a suite
+// outside the list and steers the client to an allowed one. A list that allows no supported suite
+// fails construction with ErrUnsupportedKEMSuite.
+func WithAllowedKEMSuites(ids ...chkem.SuiteID) DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.allowedKEMSuites = append([]chkem.SuiteID(nil), ids...) }
+}
+
 // WithPSKLookup lets a listening endpoint hold one PSK per client identity: lookup
 // returns the constants.PSKSize-byte key for an identity, or nil if unknown. It takes
 // precedence over WithPSK on the responder.
@@ -736,7 +746,10 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 	for _, opt := range opts {
 		opt(e)
 	}
-	if _, err := initiatorSuite(e.kemSuite); err != nil {
+	if err := kemPolicy(e.allowedKEMSuites).validate(); err != nil {
+		return nil, err
+	}
+	if _, err := kemPolicy(e.allowedKEMSuites).initiator(e.kemSuite); err != nil {
 		return nil, err
 	}
 	if e.requireStaticAuth && e.staticIdentity == nil {

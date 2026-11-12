@@ -114,5 +114,6 @@ Forward mode sends each tunnel record's plaintext as one frame: a one-byte type 
 | `--server-key`, `--pin` | server, client | static key pinning from `keygen` |
 | `--max-conns`, `--idle-timeout` | both | connection and idle limits |
 | `--max-conns-per-ip`, `--handshake-rate` | server | per-address connection cap and global handshakes per second (0 disables) |
+| `--allow-suite` | both | only these KEM suites, comma-separated (`chkem-v1`, `x-wing`); use `chkem-v1` to refuse the smaller suite |
 | `--suite` | client | KEM suite to offer first: `chkem-v1` (default) or `x-wing`; the server follows |
 | `--insecure-no-auth`, `--verbose` | both | development only; log every connection |

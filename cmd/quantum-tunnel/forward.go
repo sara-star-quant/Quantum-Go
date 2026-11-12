@@ -360,6 +360,9 @@ type forwardAuth struct {
 	// suite is the KEM suite a client offers first: "chkem-v1" (the default) or "x-wing".
 	// A server steers a client to a suite it supports, so it needs no setting.
 	suite string
+	// allowSuites restricts the KEM suites this side offers and accepts, as a comma-separated
+	// list of suite names. Empty allows every supported suite.
+	allowSuites string
 }
 
 // buildForwardConfig turns the flags into a transport config. Authentication is mandatory:
@@ -377,6 +380,18 @@ func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, err
 			return cfg, fmt.Errorf("--suite: %w", err)
 		}
 		cfg.KEMSuite = suite.ID()
+	}
+	if a.allowSuites != "" {
+		for _, name := range strings.Split(a.allowSuites, ",") {
+			suite, err := suiteByName(strings.TrimSpace(name))
+			if err != nil {
+				return cfg, fmt.Errorf("--allow-suite: %w", err)
+			}
+			cfg.AllowedKEMSuites = append(cfg.AllowedKEMSuites, suite.ID())
+		}
+		if cfg.KEMSuite != 0 && !slices.Contains(cfg.AllowedKEMSuites, cfg.KEMSuite) {
+			return cfg, errors.New("--suite names a suite that --allow-suite excludes")
+		}
 	}
 	if a.identity == "" {
 		a.identity = "default"
@@ -596,6 +611,7 @@ func forwardCommand() {
 	pskFile := fs.String("psk-file", "", "File holding a 32-byte PSK as 64 hex characters (mode 0600); required on both sides")
 	clientsFile := fs.String("clients-file", "", "Server side: file of \"identity hexkey\" lines, one PSK per client (mode 0600)")
 	suite := fs.String("suite", "", "Client side: KEM suite to offer first, chkem-v1 (default, ML-KEM-1024) or x-wing (ML-KEM-768, smaller handshake)")
+	allowSuites := fs.String("allow-suite", "", "Either side: only these KEM suites, comma-separated (chkem-v1, x-wing). Use chkem-v1 to refuse the smaller suite")
 	identity := fs.String("identity", "default", "PSK identity the client announces, and the server matches against --psk-file")
 	serverKey := fs.String("server-key", "", "Server side: static key file from keygen; clients must then pin it with --pin")
 	pin := fs.String("pin", "", "Client side: the server's public key file from keygen")
@@ -651,7 +667,7 @@ EXAMPLES:
 
 	auth := forwardAuth{
 		pskFile: *pskFile, clientsFile: *clientsFile, identity: *identity,
-		serverKey: *serverKey, pin: *pin, insecure: *insecure, suite: *suite,
+		serverKey: *serverKey, pin: *pin, insecure: *insecure, suite: *suite, allowSuites: *allowSuites,
 	}
 	cfg, err := buildForwardConfig(isServer, auth)
 	if err != nil {
