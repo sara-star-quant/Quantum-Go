@@ -220,6 +220,16 @@ func (c *DatagramConn) Close() error {
 // address after the peer moves.
 func (c *DatagramConn) RemoteAddr() net.Addr { return c.ds.currentPeerAddr() }
 
+// Peer describes the peer of this connection. Identity is the PSK identity the peer proved it
+// holds (a server only), or nil when it proved none.
+func (c *DatagramConn) Peer() PeerInfo {
+	s := c.ds.getSession()
+	if s == nil {
+		return PeerInfo{RemoteAddr: c.RemoteAddr()}
+	}
+	return PeerInfo{Identity: s.PeerIdentity(), Suite: s.kemSuite.ID(), RemoteAddr: c.RemoteAddr()}
+}
+
 // Session exposes the underlying Session (statistics, state).
 func (c *DatagramConn) Session() *Session { return c.ds.getSession() }
 

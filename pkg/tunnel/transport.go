@@ -795,6 +795,23 @@ func (t *Transport) LocalAddr() net.Addr {
 	return t.conn.LocalAddr()
 }
 
+// PeerInfo describes the peer of an established tunnel.
+type PeerInfo struct {
+	// Identity is the PSK identity the peer proved it holds during the handshake, or nil when it
+	// proved none. Only a server learns one: on a client it is always nil. The server records it
+	// after the peer's Finished verifies, so a peer that failed authentication never appears.
+	Identity []byte
+	// Suite is the negotiated KEM suite.
+	Suite chkem.SuiteID
+	// RemoteAddr is the peer's network address.
+	RemoteAddr net.Addr
+}
+
+// Peer describes the peer of this tunnel.
+func (t *Transport) Peer() PeerInfo {
+	return PeerInfo{Identity: t.session.PeerIdentity(), Suite: t.session.kemSuite.ID(), RemoteAddr: t.RemoteAddr()}
+}
+
 // RemoteAddr returns the remote network address.
 func (t *Transport) RemoteAddr() net.Addr {
 	return t.conn.RemoteAddr()

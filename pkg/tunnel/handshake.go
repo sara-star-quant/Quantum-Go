@@ -92,6 +92,11 @@ type Handshake struct {
 	// so foldPSKSecret mixes session.PSK into the master secret before key derivation.
 	foldPSK bool
 
+	// matchedPSKIdentity is the identity whose key the responder matched in the ClientHello.
+	// It becomes the session's peer identity only after ClientFinished verifies, because
+	// before that the identity is a claim, not a proof.
+	matchedPSKIdentity []byte
+
 	// pskKey is the key foldPSKSecret mixes in: the client's configured PSK, or on the
 	// server the looked-up key (a random dummy under RequirePSK when none matched).
 	pskKey []byte
@@ -510,6 +515,7 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	if key := h.responderPSK(msg.PSKIdentity); key != nil {
 		h.foldPSK = true
 		h.pskKey = key
+		h.matchedPSKIdentity = append([]byte(nil), msg.PSKIdentity...)
 	} else if h.session.RequirePSK {
 		// No PSK for this client. Fold a random key rather than rejecting, so the
 		// handshake proceeds at the same cost and fails at the Finished check, exactly
@@ -653,6 +659,9 @@ func (h *Handshake) ProcessClientFinished(data []byte) error {
 	if err := h.initializeSessionKeys(); err != nil {
 		return err
 	}
+
+	// The client proved it holds the key, so the identity it named is now a fact.
+	h.session.setPeerIdentity(h.matchedPSKIdentity)
 
 	h.state = HandshakeStateComplete
 

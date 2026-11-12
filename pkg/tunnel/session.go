@@ -131,6 +131,9 @@ type Session struct {
 	// identity from a wrong key by response or timing.
 	RequirePSK bool
 
+	// peerIdentity is the PSK identity the peer proved it holds (responder only); guarded by mu.
+	peerIdentity []byte
+
 	// Master secret derived from CH-KEM
 	masterSecret []byte
 
@@ -682,6 +685,24 @@ type Stats struct {
 	State        SessionState
 	CipherSuite  constants.CipherSuite
 	FIPSMode     bool
+}
+
+// setPeerIdentity records the PSK identity the peer proved it holds.
+func (s *Session) setPeerIdentity(id []byte) {
+	s.mu.Lock()
+	s.peerIdentity = append([]byte(nil), id...)
+	s.mu.Unlock()
+}
+
+// PeerIdentity returns the PSK identity the peer proved it holds during the handshake, or nil
+// when it proved none. Only a responder records one; on an initiator it is always nil.
+func (s *Session) PeerIdentity() []byte {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.peerIdentity) == 0 {
+		return nil
+	}
+	return append([]byte(nil), s.peerIdentity...)
 }
 
 // Stats returns current session statistics.
