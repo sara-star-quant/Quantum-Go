@@ -827,3 +827,14 @@ func TestForwardStopsWhenTheListenerDies(t *testing.T) {
 		t.Fatal("the forwarder kept running with a dead listener")
 	}
 }
+
+// Two identities that share a key cannot be told apart, so a clients file that does that is
+// refused at startup and on reload.
+func TestForwardRefusesIdentitiesSharingAKey(t *testing.T) {
+	k := randomPSK(t)
+	clients := writeSecret(t, "clients.txt", "alice "+k+"\nbob "+k+"\n", 0o600)
+	_, err := buildForwardConfig(true, forwardAuth{clientsFile: clients})
+	if err == nil || !strings.Contains(err.Error(), "share one key") {
+		t.Fatalf("a clients file with a shared key was accepted: %v", err)
+	}
+}

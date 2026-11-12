@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net"
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -421,6 +423,15 @@ func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, err
 			}
 			table[id] = key
 		}
+	}
+	// The identity a server reports is proven only by holding that identity's key, so two
+	// identities that share a key could not be told apart.
+	owner := make(map[string]string, len(table))
+	for _, id := range slices.Sorted(maps.Keys(table)) {
+		if other, dup := owner[string(table[id])]; dup {
+			return cfg, fmt.Errorf("identities %q and %q share one key; give each its own", other, id)
+		}
+		owner[string(table[id])] = id
 	}
 	if server {
 		cfg.PSKLookup = func(identity []byte) []byte { return table[string(identity)] }

@@ -871,6 +871,7 @@ func selectMutualKEMSuite(clientSuites []uint16) (chkem.SuiteID, bool) {
 
 // cleanup zeroizes sensitive handshake data.
 func (h *Handshake) cleanup() {
+	h.matchedPSKIdentity = nil
 	if h.sharedSecret != nil {
 		crypto.Zeroize(h.sharedSecret)
 		h.sharedSecret = nil

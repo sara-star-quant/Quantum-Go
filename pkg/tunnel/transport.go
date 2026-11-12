@@ -797,11 +797,15 @@ func (t *Transport) LocalAddr() net.Addr {
 
 // PeerInfo describes the peer of an established tunnel.
 type PeerInfo struct {
-	// Identity is the PSK identity the peer proved it holds during the handshake, or nil when it
+	// Identity is the PSK identity the peer named and proved it holds the key for, or nil when it
 	// proved none. Only a server learns one: on a client it is always nil. The server records it
 	// after the peer's Finished verifies, so a peer that failed authentication never appears.
+	// The proof is possession of the key PSKLookup returns for that name. If a lookup maps
+	// several names to the same key, a holder of that key can claim any of them, so give every
+	// identity its own key when the identity drives policy or audit.
 	Identity []byte
-	// Suite is the negotiated KEM suite.
+	// Suite is the negotiated KEM suite. It is zero on a datagram connection that has not
+	// finished its handshake. The suite is set once during the handshake and never changes.
 	Suite chkem.SuiteID
 	// RemoteAddr is the peer's network address.
 	RemoteAddr net.Addr

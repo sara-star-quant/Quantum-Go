@@ -689,6 +689,9 @@ type Stats struct {
 
 // setPeerIdentity records the PSK identity the peer proved it holds.
 func (s *Session) setPeerIdentity(id []byte) {
+	if len(id) == 0 {
+		return
+	}
 	s.mu.Lock()
 	s.peerIdentity = append([]byte(nil), id...)
 	s.mu.Unlock()

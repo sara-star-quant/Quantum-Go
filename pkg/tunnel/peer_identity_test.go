@@ -1,7 +1,9 @@
 package tunnel
 
 import (
+	"errors"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +33,9 @@ func acceptOne(t *testing.T, cfg TransportConfig) (*Listener, chan *Tunnel) {
 		for {
 			tun, err := ln.Accept()
 			if err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					return
+				}
 				continue // a refused handshake: keep listening
 			}
 			accepted <- tun
@@ -135,15 +140,92 @@ func TestPeerIdentityNotRecordedWhenFinishedFails(t *testing.T) {
 	}
 	client.PSK, client.PSKIdentity = pskBytes(99), []byte("alice") // right name, wrong key
 
-	_ = cConn.SetDeadline(time.Now().Add(10 * time.Second))
-	_ = sConn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = cConn.SetDeadline(time.Now().Add(2 * time.Second))
+	_ = sConn.SetDeadline(time.Now().Add(2 * time.Second))
 	srvErr := make(chan error, 1)
 	go func() { srvErr <- ResponderHandshake(server, sConn) }()
 	_ = InitiatorHandshake(client, cConn)
+	_ = cConn.Close() // the client gave up: the responder sees the end of the stream at once
 	if err := <-srvErr; err == nil {
 		t.Fatal("the responder accepted a client with the wrong key")
 	}
 	if id := server.PeerIdentity(); id != nil {
 		t.Fatalf("a failed handshake recorded identity %q", id)
 	}
+}
+
+// A server holding a single PSK (no lookup table) still learns the identity of the one
+// client that proves it.
+func TestPeerIdentitySinglePSK(t *testing.T) {
+	serverCfg := DefaultTransportConfig()
+	serverCfg.PSK, serverCfg.PSKIdentity = pskBytes(3), []byte("edge-1")
+	ln, accepted := acceptOne(t, serverCfg)
+	cfg := DefaultTransportConfig()
+	cfg.PSK, cfg.PSKIdentity = pskBytes(3), []byte("edge-1")
+	client, err := DialWithConfig("tcp", ln.Addr().String(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	server := <-accepted
+	t.Cleanup(func() { _ = server.Close() })
+	if got := string(server.Peer().Identity); got != "edge-1" {
+		t.Fatalf("identity %q, want edge-1", got)
+	}
+}
+
+// An unknown identity under RequirePSK completes no tunnel, so no identity can appear.
+func TestPeerIdentityUnknownUnderRequirePSK(t *testing.T) {
+	serverCfg := DefaultTransportConfig()
+	serverCfg.PSKLookup = func(id []byte) []byte {
+		if string(id) == "alice" {
+			return pskBytes(1)
+		}
+		return nil
+	}
+	serverCfg.RequirePSK = true
+	serverCfg.HandshakeTimeout = 5 * time.Second
+	ln, accepted := acceptOne(t, serverCfg)
+	cfg := DefaultTransportConfig()
+	cfg.PSK, cfg.PSKIdentity = pskBytes(1), []byte("mallory")
+	cfg.HandshakeTimeout = 5 * time.Second
+	if c, err := DialWithConfig("tcp", ln.Addr().String(), cfg); err == nil {
+		_ = c.Close()
+		t.Fatal("an unknown identity completed a handshake under RequirePSK")
+	}
+	select {
+	case tun := <-accepted:
+		_ = tun.Close()
+		t.Fatal("the server delivered a tunnel for an unknown identity")
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// Peer is a read accessor that policy code calls from other goroutines.
+func TestPeerIsSafeToCallConcurrently(t *testing.T) {
+	serverCfg := DefaultTransportConfig()
+	serverCfg.PSK, serverCfg.PSKIdentity = pskBytes(9), []byte("edge-2")
+	ln, accepted := acceptOne(t, serverCfg)
+	cfg := DefaultTransportConfig()
+	cfg.PSK, cfg.PSKIdentity = pskBytes(9), []byte("edge-2")
+	client, err := DialWithConfig("tcp", ln.Addr().String(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	server := <-accepted
+	t.Cleanup(func() { _ = server.Close() })
+
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Go(func() {
+			for range 200 {
+				if string(server.Peer().Identity) != "edge-2" {
+					t.Error("identity changed under concurrent reads")
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
 }
