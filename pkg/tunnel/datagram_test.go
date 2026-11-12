@@ -12,7 +12,7 @@ import (
 // construction error so call sites stay terse.
 func mustEndpoint(t *testing.T, conn net.PacketConn) *DatagramEndpoint {
 	t.Helper()
-	ep, err := NewDatagramEndpoint(conn)
+	ep, err := NewDatagramEndpoint(conn, WithAllowUnauthenticated())
 	if err != nil {
 		t.Fatalf("NewDatagramEndpoint: %v", err)
 	}

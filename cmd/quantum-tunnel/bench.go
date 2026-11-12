@@ -67,7 +67,7 @@ func benchHandshakes(count int) {
 	fmt.Printf("Benchmarking Handshakes (%d iterations)\n", count)
 	fmt.Println(strings.Repeat("─", 60))
 
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to start listener: %v\n", err)
 		os.Exit(1)
@@ -101,7 +101,7 @@ func benchHandshakes(count int) {
 	for i := 0; i < count; i++ {
 		handshakeStart := time.Now()
 
-		client, err := tunnel.Dial("tcp", addr)
+		client, err := tunnel.DialInsecure("tcp", addr)
 		if err != nil {
 			errors++
 			durations[i] = 0
@@ -143,7 +143,7 @@ func benchDatagramHandshakes(count int) {
 		fmt.Fprintf(os.Stderr, "Error: Failed to open responder socket: %v\n", err)
 		os.Exit(1)
 	}
-	responder, err := tunnel.NewDatagramEndpoint(responderConn)
+	responder, err := tunnel.NewDatagramEndpoint(responderConn, tunnel.WithAllowUnauthenticated())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create responder endpoint: %v\n", err)
 		os.Exit(1)
@@ -156,7 +156,7 @@ func benchDatagramHandshakes(count int) {
 		fmt.Fprintf(os.Stderr, "Error: Failed to open initiator socket: %v\n", err)
 		os.Exit(1)
 	}
-	initiator, err := tunnel.NewDatagramEndpoint(initiatorConn)
+	initiator, err := tunnel.NewDatagramEndpoint(initiatorConn, tunnel.WithAllowUnauthenticated())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create initiator endpoint: %v\n", err)
 		os.Exit(1)
@@ -327,7 +327,7 @@ func benchThroughput(totalBytes int64, duration time.Duration, chunkSize int, ba
 // measureTunnel moves up to totalBytes (or for duration) through a tunnel on loopback.
 func measureTunnel(totalBytes int64, duration time.Duration, chunk []byte) (throughputResult, error) {
 	var res throughputResult
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		return res, fmt.Errorf("start listener: %w", err)
 	}
@@ -377,7 +377,7 @@ func measureTunnel(totalBytes int64, duration time.Duration, chunk []byte) (thro
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		client, err := tunnel.Dial("tcp", addr)
+		client, err := tunnel.DialInsecure("tcp", addr)
 		if err != nil {
 			cliErr = fmt.Errorf("dial: %w", err)
 			return

@@ -97,6 +97,10 @@ var (
 	// PSKSize bytes and the identity must be non-empty and within MaxPSKIdentitySize.
 	ErrInvalidPSK = errors.New("protocol: PSK must be 32 bytes with a non-empty identity")
 
+	// ErrAuthenticationRequired indicates an endpoint was configured with no authentication and
+	// without an explicit opt-in to run unauthenticated.
+	ErrAuthenticationRequired = errors.New("protocol: authentication required: set a PSK, a pinned or static key, or AllowUnauthenticated")
+
 	// ErrUnsupportedKEMSuite indicates a peer offered or selected a KEM suite this
 	// endpoint does not implement.
 	ErrUnsupportedKEMSuite = errors.New("protocol: unsupported KEM suite")

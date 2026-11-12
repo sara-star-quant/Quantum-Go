@@ -105,11 +105,11 @@ func TestDgramHandshakePaddingE2E(t *testing.T) {
 	recA := &recordingConn{PacketConn: connA}
 	recB := &recordingConn{PacketConn: connB}
 
-	epA, err := NewDatagramEndpoint(recA, WithHandshakePadding())
+	epA, err := NewDatagramEndpoint(recA, WithAllowUnauthenticated(), WithHandshakePadding())
 	if err != nil {
 		t.Fatalf("endpoint A: %v", err)
 	}
-	epB, err := NewDatagramEndpoint(recB, WithHandshakePadding())
+	epB, err := NewDatagramEndpoint(recB, WithAllowUnauthenticated(), WithHandshakePadding())
 	if err != nil {
 		t.Fatalf("endpoint B: %v", err)
 	}

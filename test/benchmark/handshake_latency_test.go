@@ -100,7 +100,7 @@ func newDelayEndpoint(b *testing.B, latency time.Duration) (*tunnel.DatagramEndp
 	if err != nil {
 		b.Fatal(err)
 	}
-	ep, err := tunnel.NewDatagramEndpoint(&delayPacketConn{PacketConn: pc, latency: latency})
+	ep, err := tunnel.NewDatagramEndpoint(&delayPacketConn{PacketConn: pc, latency: latency}, tunnel.WithAllowUnauthenticated())
 	if err != nil {
 		b.Fatal(err)
 	}

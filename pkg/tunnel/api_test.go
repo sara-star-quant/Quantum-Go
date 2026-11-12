@@ -16,7 +16,7 @@ import (
 // TestDialAndListen tests the basic Dial/Listen/Accept flow.
 func TestDialAndListen(t *testing.T) {
 	// Start listener
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestDialAndListen(t *testing.T) {
 		// Give server time to start accepting
 		time.Sleep(50 * time.Millisecond)
 
-		client, err := tunnel.Dial("tcp", addr)
+		client, err := tunnel.DialInsecure("tcp", addr)
 		if err != nil {
 			clientErr = fmt.Errorf("Dial failed: %w", err)
 			return
@@ -84,7 +84,7 @@ func TestDialAndListen(t *testing.T) {
 
 // TestDialWithConfig tests Dial with custom configuration.
 func TestDialWithConfig(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestDialWithConfig(t *testing.T) {
 
 // TestDialInvalidAddress tests Dial with invalid address.
 func TestDialInvalidAddress(t *testing.T) {
-	_, err := tunnel.Dial("tcp", "127.0.0.1:99999")
+	_, err := tunnel.DialInsecure("tcp", "127.0.0.1:99999")
 	if err == nil {
 		t.Error("Expected error for invalid port, got nil")
 	}
@@ -132,7 +132,7 @@ func TestDialInvalidAddress(t *testing.T) {
 // TestDialConnectionRefused tests Dial when server is not running.
 func TestDialConnectionRefused(t *testing.T) {
 	// Use a port that's likely not in use
-	_, err := tunnel.Dial("tcp", "127.0.0.1:54321")
+	_, err := tunnel.DialInsecure("tcp", "127.0.0.1:54321")
 	if err == nil {
 		t.Error("Expected connection refused error, got nil")
 	}
@@ -140,7 +140,7 @@ func TestDialConnectionRefused(t *testing.T) {
 
 // TestListenerSetConfig tests SetConfig on listener.
 func TestListenerSetConfig(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestListenerSetConfig(t *testing.T) {
 
 // TestListenerAddr tests Addr method.
 func TestListenerAddr(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestListenerAddr(t *testing.T) {
 
 // TestListenerClose tests closing listener.
 func TestListenerClose(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestListenerClose(t *testing.T) {
 
 // TestMultipleClients tests multiple concurrent clients.
 func TestMultipleClients(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestMultipleClients(t *testing.T) {
 			defer wg.Done()
 			time.Sleep(50 * time.Millisecond)
 
-			client, err := tunnel.Dial("tcp", addr)
+			client, err := tunnel.DialInsecure("tcp", addr)
 			if err != nil {
 				errors <- fmt.Errorf("Client %d dial failed: %w", clientID, err)
 				return
@@ -295,7 +295,7 @@ func TestMultipleClients(t *testing.T) {
 
 // TestBidirectionalCommunication tests data flowing both directions.
 func TestBidirectionalCommunication(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestBidirectionalCommunication(t *testing.T) {
 		defer wg.Done()
 		time.Sleep(50 * time.Millisecond)
 
-		client, err := tunnel.Dial("tcp", addr)
+		client, err := tunnel.DialInsecure("tcp", addr)
 		if err != nil {
 			clientErr = fmt.Errorf("Dial failed: %w", err)
 			return
@@ -378,7 +378,7 @@ func TestBidirectionalCommunication(t *testing.T) {
 
 // TestTunnelGetters tests Transport getter methods.
 func TestTunnelGetters(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestTunnelGetters(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		time.Sleep(50 * time.Millisecond)
-		client, err := tunnel.Dial("tcp", addr)
+		client, err := tunnel.DialInsecure("tcp", addr)
 		if err == nil {
 			clientTunnel = client
 		}
@@ -451,7 +451,7 @@ func TestTunnelGetters(t *testing.T) {
 
 // TestListenInvalidNetwork tests Listen with invalid network type.
 func TestListenInvalidNetwork(t *testing.T) {
-	_, err := tunnel.Listen("invalid", "127.0.0.1:0")
+	_, err := tunnel.ListenInsecure("invalid", "127.0.0.1:0")
 	if err == nil {
 		t.Error("Expected error for invalid network type, got nil")
 	}
@@ -461,7 +461,7 @@ func TestListenInvalidNetwork(t *testing.T) {
 // client. Accept must return the good tunnel without waiting out the stalled
 // peer's handshake timeout.
 func TestAcceptNotBlockedByStalledPeer(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -484,7 +484,7 @@ func TestAcceptNotBlockedByStalledPeer(t *testing.T) {
 	}()
 
 	time.Sleep(50 * time.Millisecond) // let the stalled connection reach the server first
-	client, err := tunnel.Dial("tcp", listener.Addr().String())
+	client, err := tunnel.DialInsecure("tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatalf("good dial: %v", err)
 	}
@@ -503,7 +503,7 @@ func TestAcceptNotBlockedByStalledPeer(t *testing.T) {
 
 // TestAcceptAfterCloseReturnsError checks Accept unblocks with an error on Close.
 func TestAcceptAfterCloseReturnsError(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -531,7 +531,7 @@ func TestAcceptAfterCloseReturnsError(t *testing.T) {
 // connections in flight: with a limit of one, a second connection is closed on
 // arrival while the first is still stalled in its handshake.
 func TestAcceptShedsConnectionsBeyondPendingLimit(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -581,7 +581,7 @@ func (r *loadRecorder) OnHandshakeShed(ip string) {
 // limit: the stalled first connection holds the slot, the second is reported shed with its
 // address, and closing the first releases the slot so started and finished balance.
 func TestHandshakeLoadObserverSeesShedAndRelease(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}

@@ -560,6 +560,8 @@ type DatagramEndpoint struct {
 
 	// kemSuite is the suite a dialing endpoint offers first (0 = CH-KEM-v1).
 	kemSuite chkem.SuiteID
+	// allowUnauthenticated mirrors TransportConfig.AllowUnauthenticated, set by WithAllowUnauthenticated.
+	allowUnauthenticated bool
 	// allowedKEMSuites mirrors TransportConfig.AllowedKEMSuites, set by WithAllowedKEMSuites.
 	allowedKEMSuites []chkem.SuiteID
 
@@ -671,6 +673,14 @@ func WithKEMSuite(id chkem.SuiteID) DatagramEndpointOption {
 	return func(e *DatagramEndpoint) { e.kemSuite = id }
 }
 
+// WithAllowUnauthenticated lets an endpoint run with no PSK, lookup, pin or static identity.
+// Without it, construction fails with ErrAuthenticationRequired for such an endpoint. An
+// unauthenticated session is encrypted and forward secret but cannot tell who is on the other
+// end. Use it for tests, demos and benchmarks.
+func WithAllowUnauthenticated() DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.allowUnauthenticated = true }
+}
+
 // WithAllowedKEMSuites restricts the KEM suites this endpoint offers and accepts for the
 // ephemeral key exchange, like TransportConfig.AllowedKEMSuites. A listener refuses a suite
 // outside the list and steers the client to an allowed one. A list that allows no supported suite
@@ -745,6 +755,9 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 	}
 	for _, opt := range opts {
 		opt(e)
+	}
+	if e.psk == nil && e.pskLookup == nil && e.pinnedServerKey == nil && e.staticIdentity == nil && !e.allowUnauthenticated {
+		return nil, qerrors.ErrAuthenticationRequired
 	}
 	if _, err := kemPolicy(e.allowedKEMSuites).initiator(e.kemSuite); err != nil {
 		return nil, err

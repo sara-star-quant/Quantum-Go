@@ -61,6 +61,7 @@ func runDemoServer(addr string, verbose bool, obsAddr string, collector *metrics
 	defer func() { _ = listener.Close() }()
 
 	config := tunnel.DefaultTransportConfig()
+	config.AllowUnauthenticated = true // a demo: encrypted but nobody is authenticated
 	config.ObserverFactory = observerFactory
 	config.RateLimitObserver = metrics.NewRateLimitObserver(collector, logger)
 	listener.SetConfig(config)
@@ -182,6 +183,7 @@ func runDemoClient(addr, message string, verbose bool, observerFactory tunnel.Ob
 
 	startHandshake := time.Now()
 	config := tunnel.DefaultTransportConfig()
+	config.AllowUnauthenticated = true // a demo: encrypted but nobody is authenticated
 	config.ObserverFactory = observerFactory
 
 	client, err := tunnel.DialWithConfig("tcp", addr, config)

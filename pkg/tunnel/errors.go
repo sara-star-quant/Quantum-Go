@@ -10,6 +10,7 @@ var (
 	ErrUnsupportedVersion         = qerrors.ErrUnsupportedVersion
 	ErrUnsupportedCipherSuite     = qerrors.ErrUnsupportedCipherSuite
 	ErrUnsupportedKEMSuite        = qerrors.ErrUnsupportedKEMSuite
+	ErrAuthenticationRequired     = qerrors.ErrAuthenticationRequired
 	ErrCipherSuiteNotFIPSApproved = qerrors.ErrCipherSuiteNotFIPSApproved
 
 	// Authentication and its configuration.

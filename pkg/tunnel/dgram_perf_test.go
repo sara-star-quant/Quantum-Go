@@ -29,11 +29,11 @@ func dialEstablished(tb testing.TB, opts ...DatagramEndpointOption) (client *Dat
 		tb.Fatalf("listen B: %v", err)
 	}
 
-	epA, err := NewDatagramEndpoint(rxA, opts...)
+	epA, err := NewDatagramEndpoint(rxA, append([]DatagramEndpointOption{WithAllowUnauthenticated()}, opts...)...)
 	if err != nil {
 		tb.Fatalf("endpoint A: %v", err)
 	}
-	epB, err := NewDatagramEndpoint(rxB, opts...)
+	epB, err := NewDatagramEndpoint(rxB, append([]DatagramEndpointOption{WithAllowUnauthenticated()}, opts...)...)
 	if err != nil {
 		tb.Fatalf("endpoint B: %v", err)
 	}
@@ -222,7 +222,7 @@ func dialFlows(tb testing.TB, n int) (clients []*DatagramConn, servers []*datagr
 	// which would make the aggregate number reflect the test harness, not the
 	// transport. Best-effort: the OS may clamp it.
 	_ = rxB.SetReadBuffer(8 << 20)
-	epB, err := NewDatagramEndpoint(rxB)
+	epB, err := NewDatagramEndpoint(rxB, WithAllowUnauthenticated())
 	if err != nil {
 		tb.Fatalf("responder endpoint: %v", err)
 	}
@@ -252,7 +252,7 @@ func dialFlowsInto(tb testing.TB, responder *DatagramEndpoint, dst net.Addr, n i
 		if lerr != nil {
 			tb.Fatalf("listen initiator: %v", lerr)
 		}
-		epA, eerr := NewDatagramEndpoint(rxA)
+		epA, eerr := NewDatagramEndpoint(rxA, WithAllowUnauthenticated())
 		if eerr != nil {
 			tb.Fatalf("initiator endpoint: %v", eerr)
 		}
@@ -440,7 +440,7 @@ func runFlowGoodput(b *testing.B, clients []*DatagramConn, servers []*datagramSe
 // shows how aggregate throughput scales with receive sockets.
 func benchListenFlows(b *testing.B, sockets, flows int) {
 	b.Helper()
-	responder, err := ListenDatagram("udp", "127.0.0.1:0", WithReceiveSockets(sockets))
+	responder, err := ListenDatagram("udp", "127.0.0.1:0", WithAllowUnauthenticated(), WithReceiveSockets(sockets))
 	if err != nil {
 		b.Fatalf("ListenDatagram: %v", err)
 	}

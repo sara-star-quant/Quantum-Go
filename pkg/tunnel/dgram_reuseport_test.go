@@ -159,7 +159,7 @@ func TestWithMaxHalfOpen(t *testing.T) {
 // (still usable). It does not assert the socket count (that is platform-specific and
 // covered by the Linux e2e test); it asserts construction + a real bound address.
 func TestListenDatagram(t *testing.T) {
-	ep, err := ListenDatagram("udp", "127.0.0.1:0", WithReceiveSockets(4))
+	ep, err := ListenDatagram("udp", "127.0.0.1:0", WithAllowUnauthenticated(), WithReceiveSockets(4))
 	if err != nil {
 		t.Fatalf("ListenDatagram: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestListenDatagram(t *testing.T) {
 // handshake completes and data round-trips both ways - proving concurrent
 // routeDatagram over the fan-out receive path is correct.
 func TestListenDatagramEndToEnd(t *testing.T) {
-	server, err := ListenDatagram("udp", "127.0.0.1:0", WithReceiveSockets(4))
+	server, err := ListenDatagram("udp", "127.0.0.1:0", WithAllowUnauthenticated(), WithReceiveSockets(4))
 	if err != nil {
 		t.Fatalf("ListenDatagram: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestListenDatagramEndToEnd(t *testing.T) {
 		if lerr != nil {
 			t.Fatalf("listen initiator: %v", lerr)
 		}
-		ep, eerr := NewDatagramEndpoint(rx)
+		ep, eerr := NewDatagramEndpoint(rx, WithAllowUnauthenticated())
 		if eerr != nil {
 			t.Fatalf("initiator endpoint: %v", eerr)
 		}

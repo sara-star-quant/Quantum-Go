@@ -418,6 +418,7 @@ func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, err
 	case a.insecure && (a.pskFile != "" || a.clientsFile != "" || a.serverKey != "" || a.pin != ""):
 		return cfg, errors.New("--insecure-no-auth cannot be combined with --psk-file, --clients-file, --server-key or --pin: it would ignore them")
 	case a.insecure:
+		cfg.AllowUnauthenticated = true
 		return cfg, nil
 	case server && a.pskFile == "" && a.clientsFile == "":
 		return cfg, errors.New("the server needs --psk-file or --clients-file so only authorized clients can reach the upstream (or --insecure-no-auth for development)")

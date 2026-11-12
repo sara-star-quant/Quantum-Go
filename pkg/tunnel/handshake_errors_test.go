@@ -266,7 +266,7 @@ func TestStreamHandshakeThroughTamperingProxy(t *testing.T) {
 			}
 			t.Run(name+"/"+time.Duration(off).String(), func(t *testing.T) {
 				t.Parallel() // own listener, proxy and sockets
-				ln, err := Listen("tcp", "127.0.0.1:0")
+				ln, err := ListenInsecure("tcp", "127.0.0.1:0")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -307,7 +307,7 @@ func TestStreamHandshakeThroughTamperingProxy(t *testing.T) {
 					relay(c, up, sOff, &flipped, &mu)
 				}()
 
-				client, cerr := Dial("tcp", front.Addr().String())
+				client, cerr := DialInsecure("tcp", front.Addr().String())
 				var server *Tunnel
 				select {
 				case server = <-srvAcc:
@@ -342,12 +342,12 @@ func TestDatagramHandshakeThroughTamperingProxy(t *testing.T) {
 				}
 				t.Run(fmt.Sprintf("%s/datagram%d/byte%d", name, idx, pos), func(t *testing.T) {
 					srvSock, _ := net.ListenPacket("udp", "127.0.0.1:0")
-					srvEP, err := NewDatagramEndpoint(srvSock)
+					srvEP, err := NewDatagramEndpoint(srvSock, WithAllowUnauthenticated())
 					if err != nil {
 						t.Fatal(err)
 					}
 					cliSock, _ := net.ListenPacket("udp", "127.0.0.1:0")
-					cliEP, err := NewDatagramEndpoint(cliSock)
+					cliEP, err := NewDatagramEndpoint(cliSock, WithAllowUnauthenticated())
 					if err != nil {
 						t.Fatal(err)
 					}

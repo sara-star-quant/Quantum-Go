@@ -101,7 +101,7 @@ func TestRateLimitObserverEmptyIP(t *testing.T) {
 // closing the stalled peer returns the gauge to zero.
 func TestRateLimitObserverReportsHandshakeLoad(t *testing.T) {
 	collector := NewCollector(nil)
-	ln, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	ln, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

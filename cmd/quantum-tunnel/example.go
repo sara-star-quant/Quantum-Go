@@ -28,7 +28,12 @@ import (
 
 func main() {
     // SERVER
+    // Both sides share the same 32 random bytes. Keep them in a file, not in code.
+    cfg := tunnel.DefaultTransportConfig()
+    cfg.PSK, cfg.PSKIdentity = loadPSK(), []byte("demo")
+
     listener, _ := tunnel.Listen("tcp", ":8443")
+    listener.SetConfig(cfg)
     defer listener.Close()
 
     go func() {
@@ -44,7 +49,7 @@ func main() {
     }()
 
     // CLIENT
-    client, _ := tunnel.Dial("tcp", "localhost:8443")
+    client, _ := tunnel.DialWithConfig("tcp", "localhost:8443", cfg)
     defer client.Close()
 
     client.Send([]byte("Hello, quantum world!"))
@@ -99,6 +104,8 @@ func main() {
     config := tunnel.TransportConfig{
         ReadTimeout:  30 * time.Second,
         WriteTimeout: 30 * time.Second,
+        PSK:          loadPSK(), // the 32-byte key the server also holds
+        PSKIdentity:  []byte("demo"),
     }
 
     // Dial with custom config
@@ -124,7 +131,9 @@ import (
 )
 
 func main() {
-    client, _ := tunnel.Dial("tcp", "server:8443")
+    cfg := tunnel.DefaultTransportConfig()
+    cfg.PSK, cfg.PSKIdentity = loadPSK(), []byte("demo")
+    client, _ := tunnel.DialWithConfig("tcp", "server:8443", cfg)
     defer client.Close()
 
     // Access session information
@@ -158,7 +167,9 @@ import (
 )
 
 func main() {
-    client, err := tunnel.Dial("tcp", "server:8443")
+    cfg := tunnel.DefaultTransportConfig()
+    cfg.PSK, cfg.PSKIdentity = loadPSK(), []byte("demo")
+    client, err := tunnel.DialWithConfig("tcp", "server:8443", cfg)
     if err != nil {
         log.Fatalf("Connection failed: %v", err)
     }
@@ -210,6 +221,7 @@ func main() {
 
     // BEST PRACTICE 2: Set reasonable timeouts
     config := tunnel.DefaultTransportConfig()
+    config.PSK, config.PSKIdentity = loadPSK(), []byte("demo") // authenticate: without a PSK or a pin Dial refuses
     config.ReadTimeout = 30 * time.Second
     config.WriteTimeout = 30 * time.Second
 

@@ -55,7 +55,7 @@ func TestInitiatorSuiteRejectsUnoffered(t *testing.T) {
 	if !qerrors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
 		t.Fatalf("DialWithConfig: %v, want ErrUnsupportedKEMSuite before dialing", err)
 	}
-	if _, err := NewDatagramEndpoint(nil, WithKEMSuite(0x7FFF)); !qerrors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
+	if _, err := NewDatagramEndpoint(nil, WithAllowUnauthenticated(), WithKEMSuite(0x7FFF)); !qerrors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
 		t.Fatalf("NewDatagramEndpoint: %v, want ErrUnsupportedKEMSuite", err)
 	}
 }

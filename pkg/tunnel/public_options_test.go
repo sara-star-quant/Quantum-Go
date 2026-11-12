@@ -22,7 +22,7 @@ func pubDgramPair(t *testing.T, serverOpts, clientOpts []DatagramEndpointOption)
 		if lerr != nil {
 			t.Fatalf("listen: %v", lerr)
 		}
-		ep, nerr := NewDatagramEndpoint(sock, opts...)
+		ep, nerr := NewDatagramEndpoint(sock, append([]DatagramEndpointOption{WithAllowUnauthenticated()}, opts...)...)
 		if nerr != nil {
 			t.Fatalf("NewDatagramEndpoint: %v", nerr)
 		}

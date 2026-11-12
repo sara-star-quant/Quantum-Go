@@ -110,6 +110,13 @@ type TransportConfig struct {
 	// client with a HelloRetryRequest.
 	KEMSuite chkem.SuiteID
 
+	// AllowUnauthenticated lets an endpoint run with no PSK and no pinned or static key. Without
+	// it, Dial, Pool and a listener's first Accept return ErrAuthenticationRequired for such a
+	// configuration. An unauthenticated tunnel is still encrypted and forward secret, but it
+	// cannot tell who is on the other end, and an active attacker can sit in the middle. Prefer
+	// a PSK, a pin or both; use this for tests, demos and benchmarks.
+	AllowUnauthenticated bool
+
 	// AllowedKEMSuites, when set on either side, restricts the KEM suites this endpoint offers
 	// and accepts for the ephemeral key exchange. A server refuses a suite outside the list
 	// and steers the client to an allowed one; a client offers only allowed suites. Empty allows
@@ -874,15 +881,44 @@ type Tunnel struct {
 	*Transport
 }
 
-// Dial establishes a new tunnel as initiator.
-func Dial(network, address string) (*Tunnel, error) {
-	return DialWithConfig(network, address, DefaultTransportConfig())
+// DialInsecure establishes a tunnel with no authentication. The tunnel is encrypted and forward
+// secret, but the server is not verified, so an active attacker can sit in the middle. It exists
+// for tests, demos and benchmarks; production code uses DialWithConfig with a PSK or a pin.
+func DialInsecure(network, address string) (*Tunnel, error) {
+	cfg := DefaultTransportConfig()
+	cfg.AllowUnauthenticated = true
+	return DialWithConfig(network, address, cfg)
+}
+
+// authenticated reports whether the configuration identifies this endpoint to its peer or the peer
+// to it. A client is authenticated by a PSK or a pinned server key, a server by a PSK, a lookup
+// of per-client PSKs or its own static key.
+func (c TransportConfig) authenticated(server bool) bool {
+	if c.PSK != nil || c.AllowUnauthenticated {
+		return true
+	}
+	if server {
+		return c.PSKLookup != nil || c.StaticKeyPair != nil
+	}
+	return c.PinnedServerKey != nil
+}
+
+// checkAuth returns ErrAuthenticationRequired for a configuration that authenticates nobody and
+// has not opted in to that.
+func (c TransportConfig) checkAuth(server bool) error {
+	if !c.authenticated(server) {
+		return qerrors.ErrAuthenticationRequired
+	}
+	return nil
 }
 
 // DialWithConfig establishes a new tunnel with custom configuration.
 func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, error) {
 	// Reject a bad configuration before opening a connection.
 	if err := validatePSK(config.PSK, config.PSKIdentity); err != nil {
+		return nil, err
+	}
+	if err := config.checkAuth(false); err != nil {
 		return nil, err
 	}
 	if _, err := kemPolicy(config.AllowedKEMSuites).initiator(config.KEMSuite); err != nil {
@@ -906,6 +942,9 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 // connection authenticates exactly like a dialed one.
 func initiatorSession(config TransportConfig) (*Session, error) {
 	if err := validatePSK(config.PSK, config.PSKIdentity); err != nil {
+		return nil, err
+	}
+	if err := config.checkAuth(false); err != nil {
 		return nil, err
 	}
 	policy := kemPolicy(append([]chkem.SuiteID(nil), config.AllowedKEMSuites...))
@@ -958,7 +997,21 @@ func handshakeOver(conn net.Conn, session *Session, config TransportConfig) (*Tu
 	return &Tunnel{Transport: transport}, nil
 }
 
-// Listen creates a listener for incoming tunnel connections.
+// ListenInsecure creates a listener that accepts unauthenticated clients. Prefer Listen with
+// SetConfig carrying a PSK, per-client PSKs or a static key; this is for tests, demos and
+// benchmarks.
+func ListenInsecure(network, address string) (*Listener, error) {
+	ln, err := Listen(network, address)
+	if err != nil {
+		return nil, err
+	}
+	ln.config.AllowUnauthenticated = true
+	return ln, nil
+}
+
+// Listen creates a listener for incoming tunnel connections. Set its authentication with
+// SetConfig before the first Accept: a listener with no PSK and no static key refuses to accept
+// unless the configuration sets AllowUnauthenticated (see ListenInsecure).
 func Listen(network, address string) (*Listener, error) {
 	ln, err := net.Listen(network, address)
 	if err != nil {
@@ -1049,6 +1102,10 @@ func (l *Listener) startAcceptLoop() {
 	l.pending = make(chan struct{}, limit)
 	// The listener's own policy is checked once; the client-only KEMSuite is not its concern.
 	if err := kemPolicy(l.config.AllowedKEMSuites).validate(); err != nil {
+		l.startErr = err
+		return
+	}
+	if err := l.config.checkAuth(true); err != nil {
 		l.startErr = err
 		return
 	}

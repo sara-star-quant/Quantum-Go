@@ -91,7 +91,7 @@ func (c *PoolConfig) Validate() error {
 	if c.DialTimeout < 0 {
 		return errors.New("pool: DialTimeout cannot be negative")
 	}
-	return nil
+	return c.TransportConfig.checkAuth(false)
 }
 
 // applyDefaults fills in zero values with defaults.

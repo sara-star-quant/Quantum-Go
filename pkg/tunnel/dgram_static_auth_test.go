@@ -158,7 +158,7 @@ func TestDgramRequireStaticAuthRejectsUnpinnedClient(t *testing.T) {
 func TestDgramRequireStaticAuthMisconfigured(t *testing.T) {
 	// WithRequireStaticAuth without WithStaticIdentity must fail construction.
 	connA, _ := memPipe(1, 0, 0, 0)
-	_, err := NewDatagramEndpoint(connA, WithRequireStaticAuth())
+	_, err := NewDatagramEndpoint(connA, WithAllowUnauthenticated(), WithRequireStaticAuth())
 	if !errors.Is(err, qerrors.ErrStaticAuthMisconfigured) {
 		t.Fatalf("misconfigured require-auth: got %v, want ErrStaticAuthMisconfigured", err)
 	}
@@ -238,7 +238,7 @@ func TestDgramPSKMismatchRejected(t *testing.T) {
 
 func TestDgramPSKInvalidConfig(t *testing.T) {
 	connA, _ := memPipe(1, 0, 0, 0)
-	_, err := NewDatagramEndpoint(connA, WithPSK([]byte("edge-01"), make([]byte, 16)))
+	_, err := NewDatagramEndpoint(connA, WithAllowUnauthenticated(), WithPSK([]byte("edge-01"), make([]byte, 16)))
 	if !errors.Is(err, qerrors.ErrInvalidPSK) {
 		t.Fatalf("short PSK: got %v, want ErrInvalidPSK", err)
 	}
@@ -247,7 +247,7 @@ func TestDgramPSKInvalidConfig(t *testing.T) {
 func TestDgramRequirePSKMisconfigured(t *testing.T) {
 	// WithRequirePSK with no PSK and no lookup must fail construction.
 	connA, _ := memPipe(1, 0, 0, 0)
-	_, err := NewDatagramEndpoint(connA, WithRequirePSK())
+	_, err := NewDatagramEndpoint(connA, WithAllowUnauthenticated(), WithRequirePSK())
 	if !errors.Is(err, qerrors.ErrPSKMisconfigured) {
 		t.Fatalf("got %v, want ErrPSKMisconfigured", err)
 	}

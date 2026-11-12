@@ -88,7 +88,7 @@ func TestNewPool(t *testing.T) {
 // startEchoServer starts an echo server and returns the address.
 func startEchoServer(t *testing.T) (string, func()) {
 	t.Helper()
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -207,7 +207,7 @@ func verifyPoolState(t *testing.T, pool *tunnel.Pool, size, idle int) {
 
 // TestPoolConnectionReuse tests that connections are reused.
 func TestPoolConnectionReuse(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestPoolConnectionReuse(t *testing.T) {
 
 // TestPoolMaxConnections tests pool respects max connections.
 func TestPoolMaxConnections(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestPoolMaxConnections(t *testing.T) {
 
 // TestPoolWaitTimeout tests timeout when pool is exhausted.
 func TestPoolWaitTimeout(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestPoolWaitTimeout(t *testing.T) {
 
 // TestPoolTryAcquire tests non-blocking acquire.
 func TestPoolTryAcquire(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -489,7 +489,7 @@ func TestPoolTryAcquire(t *testing.T) {
 
 // TestPoolClose tests closing the pool.
 func TestPoolClose(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -548,7 +548,7 @@ func TestPoolClose(t *testing.T) {
 
 // TestPoolStats tests statistics collection.
 func TestPoolStats(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -616,7 +616,7 @@ func TestPoolStats(t *testing.T) {
 
 // TestPoolConcurrentAccess tests concurrent acquire/release.
 func TestPoolConcurrentAccess(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -713,7 +713,7 @@ func TestPoolConcurrentAccess(t *testing.T) {
 
 // TestPoolCloseMarksUnhealthy tests that Close() marks connection as unhealthy.
 func TestPoolCloseMarksUnhealthy(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -774,7 +774,7 @@ func TestPoolCloseMarksUnhealthy(t *testing.T) {
 
 // TestPoolDoubleRelease tests that double release is safe.
 func TestPoolDoubleRelease(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -838,7 +838,7 @@ func TestPoolDoubleRelease(t *testing.T) {
 
 // TestPoolContextCancellation tests context cancellation during acquire.
 func TestPoolContextCancellation(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -911,7 +911,7 @@ func TestPoolContextCancellation(t *testing.T) {
 
 // TestPoolObserver tests observer notifications.
 func TestPoolObserver(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}

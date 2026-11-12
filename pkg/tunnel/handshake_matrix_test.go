@@ -61,7 +61,7 @@ func streamConfig(s hsSide) TransportConfig {
 
 func runStreamMatrix(t *testing.T, srv, cli hsSide, _ bool) hsResult {
 	t.Helper()
-	ln, err := Listen("tcp", "127.0.0.1:0")
+	ln, err := ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
@@ -132,7 +132,7 @@ func runDgramMatrix(t *testing.T, srv, cli hsSide, wantOK bool) hsResult {
 		if s.requirePSK {
 			opts = append(opts, WithRequirePSK())
 		}
-		ep, err := NewDatagramEndpoint(sock, opts...)
+		ep, err := NewDatagramEndpoint(sock, append([]DatagramEndpointOption{WithAllowUnauthenticated()}, opts...)...)
 		if err != nil {
 			_ = sock.Close()
 			return nil, nil, err

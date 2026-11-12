@@ -41,7 +41,8 @@ func datagramEndpoint(addr string, offload bool) (*tunnel.DatagramEndpoint, net.
 	if uc, ok := pc.(*net.UDPConn); ok {
 		_ = uc.SetReadBuffer(4 << 20)
 	}
-	var opts []tunnel.DatagramEndpointOption
+	// A benchmark measures transport cost, not authentication, so it runs unauthenticated on purpose.
+	opts := []tunnel.DatagramEndpointOption{tunnel.WithAllowUnauthenticated()}
 	if offload {
 		opts = append(opts, tunnel.WithDatagramOffload())
 	}

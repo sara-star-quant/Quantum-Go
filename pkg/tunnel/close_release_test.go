@@ -11,7 +11,7 @@ import (
 // A peer that closes gracefully sends close_notify. The other side's Close must still release
 // the socket, or a per-address connection slot leaks and the address is eventually locked out.
 func TestCloseAfterPeerCloseReleasesTheConnection(t *testing.T) {
-	ln, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	ln, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestCloseAfterPeerCloseReleasesTheConnection(t *testing.T) {
 		}
 	}()
 
-	client, err := tunnel.Dial("tcp", ln.Addr().String())
+	client, err := tunnel.DialInsecure("tcp", ln.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestCloseAfterPeerCloseReleasesTheConnection(t *testing.T) {
 	_ = server.Close() // must release the socket and the per-address slot
 
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-		again, err := tunnel.Dial("tcp", ln.Addr().String())
+		again, err := tunnel.DialInsecure("tcp", ln.Addr().String())
 		if err == nil {
 			_ = again.Close()
 			return

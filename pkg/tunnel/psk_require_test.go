@@ -91,7 +91,7 @@ func TestPSKLookupWithoutRequireAdmitsPlainClients(t *testing.T) {
 
 // TestRequirePSKMisconfiguredRejected fails closed when RequirePSK has no key to check.
 func TestRequirePSKMisconfiguredRejected(t *testing.T) {
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}

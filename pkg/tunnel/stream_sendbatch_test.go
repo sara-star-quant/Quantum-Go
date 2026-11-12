@@ -26,7 +26,7 @@ func tagged(batch, idx uint32, size int) []byte {
 func TestStreamSendBatchOrderAndContent(t *testing.T) {
 	addr, stop := startEchoServer(t)
 	defer stop()
-	c, err := tunnel.Dial("tcp", addr)
+	c, err := tunnel.DialInsecure("tcp", addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestStreamSendBatchOrderAndContent(t *testing.T) {
 func TestStreamSendBatchIsAtomicUnderConcurrency(t *testing.T) {
 	addr, stop := startEchoServer(t)
 	defer stop()
-	c, err := tunnel.Dial("tcp", addr)
+	c, err := tunnel.DialInsecure("tcp", addr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestStreamSendBatchIsAtomicUnderConcurrency(t *testing.T) {
 func TestStreamSendBatchErrors(t *testing.T) {
 	addr, stop := startEchoServer(t)
 	defer stop()
-	c, err := tunnel.Dial("tcp", addr)
+	c, err := tunnel.DialInsecure("tcp", addr)
 	if err != nil {
 		t.Fatal(err)
 	}

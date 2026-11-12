@@ -32,7 +32,7 @@ func (o *countingObserver) OnRekeyStart(ctx context.Context) (context.Context, f
 }
 
 func TestPublicSessionObserverAndFIPSFlag(t *testing.T) {
-	ln, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	ln, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestPublicSessionObserverAndFIPSFlag(t *testing.T) {
 		got <- p
 	}()
 
-	client, err := tunnel.Dial("tcp", ln.Addr().String())
+	client, err := tunnel.DialInsecure("tcp", ln.Addr().String())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}

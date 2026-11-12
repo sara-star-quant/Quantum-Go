@@ -18,7 +18,7 @@ import (
 func runStaticAuthHandshake(t *testing.T, serverCfg, clientCfg tunnel.TransportConfig) (clientErr error, serverAccepted bool) {
 	t.Helper()
 
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestStaticAuthRequiredRejectsUnpinnedClient(t *testing.T) {
 func TestStaticAuthRequiredMisconfiguredRejected(t *testing.T) {
 	// RequireStaticAuth without a StaticKeyPair is a server misconfiguration; the
 	// listener must fail closed rather than admit anyone.
-	listener, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	listener, err := tunnel.ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}

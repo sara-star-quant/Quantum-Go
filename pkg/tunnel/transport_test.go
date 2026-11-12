@@ -17,7 +17,7 @@ import (
 // goroutine and session forever. Without HandshakeTimeout the Accept goroutine would
 // block on the read indefinitely and the outer guard would fire.
 func TestResponderHandshakeTimeout(t *testing.T) {
-	ln, err := Listen("tcp", "127.0.0.1:0")
+	ln, err := ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}

@@ -48,7 +48,7 @@ func serveFlows(addr string, plain bool, duration time.Duration, flows int, read
 			return func(start *atomic.Int64) flowStat { return recvPlain(conn, start, duration) }, nil
 		}
 	} else {
-		ln, err := tunnel.Listen("tcp", addr)
+		ln, err := tunnel.ListenInsecure("tcp", addr)
 		if err != nil {
 			return res, err
 		}
@@ -225,7 +225,7 @@ func connectOne(addr string, plain bool, totalBytes int64, duration time.Duratio
 		var client *tunnel.Tunnel
 		var err error
 		for i := 0; i < dialAttempts; i++ {
-			if client, err = tunnel.Dial("tcp", addr); err == nil {
+			if client, err = tunnel.DialInsecure("tcp", addr); err == nil {
 				break
 			}
 			time.Sleep(200 * time.Millisecond)

@@ -105,14 +105,14 @@ func TestAllowedKEMSuitesRejectsEmptyIntersection(t *testing.T) {
 	if _, err := DialWithConfig("tcp", "127.0.0.1:1", cfg); !errors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
 		t.Fatalf("Dial: got %v, want ErrUnsupportedKEMSuite", err)
 	}
-	if _, err := NewDatagramEndpoint(nil, WithAllowedKEMSuites(0x7FFF)); !errors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
+	if _, err := NewDatagramEndpoint(nil, WithAllowUnauthenticated(), WithAllowedKEMSuites(0x7FFF)); !errors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
 		t.Fatalf("NewDatagramEndpoint: got %v, want ErrUnsupportedKEMSuite", err)
 	}
 	if err := cfg.Validate(); !errors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
 		t.Fatalf("Validate: got %v, want ErrUnsupportedKEMSuite", err)
 	}
 	// A listener reports it on its first Accept, so a server cannot run with a list that allows nothing.
-	ln, err := Listen("tcp", "127.0.0.1:0")
+	ln, err := ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -52,7 +52,7 @@ func TestConnectionRateLimit(t *testing.T) {
 	config.RateLimitObserver = observer
 
 	// Start server
-	ln, err := tunnel.Listen("tcp", ":0")
+	ln, err := tunnel.ListenInsecure("tcp", ":0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestConnectionRateLimit(t *testing.T) {
 	addr := ln.Addr().String()
 
 	// 1. First connection should succeed
-	conn1, err := tunnel.Dial("tcp", addr)
+	conn1, err := tunnel.DialInsecure("tcp", addr)
 	if err != nil {
 		t.Fatalf("First connection failed: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestConnectionRateLimit(t *testing.T) {
 	// Note: Since we're connecting from localhost, IP is the same.
 	// The server Accept should close the connection immediately.
 	// Dial might succeed at TCP level but handshake or read/write should fail or close.
-	conn2, err := tunnel.Dial("tcp", addr)
+	conn2, err := tunnel.DialInsecure("tcp", addr)
 	// Dial performs handshake. If server closes connection during handshake (or before), Dial returns error.
 	if err == nil {
 		// If Dial succeeded, check if it gets closed quickly
@@ -108,7 +108,7 @@ func TestConnectionRateLimit(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// 4. Third connection should now succeed
-	conn3, err := tunnel.Dial("tcp", addr)
+	conn3, err := tunnel.DialInsecure("tcp", addr)
 	if err != nil {
 		t.Errorf("Third connection failed after release: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestHandshakeRateLimit(t *testing.T) {
 	config.RateLimitObserver = observer
 
 	// Start server
-	ln, err := tunnel.Listen("tcp", ":0")
+	ln, err := tunnel.ListenInsecure("tcp", ":0")
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestHandshakeRateLimit(t *testing.T) {
 	addr := ln.Addr().String()
 
 	// 1. First handshake (consumes burst)
-	conn1, err := tunnel.Dial("tcp", addr)
+	conn1, err := tunnel.DialInsecure("tcp", addr)
 	if err != nil {
 		t.Fatalf("First handshake failed: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestHandshakeRateLimit(t *testing.T) {
 	}
 
 	// 2. Second handshake immediately (should be rate limited)
-	conn2, err := tunnel.Dial("tcp", addr)
+	conn2, err := tunnel.DialInsecure("tcp", addr)
 	if err == nil {
 		// If Dial succeeds, the connection might be closed immediately after.
 		// Dial waits for handshake completion. If server rejects before handshake finishes, Dial should fail.
@@ -175,7 +175,7 @@ func TestHandshakeRateLimit(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 
 	// 4. Third handshake should succeed
-	conn3, err := tunnel.Dial("tcp", addr)
+	conn3, err := tunnel.DialInsecure("tcp", addr)
 	if err != nil {
 		t.Errorf("Third handshake failed after refill: %v", err)
 	}

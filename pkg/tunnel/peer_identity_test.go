@@ -22,7 +22,7 @@ func pskBytes(base byte) []byte {
 // background and returns the listener plus a channel for the accepted tunnel.
 func acceptOne(t *testing.T, cfg TransportConfig) (*Listener, chan *Tunnel) {
 	t.Helper()
-	ln, err := Listen("tcp", "127.0.0.1:0")
+	ln, err := ListenInsecure("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}

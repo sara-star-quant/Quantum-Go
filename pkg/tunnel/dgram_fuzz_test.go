@@ -52,7 +52,7 @@ func FuzzRouteDatagram(f *testing.F) {
 	f.Add(make([]byte, 64))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		connA, _ := memPipe(1, 0, 0, 0)
-		ep, err := NewDatagramEndpoint(connA)
+		ep, err := NewDatagramEndpoint(connA, WithAllowUnauthenticated())
 		if err != nil {
 			t.Fatal(err)
 		}
