@@ -756,3 +756,74 @@ func TestForwardHandshakeBurstNeverZero(t *testing.T) {
 	}
 	_ = c.Close()
 }
+
+// A stranger that connects and hangs up during the handshake must not stop the forwarder.
+// Two such failures in a row return the same error from Accept, and the accept loop once
+// read that as a dead listener and exited.
+func TestForwardSurvivesRepeatedAbortedHandshakes(t *testing.T) {
+	up, _ := startUpstream(t, echoHandler)
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	auth := forwardAuth{pskFile: psk}
+	srvCfg, err := buildForwardConfig(true, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := startForwardServer("127.0.0.1:0", up, srvCfg, testLimits, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+
+	for range 5 {
+		c, err := net.Dial("tcp", srv.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = c.Close() // hang up before sending a ClientHello
+	}
+	time.Sleep(300 * time.Millisecond)
+	select {
+	case <-srv.done:
+		t.Fatal("the forwarder stopped after aborted handshakes")
+	default:
+	}
+
+	cliCfg, err := buildForwardConfig(false, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli, err := startForwardClient("127.0.0.1:0", srv.Addr().String(), cliCfg, testLimits, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cli.Close() })
+	c := dial(t, cli.Addr().String())
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	if _, err := c.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.ReadFull(c, make([]byte, 1)); err != nil {
+		t.Fatalf("a real client could not connect after aborted handshakes: %v", err)
+	}
+}
+
+// When the listening socket itself dies, the forwarder must stop, so a supervisor restarts it
+// instead of leaving a process that serves nobody.
+func TestForwardStopsWhenTheListenerDies(t *testing.T) {
+	up, _ := startUpstream(t, echoHandler)
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	srvCfg, err := buildForwardConfig(true, forwardAuth{pskFile: psk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := startForwardServer("127.0.0.1:0", up, srvCfg, testLimits, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = srv.closeFn() // the socket dies without a shutdown request
+	select {
+	case <-srv.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the forwarder kept running with a dead listener")
+	}
+}

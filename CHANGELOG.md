@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Fixed
+- **`forward` server stopped after two aborted handshakes** (v0.0.26 only): the accept loop read two consecutive handshake failures with the same error as a dead listener and exited, so any peer that could reach the port could stop the forwarder by connecting and hanging up twice. Only an error from the listening socket's own accept call ends the loop now, after repeated failures, and the loop backs off between them.
+
 ## [0.0.26][] - 2026-11-12
 
 **Theme:** `quantum-tunnel forward` arrives: it puts the post-quantum tunnel in front of any TCP service with no code change, with mandatory authentication, key reload on SIGHUP, rate limits and an optional X-Wing suite. The release also fixes a socket and connection-slot leak after a peer closes gracefully, adds handshake load metrics, and removes the unused session resumption API.

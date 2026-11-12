@@ -50,6 +50,12 @@ type forwardLimits struct {
 	handshakeRate float64
 }
 
+// isAcceptFailure reports whether err comes from the listening socket's accept call.
+func isAcceptFailure(err error) bool {
+	var op *net.OpError
+	return errors.As(err, &op) && op.Op == "accept"
+}
+
 // refusalLog logs refused handshakes at most once a second and counts the rest, so a flood
 // the rate limits are absorbing does not become a flood of log lines.
 type refusalLog struct {
@@ -125,7 +131,7 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 	sem := make(chan struct{}, lim.maxConns)
 	f.wg.Go(func() {
 		defer close(f.done)
-		var prev error
+		acceptFails := 0
 		var refusals refusalLog
 		for {
 			t, err := ln.Accept()
@@ -133,18 +139,25 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 				if f.closed.Load() {
 					return
 				}
-				// Once the underlying listener fails, Accept returns the same error forever;
-				// handshake failures are a fresh error each time.
-				if prev != nil && errors.Is(err, prev) {
-					logf("listener failed: %v", err)
-					return
+				// A failure of the socket itself (out of descriptors, closed underneath us) is an
+				// accept error from the net package. A failed handshake is not, even when two in
+				// a row carry the same error, so a stranger that hangs up cannot stop the loop.
+				if isAcceptFailure(err) {
+					acceptFails++
+					if acceptFails >= 20 || errors.Is(err, net.ErrClosed) {
+						logf("listener failed: %v", err)
+						return
+					}
+					logf("accept: %v", err)
+					time.Sleep(100 * time.Millisecond)
+					continue
 				}
-				prev = err
 				// A wrong PSK, a wrong pinned key, a rate-limited peer or a client that is not a
 				// tunnel peer all surface here; keep serving.
 				refusals.note(logf, err)
 				continue
 			}
+			acceptFails = 0
 			select {
 			case sem <- struct{}{}:
 			default:
