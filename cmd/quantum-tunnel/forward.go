@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -41,6 +42,12 @@ type forwardLimits struct {
 	maxConns    int
 	idleTimeout time.Duration
 	dialTimeout time.Duration
+	// maxPerIP caps concurrent connections from one source address, and handshakeRate caps
+	// handshakes per second across all sources. Each handshake costs the server an ML-KEM
+	// operation before it knows who the peer is, so these bound what a stranger can spend.
+	// 0 disables the limit.
+	maxPerIP      int
+	handshakeRate float64
 }
 
 // forwarder is a running client or server side of a forwarding pair.
@@ -88,6 +95,11 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 			return lookup(identity)
 		}
 		return nil
+	}
+	cfg.RateLimit = tunnel.RateLimitConfig{
+		MaxConnectionsPerIP: lim.maxPerIP,
+		HandshakeRateLimit:  lim.handshakeRate,
+		HandshakeBurst:      int(2 * lim.handshakeRate),
 	}
 	ln.SetConfig(cfg)
 	sem := make(chan struct{}, lim.maxConns)
@@ -463,6 +475,9 @@ func decodePSK(s string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("a PSK must be hex: %w", err)
 	}
+	if bytes.Count(key, key[:1]) == len(key) {
+		return nil, errors.New("a PSK of one repeated byte is not random; generate one with: openssl rand -hex 32")
+	}
 	return key, nil
 }
 
@@ -549,6 +564,8 @@ func forwardCommand() {
 	serverKey := fs.String("server-key", "", "Server side: static key file from keygen; clients must then pin it with --pin")
 	pin := fs.String("pin", "", "Client side: the server's public key file from keygen")
 	maxConns := fs.Int("max-conns", 1024, "Most connections held open at once")
+	maxPerIP := fs.Int("max-conns-per-ip", 128, "Server side: most concurrent connections from one source address (0 disables)")
+	handshakeRate := fs.Float64("handshake-rate", 500, "Server side: most handshakes per second across all sources (0 disables)")
 	idle := fs.Duration("idle-timeout", 5*time.Minute, "Close a connection after this long with no data in either direction (0 disables)")
 	insecure := fs.Bool("insecure-no-auth", false, "Skip authentication. For tests and development only: anyone who can reach the server can reach the upstream")
 	verbose := fs.Bool("verbose", false, "Log every connection")
@@ -614,7 +631,7 @@ EXAMPLES:
 			log.Printf(format, args...)
 		}
 	}
-	lim := forwardLimits{maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second}
+	lim := forwardLimits{maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second, maxPerIP: *maxPerIP, handshakeRate: *handshakeRate}
 
 	// Register before the listeners start, so a signal in the startup gap is not lost.
 	stop := make(chan os.Signal, 1)

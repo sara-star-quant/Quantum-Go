@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/pkg/chkem"
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func nopLog(string, ...any) {}
@@ -625,5 +626,90 @@ func TestForwardSuiteFlag(t *testing.T) {
 	}
 	if _, err := buildForwardConfig(false, forwardAuth{pskFile: psk, suite: "nope"}); err == nil {
 		t.Fatal("an unknown suite was accepted")
+	}
+}
+
+func TestDecodePSKRejectsRepeatedByte(t *testing.T) {
+	if _, err := decodePSK(strings.Repeat("00", 32)); err == nil {
+		t.Fatal("an all-zero PSK was accepted")
+	}
+	if _, err := decodePSK(strings.Repeat("ab", 32)); err == nil {
+		t.Fatal("a PSK of one repeated byte was accepted")
+	}
+	if _, err := decodePSK(randomPSK(t)); err != nil {
+		t.Fatalf("a random PSK was refused: %v", err)
+	}
+}
+
+// A peer that authenticates and then sends a frame type the forwarder does not know must be
+// cut off, with nothing handed to the upstream.
+func TestForwardUnknownFrameTypeEndsTheConnection(t *testing.T) {
+	var got atomic.Int64
+	up, _ := startUpstream(t, func(c net.Conn) {
+		n, _ := io.Copy(io.Discard, c)
+		got.Add(n)
+	})
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	cfg, err := buildForwardConfig(true, forwardAuth{pskFile: psk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := startForwardServer("127.0.0.1:0", up, cfg, testLimits, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+
+	cliCfg, err := buildForwardConfig(false, forwardAuth{pskFile: psk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := tunnel.DialWithConfig("tcp", srv.Addr().String(), cliCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = raw.Close() }()
+	if err := raw.Send([]byte{0x07, 'x', 'y'}); err != nil {
+		t.Fatal(err)
+	}
+	cliCfg.ReadTimeout = 5 * time.Second
+	raw.SetReadTimeout(5 * time.Second)
+	if _, err := raw.Receive(); err == nil {
+		t.Fatal("the server kept the connection open after an unknown frame type")
+	}
+	if got.Load() != 0 {
+		t.Fatalf("the upstream received %d bytes from an unknown frame", got.Load())
+	}
+}
+
+// One source address cannot hold more connections than --max-conns-per-ip allows.
+func TestForwardPerIPConnectionLimit(t *testing.T) {
+	up, _ := startUpstream(t, echoHandler)
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	auth := forwardAuth{pskFile: psk}
+	srvCfg, err := buildForwardConfig(true, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lim := testLimits
+	lim.maxPerIP = 1
+	srv, err := startForwardServer("127.0.0.1:0", up, srvCfg, lim, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	cliCfg, err := buildForwardConfig(false, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := tunnel.DialWithConfig("tcp", srv.Addr().String(), cliCfg)
+	if err != nil {
+		t.Fatalf("the first connection was refused: %v", err)
+	}
+	defer func() { _ = first.Close() }()
+	cliCfg.HandshakeTimeout = 3 * time.Second
+	if second, err := tunnel.DialWithConfig("tcp", srv.Addr().String(), cliCfg); err == nil {
+		_ = second.Close()
+		t.Fatal("a second connection from the same address got through a limit of one")
 	}
 }

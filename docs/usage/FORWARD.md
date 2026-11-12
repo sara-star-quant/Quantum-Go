@@ -46,6 +46,8 @@ Point the application at `127.0.0.1:8080`. It speaks plain TCP to its local forw
 - **The PSK identifies the forwarder pair, not a person.** Anyone who can reach the client's local port uses the tunnel, so guard that port with loopback, OS permissions or network policy. Authenticated per-user identity is not available yet ([#196](https://github.com/sara-star-quant/Quantum-Go/issues/196)).
 - **Not hidden:** record sizes, timing and the number of connections are visible on the wire.
 - **No open relay:** the server forwards only to its one `--upstream`. A peer cannot choose a destination.
+- **A stranger can make the server do work.** A peer that has not authenticated yet still costs the server one ML-KEM-1024 operation per handshake, about 0.1 to 0.2 ms of CPU. The per-address and global rate limits bound that. They do not remove it: an attacker can use up the global handshake budget and slow real clients, and sources behind one NAT share one per-address limit. For anything reachable from the internet, put an allowlist or firewall in front of the server port as well.
+- **A bad frame ends the connection.** After the handshake the only frame types are data and end-of-stream; any other value closes the connection and nothing reaches the upstream.
 - **Logs** carry addresses, byte counts, durations and error classes, never payloads or keys.
 
 ## Authentication
@@ -90,7 +92,7 @@ A key file is refused when its group can write it or when others can touch it. U
 - **One tunnel per TCP connection.** Each connection costs one handshake and one round trip. That suits long-lived connections (HTTP/2 and gRPC, pooled database connections, bulk transfers). Short-lived HTTP/1.1 connections pay it every time, so keep connections alive.
 - **Half-close works.** A client that finishes sending and then waits for the reply gets it. The EOF travels inside the tunnel as a one-byte frame, with no change to the wire protocol.
 - **TCP only.** UDP is not forwarded, so HTTP/3, QUIC, CoAP and syslog over UDP are not covered. Modern HTTP/3 stacks negotiate hybrid post-quantum key exchange in TLS 1.3 already.
-- **Limits:** `--max-conns` (default 1024), `--idle-timeout` (default 5 minutes, counted only when neither direction moves data; 0 disables it), a 10 second dial to the upstream and a 30 second client dial plus handshake. The listener also caps handshakes in flight at 1024. There is no per-IP or handshake rate limit in forward mode, and a connection over `--max-conns` still pays its handshake before it is refused, so keep the server port off the open internet or behind a firewall.
+- **Limits:** `--max-conns` (default 1024), `--idle-timeout` (default 5 minutes, counted only when neither direction moves data; 0 disables it), a 10 second dial to the upstream and a 30 second client dial plus handshake. The server also caps handshakes in flight at 1024, connections per source address at `--max-conns-per-ip` (default 128) and handshakes per second across all sources at `--handshake-rate` (default 500); 0 disables either. A connection over `--max-conns` still pays its handshake before it is refused.
 - **Rotating keys:** write the new key file and send SIGHUP (`kill -HUP <pid>`) to each side. New connections use the new keys; open connections keep the keys they started with. A server reloads its PSKs only, so a change to `--server-key` needs a restart; a client reloads its PSK and pinned key. A file that fails to parse or has loose permissions keeps the current keys and logs the error. SIGHUP no longer ends the process, so run it under systemd, a container runtime or `nohup`, not a bare terminal.
 - **Rotating without refusing anyone:** a server holds one key per identity, so reloading the server and the clients at different moments leaves a gap in which not-yet-reloaded clients are refused. To avoid it, add the new key under a new identity in `--clients-file`, reload the server, point each client at the new key and `--identity`, reload them, then delete the old line and reload the server again.
 - **A compromised key:** reload does not erase the old key from memory, and connections that opened with it stay open. Restart both sides to cut them.
@@ -107,5 +109,6 @@ A key file is refused when its group can write it or when others can touch it. U
 | `--clients-file` | server | one PSK per client |
 | `--server-key`, `--pin` | server, client | static key pinning from `keygen` |
 | `--max-conns`, `--idle-timeout` | both | connection and idle limits |
+| `--max-conns-per-ip`, `--handshake-rate` | server | per-address connection cap and global handshakes per second (0 disables) |
 | `--suite` | client | KEM suite to offer first: `chkem-v1` (default) or `x-wing`; the server follows |
 | `--insecure-no-auth`, `--verbose` | both | development only; log every connection |
