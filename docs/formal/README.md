@@ -12,6 +12,7 @@ committed proof log is [`RESULTS.txt`](RESULTS.txt).
 | Hybrid security (secure if EITHER leg holds) | `chkem_hybrid.pv` | secrecy holds when the attacker is given one leg's secret, both legs | proven |
 | Forward secrecy | `chkem_fs.pv` | secrecy holds after the long-term key leaks (phase 1) | proven |
 | Server authentication (injective) + transcript agreement | `chkem_auth.pv` | `inj-event(ClientAccept) ==> inj-event(ServerRunning)` | proven |
+| Suite negotiation: agreement on the offered list, no downgrade to the weak suite, no acceptance after a forged HelloRetryRequest | `chkem_negotiation.pv` | `inj-event(ClientAccept(sp,o,t)) ==> inj-event(ServerRunning(sp,o,t))`, `event(AcceptedWeak)` and `event(AcceptedAfterRetry)` unreachable | proven |
 
 The hybrid result machine-checks the headline guarantee: the session key stays secret as long
 as the structured-lattice (ML-KEM) OR the classical (X25519) leg holds. Server authentication
@@ -79,15 +80,14 @@ models - the path-filtered CI will not catch protocol drift on its own.
 ## Coverage map
 
 Proven now: session-key secrecy, hybrid security, forward secrecy, injective server authentication
-(static-key-pinned mode), and PSK mutual authentication including the RequirePSK dummy fold, for protocol version 6.0.
+(static-key-pinned mode), PSK mutual authentication including the RequirePSK dummy fold, and suite negotiation with downgrade and forged-retry resistance, for protocol version 6.0.
 
 Protocol 6.0 merged ServerHello and ServerFinished into one flight. The server-authentication
 model already abstracts the handshake to one server MAC over the transcript, so it covers the
 merged flight unchanged: a client accepts only after verifying a ServerFinished that only the
-holder of the pinned static key can produce. Not modeled: the stream and datagram framing, and HelloRetryRequest. Those are covered
-by the Go tests.
+holder of the pinned static key can produce. Suite negotiation and the HelloRetryRequest downgrade check are modeled in `chkem_negotiation.pv` for the authenticated modes (with no server or PSK authentication an active attacker is a full man in the middle, so downgrade is moot there). Not modeled: the stream and datagram framing, the rekey ratchet, the datagram cookie and the replay window. Those are covered by the Go tests.
 
-Planned (extends the suite as drop-in `*.pv` files): PSK mutual-authentication mode; an explicit
-HelloRetryRequest / suite-negotiation process modeling downgrade as a distinct query; the
-rekey-ratchet forward secrecy; per-suite models (X-Wing, a future CH-KEM-v2); and a computational
+Planned (extends the suite as drop-in `*.pv` files): the rekey-ratchet forward secrecy; the datagram cookie
+and replay window; client device-key mutual authentication including key-compromise impersonation
+(with the device-key design); per-suite models (X-Wing, a future CH-KEM-v2); and a computational
 proof (CryptoVerif/EasyCrypt).

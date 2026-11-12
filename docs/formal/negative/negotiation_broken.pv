@@ -1,0 +1,100 @@
+(*
+  PLANTED FLAW: the server Finished is not bound to the transcript, so the offered list and the retry message are unauthenticated. The downgrade and forged-retry queries MUST fail. Load: -lib prelude.
+
+  The client offers a suite list in preference order (strong suite first, weak second).
+  The server supports both and prefers the strong one, so an honest exchange selects the
+  strong suite. The active Dolev-Yao attacker controls the network: it may strip the
+  strong suite from the ClientHello, forge a HelloRetryRequest that names the weak suite,
+  replay, reorder and inject. Static-key pinning authenticates the server (as in
+  chkem_auth.pv); without server or PSK authentication an active attacker is a full
+  man in the middle and "downgrade" is moot, so this property is stated for the
+  authenticated modes.
+
+  Proves:
+    1. Agreement: a client acceptance on offer o and transcript t implies the genuine
+       server ran on the same offer o and transcript t (the offered list is bound).
+    2. No downgrade: the client never accepts the weak suite.
+    3. No forged retry: the client never accepts a handshake after processing a
+       HelloRetryRequest the honest server never sent (the honest server supports the
+       client's first suite, so it never retries).
+  The HelloRetryRequest enters the transcript the way the wire does (hash of the first
+  ClientHello, the retry message, then the second ClientHello), so a forged one diverges
+  the two transcripts and fails the Finished MAC.
+*)
+
+const sS: bitstring.   (* strong suite *)
+const sW: bitstring.   (* weak suite *)
+const hrrTag: bitstring.
+fun offer2(bitstring, bitstring): bitstring.
+fun offer1(bitstring): bitstring.
+fun H1(bitstring): bitstring.   (* synthetic message hash of the first ClientHello *)
+fun authMasterNoT(bitstring): bitstring.   (* flaw: master ignores the transcript *)
+
+(* The server prefers the strong suite whenever the client offers it. *)
+reduc pick(offer2(sS, sW)) = sS;
+      pick(offer2(sW, sS)) = sS;
+      pick(offer1(sS)) = sS;
+      pick(offer1(sW)) = sW.
+
+event ServerRunning(pkey, bitstring, bitstring).
+event ClientAccept(pkey, bitstring, bitstring).
+event AcceptedWeak.
+event AcceptedAfterRetry.
+event NegDone.
+
+query sp: pkey, o: bitstring, t: bitstring;
+  inj-event(ClientAccept(sp, o, t)) ==> inj-event(ServerRunning(sp, o, t)).
+query event(AcceptedWeak).
+query event(AcceptedAfterRetry).
+query event(NegDone).
+
+let client(Spub: pkey) =
+  new staticSs: bitstring;
+  new nc: bitstring;
+  let offered = offer2(sS, sW) in
+  let staticCt = aenc(Spub, staticSs) in
+  let ch = (staticCt, nc, offered) in
+  out(net, ch);
+  (
+    (* no retry: the server answers with its hello and Finished *)
+    in(net, resp: bitstring);
+    let (sh: bitstring, sfin: bitstring) = resp in
+    let transcript = TH((ch, sh)) in
+    let master = authMasterNoT(staticSs) in
+    if sfin = macf(master, serverTag) then
+    let (ns: bitstring, chosen: bitstring) = sh in
+    event ClientAccept(Spub, offered, transcript);
+    ( (if chosen = sW then event AcceptedWeak) | (if chosen = sS then event NegDone) )
+  ) | (
+    (* a retry request arrives: the client adopts the named suite and resends *)
+    in(net, hrr: bitstring);
+    let (=hrrTag, named: bitstring) = hrr in
+    let ch2 = (staticCt, nc, offered, named) in
+    out(net, ch2);
+    in(net, resp2: bitstring);
+    let (sh2: bitstring, sfin2: bitstring) = resp2 in
+    let transcript2 = TH((H1(ch), hrr, ch2, sh2)) in
+    let master2 = authMasterNoT(staticSs) in
+    if sfin2 = macf(master2, serverTag) then
+    event ClientAccept(Spub, offered, transcript2);
+    event AcceptedAfterRetry
+  ).
+
+(* The honest server supports the strong suite, so it never sends a retry request. *)
+let server(lsk: skey) =
+  in(net, ch: bitstring);
+  let (staticCt: bitstring, nc: bitstring, offered: bitstring) = ch in
+  let staticSs = adec(staticCt, lsk) in
+  let chosen = pick(offered) in
+  new ns: bitstring;
+  let sh = (ns, chosen) in
+  let transcript = TH((ch, sh)) in
+  let master = authMasterNoT(staticSs) in
+  event ServerRunning(pk(lsk), offered, transcript);
+  out(net, (sh, macf(master, serverTag))).
+
+process
+  new lsk: skey;
+  let Spub = pk(lsk) in
+  out(net, Spub);
+  ( (! client(Spub)) | (! server(lsk)) )
