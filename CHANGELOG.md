@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - **Session resumption API** (breaking, experimental): `TicketManager`, `NewTicketManager`, `SessionTicket`, `Session.ExportTicket`, `Session.Resume`, `Handshake.SetTicket`, `Handshake.SetTicketManager`, `InitiatorResumptionHandshake`, `ResponderResumptionHandshake`, `crypto.DeriveResumptionSecret` and `ErrInvalidTicket` / `ErrExpiredTicket`. Nothing in `Dial`, `Listen` or the datagram transport used them, a resumed handshake still did a full key exchange, and tickets were not bound to the issuing server. The wire format is unchanged: the ClientHello `SessionID` field stays and goes out empty, and the ServerHello keeps carrying the server's session id. Closes [#146](https://github.com/sara-star-quant/Quantum-Go/issues/146).
 
+### Fixed
+- **Close after the peer closed**: when a peer closed gracefully, the receiving side marked its tunnel closed on the peer's close notice, and a later `Close` returned early. The socket then stayed open until garbage collection, the session keys stayed un-zeroized, and a `MaxConnectionsPerIP` slot never freed, so an address could eventually lock itself out. `Close` now always releases the connection.
+
 ### Added
 - **Rate limits on the `forward` server**: `--max-conns-per-ip` (default 256) and `--handshake-rate` (default 1000 per second) bound what an unauthenticated peer can spend, using the library's existing limiter. A PSK made of one repeated byte is now refused.
 - **`forward --suite x-wing`**: the client offers the X-Wing suite first without any Go config, and the server follows. PERFORMANCE.md now lists the measured sizes and KEM timings for both suites and corrects the earlier claim that X-Wing halves the handshake (it cuts the key share and ciphertext by about a quarter).
