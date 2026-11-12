@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.27][] - 2026-11-12
+
+**Theme:** A security patch for the `forward` server in v0.0.26. Upgrade if you run it. It also corrects gaps in the protocol specification and adds a formal model of suite negotiation.
+
 ### Fixed
-- **`forward` server stopped after two aborted handshakes** (v0.0.26 only): the accept loop read two consecutive handshake failures with the same error as a dead listener and exited, so any peer that could reach the port could stop the forwarder by connecting and hanging up twice. Only an error from the listening socket's own accept call ends the loop now, after repeated failures, and the loop backs off between them.
+- **`forward` server availability** (v0.0.26 only): the server could stop accepting connections after repeated failed handshakes. Fixed in v0.0.27. A GitHub security advisory covers it.
+
+### Added
+- **ProVerif model of suite negotiation** (`chkem_negotiation.pv`) with a planted-flaw twin: agreement on the offered list, no downgrade to the weak suite and no acceptance after a forged HelloRetryRequest.
+
+### Changed
+- **Conformance vectors**: `auth_folds` now carries `psk_fold_master_secret`, the first input of the PSK fold, which the vector previously left out. The vector digest changes. The wire format does not change.
+- **Protocol specification**: the single-input KDF form, the key-schedule layout, the exact hello and Finished encodings, the PSK identity position and fold order, the X-Wing byte layouts and the transcript framing are now written down. The forward mode frame types have their own section in the forward docs.
 
 ## [0.0.26][] - 2026-11-12
 
@@ -530,7 +541,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.26...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.27...HEAD
+[0.0.27]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.26...v0.0.27
 [0.0.26]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.25...v0.0.26
 [0.0.25]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.24...v0.0.25
 [0.0.24]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.23...v0.0.24
