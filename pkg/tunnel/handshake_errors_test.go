@@ -271,6 +271,7 @@ func TestStreamHandshakeThroughTamperingProxy(t *testing.T) {
 					t.Fatal(err)
 				}
 				cfg := DefaultTransportConfig()
+				cfg.AllowUnauthenticated = true // the listener side of a failure test: it must reach the handshake
 				cfg.HandshakeTimeout = 3 * time.Second
 				ln.SetConfig(cfg)
 				defer func() { _ = ln.Close() }()

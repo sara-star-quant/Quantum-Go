@@ -28,6 +28,7 @@ func waitUntil(t *testing.T, what string, cond func() bool) {
 func lifecyclePool(t *testing.T, addr string, edit func(*tunnel.PoolConfig)) *tunnel.Pool {
 	t.Helper()
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 3
 	cfg.HealthCheckInterval = 0

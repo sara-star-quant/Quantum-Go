@@ -50,6 +50,7 @@ func within[T any](t *testing.T, what string, f func() T) T {
 
 func streamConfig(s hsSide) TransportConfig {
 	c := DefaultTransportConfig()
+	c.AllowUnauthenticated = true // the matrix includes the no-authentication combination
 	c.StaticKeyPair = s.kp
 	c.PinnedServerKey = s.pin
 	c.RequireStaticAuth = s.requireAuth

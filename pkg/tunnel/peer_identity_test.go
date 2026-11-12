@@ -82,8 +82,10 @@ func TestPeerIdentityStream(t *testing.T) {
 }
 
 func TestPeerIdentityEmptyWithoutPSK(t *testing.T) {
-	ln, accepted := acceptOne(t, DefaultTransportConfig())
-	client, err := DialWithConfig("tcp", ln.Addr().String(), DefaultTransportConfig())
+	anon := DefaultTransportConfig()
+	anon.AllowUnauthenticated = true
+	ln, accepted := acceptOne(t, anon)
+	client, err := DialWithConfig("tcp", ln.Addr().String(), anon)
 	if err != nil {
 		t.Fatal(err)
 	}

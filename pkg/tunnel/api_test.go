@@ -108,6 +108,7 @@ func TestDialWithConfig(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 
 		config := tunnel.DefaultTransportConfig()
+		config.AllowUnauthenticated = true
 		config.ReadTimeout = 10 * time.Second
 
 		client, err := tunnel.DialWithConfig("tcp", addr, config)
@@ -147,6 +148,7 @@ func TestListenerSetConfig(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 
 	config := tunnel.DefaultTransportConfig()
+	config.AllowUnauthenticated = true
 	config.WriteTimeout = 5 * time.Second
 	listener.SetConfig(config)
 
@@ -537,6 +539,7 @@ func TestAcceptShedsConnectionsBeyondPendingLimit(t *testing.T) {
 	}
 	defer func() { _ = listener.Close() }()
 	cfg := tunnel.DefaultTransportConfig()
+	cfg.AllowUnauthenticated = true
 	cfg.MaxPendingHandshakes = 1
 	listener.SetConfig(cfg)
 
@@ -588,6 +591,7 @@ func TestHandshakeLoadObserverSeesShedAndRelease(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 	rec := &loadRecorder{}
 	cfg := tunnel.DefaultTransportConfig()
+	cfg.AllowUnauthenticated = true
 	cfg.MaxPendingHandshakes = 1
 	cfg.HandshakeTimeout = 10 * time.Second
 	cfg.RateLimitObserver = rec

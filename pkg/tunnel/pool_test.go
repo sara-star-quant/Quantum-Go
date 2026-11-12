@@ -15,6 +15,7 @@ import (
 func TestPoolConfig(t *testing.T) {
 	t.Run("DefaultConfig", func(t *testing.T) {
 		cfg := tunnel.DefaultPoolConfig()
+		cfg.TransportConfig.AllowUnauthenticated = true
 		if err := cfg.Validate(); err != nil {
 			t.Errorf("DefaultPoolConfig should be valid: %v", err)
 		}
@@ -28,6 +29,7 @@ func TestPoolConfig(t *testing.T) {
 
 	t.Run("InvalidMinConns", func(t *testing.T) {
 		cfg := tunnel.DefaultPoolConfig()
+		cfg.TransportConfig.AllowUnauthenticated = true
 		cfg.MinConns = -1
 		if err := cfg.Validate(); err == nil {
 			t.Error("Expected error for negative MinConns")
@@ -36,6 +38,7 @@ func TestPoolConfig(t *testing.T) {
 
 	t.Run("InvalidMaxConns", func(t *testing.T) {
 		cfg := tunnel.DefaultPoolConfig()
+		cfg.TransportConfig.AllowUnauthenticated = true
 		cfg.MaxConns = -1
 		if err := cfg.Validate(); err == nil {
 			t.Error("Expected error for negative MaxConns")
@@ -44,6 +47,7 @@ func TestPoolConfig(t *testing.T) {
 
 	t.Run("MinExceedsMax", func(t *testing.T) {
 		cfg := tunnel.DefaultPoolConfig()
+		cfg.TransportConfig.AllowUnauthenticated = true
 		cfg.MinConns = 10
 		cfg.MaxConns = 5
 		if err := cfg.Validate(); err == nil {
@@ -53,6 +57,7 @@ func TestPoolConfig(t *testing.T) {
 
 	t.Run("ZeroMaxAllowed", func(t *testing.T) {
 		cfg := tunnel.DefaultPoolConfig()
+		cfg.TransportConfig.AllowUnauthenticated = true
 		cfg.MaxConns = 0 // Unlimited
 		cfg.MinConns = 100
 		if err := cfg.Validate(); err != nil {
@@ -65,6 +70,7 @@ func TestPoolConfig(t *testing.T) {
 func TestNewPool(t *testing.T) {
 	t.Run("ValidConfig", func(t *testing.T) {
 		cfg := tunnel.DefaultPoolConfig()
+		cfg.TransportConfig.AllowUnauthenticated = true
 		cfg.MinConns = 0 // Don't pre-create connections in this test
 		pool, err := tunnel.NewPool("tcp", "127.0.0.1:9999", cfg)
 		if err != nil {
@@ -77,6 +83,7 @@ func TestNewPool(t *testing.T) {
 
 	t.Run("InvalidConfig", func(t *testing.T) {
 		cfg := tunnel.DefaultPoolConfig()
+		cfg.TransportConfig.AllowUnauthenticated = true
 		cfg.MinConns = -1
 		_, err := tunnel.NewPool("tcp", "127.0.0.1:9999", cfg)
 		if err == nil {
@@ -127,6 +134,7 @@ func echoHandler(c *tunnel.Tunnel) {
 func createTestPool(t *testing.T, addr string) *tunnel.Pool {
 	t.Helper()
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 5
 	cfg.HealthCheckInterval = 0
@@ -238,6 +246,7 @@ func TestPoolConnectionReuse(t *testing.T) {
 	}()
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 2
 	cfg.HealthCheckInterval = 0
@@ -301,6 +310,7 @@ func TestPoolMaxConnections(t *testing.T) {
 	}()
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 2
 	cfg.WaitTimeout = 100 * time.Millisecond
@@ -385,6 +395,7 @@ func TestPoolWaitTimeout(t *testing.T) {
 	}()
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 1
 	cfg.WaitTimeout = 50 * time.Millisecond
@@ -452,6 +463,7 @@ func TestPoolTryAcquire(t *testing.T) {
 	}()
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 1
 	cfg.HealthCheckInterval = 0
@@ -516,6 +528,7 @@ func TestPoolClose(t *testing.T) {
 	}()
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 2
 	cfg.MaxConns = 5
 	cfg.HealthCheckInterval = 0
@@ -576,6 +589,7 @@ func TestPoolStats(t *testing.T) {
 	}()
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 5
 	cfg.HealthCheckInterval = 0
@@ -644,6 +658,7 @@ func TestPoolConcurrentAccess(t *testing.T) {
 	}()
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 5
 	cfg.WaitTimeout = 5 * time.Second
@@ -740,6 +755,7 @@ func TestPoolCloseMarksUnhealthy(t *testing.T) {
 	}()
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 2
 	cfg.HealthCheckInterval = 0
@@ -801,6 +817,7 @@ func TestPoolDoubleRelease(t *testing.T) {
 	}()
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 5
 	cfg.HealthCheckInterval = 0
@@ -865,6 +882,7 @@ func TestPoolContextCancellation(t *testing.T) {
 	}()
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 1
 	cfg.WaitTimeout = 10 * time.Second
@@ -942,6 +960,7 @@ func TestPoolObserver(t *testing.T) {
 	observer := &testPoolObserver{}
 
 	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
 	cfg.MinConns = 0
 	cfg.MaxConns = 5
 	cfg.HealthCheckInterval = 0

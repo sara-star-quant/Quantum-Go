@@ -27,7 +27,7 @@ func TestTunnelFailsClosedWithoutEntropy(t *testing.T) {
 	if s, err := NewSession(RoleInitiator); err == nil || s != nil {
 		t.Fatalf("NewSession = %v, %v; want nil and an error", s, err)
 	}
-	if ep, err := NewDatagramEndpoint(newDiscardConn()); err == nil || ep != nil {
+	if ep, err := NewDatagramEndpoint(newDiscardConn(), WithAllowUnauthenticated()); err == nil || ep != nil {
 		t.Fatalf("NewDatagramEndpoint = %v, %v; want nil and an error", ep, err)
 	}
 	if idx, err := newConnRegistry(4).add(&datagramSession{}); err == nil || idx != 0 {

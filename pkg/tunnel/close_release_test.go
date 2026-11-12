@@ -17,6 +17,7 @@ func TestCloseAfterPeerCloseReleasesTheConnection(t *testing.T) {
 	}
 	defer func() { _ = ln.Close() }()
 	cfg := tunnel.DefaultTransportConfig()
+	cfg.AllowUnauthenticated = true
 	cfg.RateLimit = tunnel.RateLimitConfig{MaxConnectionsPerIP: 1}
 	ln.SetConfig(cfg)
 	accepted := make(chan *tunnel.Tunnel, 4)

@@ -133,7 +133,7 @@ func TestClampMaxHalfOpen(t *testing.T) {
 // the ceiling), bypassing autoscale.
 func TestWithMaxHalfOpen(t *testing.T) {
 	const n = 256
-	e, err := NewDatagramEndpoint(newBlackholeConn(), WithMaxHalfOpen(n))
+	e, err := NewDatagramEndpoint(newBlackholeConn(), WithAllowUnauthenticated(), WithMaxHalfOpen(n))
 	if err != nil {
 		t.Fatalf("NewDatagramEndpoint: %v", err)
 	}

@@ -20,10 +20,12 @@ const (
 func dialAllow(t *testing.T, serverAllow, clientAllow []chkem.SuiteID, first chkem.SuiteID) (server, client chkem.SuiteID, err error) {
 	t.Helper()
 	serverCfg := DefaultTransportConfig()
+	serverCfg.AllowUnauthenticated = true
 	serverCfg.AllowedKEMSuites = serverAllow
 	serverCfg.HandshakeTimeout = 5 * time.Second
 	ln, accepted := acceptOne(t, serverCfg)
 	cfg := DefaultTransportConfig()
+	cfg.AllowUnauthenticated = true
 	cfg.AllowedKEMSuites = clientAllow
 	cfg.KEMSuite = first
 	cfg.HandshakeTimeout = 5 * time.Second
@@ -101,6 +103,7 @@ func TestAllowedKEMSuitesDatagram(t *testing.T) {
 // packet is sent, on both transports.
 func TestAllowedKEMSuitesRejectsEmptyIntersection(t *testing.T) {
 	cfg := DefaultTransportConfig()
+	cfg.AllowUnauthenticated = true // so the suite error is the one reported
 	cfg.AllowedKEMSuites = []chkem.SuiteID{0x7FFF}
 	if _, err := DialWithConfig("tcp", "127.0.0.1:1", cfg); !errors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
 		t.Fatalf("Dial: got %v, want ErrUnsupportedKEMSuite", err)
@@ -123,6 +126,7 @@ func TestAllowedKEMSuitesRejectsEmptyIntersection(t *testing.T) {
 	}
 	// The starting suite must be one the list allows.
 	conflict := DefaultTransportConfig()
+	conflict.AllowUnauthenticated = true
 	conflict.AllowedKEMSuites = []chkem.SuiteID{v1}
 	conflict.KEMSuite = xw
 	if err := conflict.Validate(); !errors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
@@ -166,11 +170,14 @@ func TestAllowedKEMSuitesDoNotRestrictTheStaticKeySuite(t *testing.T) {
 // listener has no use for that field, so it must keep accepting.
 func TestListenerIgnoresTheClientOnlyKEMSuite(t *testing.T) {
 	serverCfg := DefaultTransportConfig()
+	serverCfg.AllowUnauthenticated = true
 	serverCfg.AllowedKEMSuites = []chkem.SuiteID{v1}
 	serverCfg.KEMSuite = xw // meaningful only to a dialer
 	serverCfg.HandshakeTimeout = 5 * time.Second
 	ln, accepted := acceptOne(t, serverCfg)
-	c, err := DialWithConfig("tcp", ln.Addr().String(), DefaultTransportConfig())
+	clientCfg := DefaultTransportConfig()
+	clientCfg.AllowUnauthenticated = true
+	c, err := DialWithConfig("tcp", ln.Addr().String(), clientCfg)
 	if err != nil {
 		t.Fatalf("a listener with a stray KEMSuite refused a client: %v", err)
 	}

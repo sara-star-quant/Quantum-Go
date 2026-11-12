@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -43,9 +44,16 @@ func TestPoolSendsItsPSK(t *testing.T) {
 	if _, err := acquire(good); err != nil {
 		t.Fatalf("a pool holding the right PSK was refused: %v", err)
 	}
-	none := poolTo(t, ln.Addr().String(), func(*TransportConfig) {})
-	if _, err := acquire(none); err == nil {
+	optedIn := poolTo(t, ln.Addr().String(), func(c *TransportConfig) { c.AllowUnauthenticated = true })
+	if _, err := acquire(optedIn); err == nil {
 		t.Fatal("a pool with no PSK reached a server that requires one")
+	}
+}
+
+func TestPoolRefusesNoAuthentication(t *testing.T) {
+	pc := DefaultPoolConfig()
+	if _, err := NewPool("tcp", "127.0.0.1:1", pc); !errors.Is(err, ErrAuthenticationRequired) {
+		t.Fatalf("NewPool without authentication = %v, want ErrAuthenticationRequired", err)
 	}
 }
 
@@ -77,8 +85,12 @@ func TestPoolChecksItsPinnedServerKey(t *testing.T) {
 func TestPoolHonorsTheKEMSuiteAllowlist(t *testing.T) {
 	serverCfg := DefaultTransportConfig()
 	serverCfg.HandshakeTimeout = 3 * time.Second
+	serverCfg.AllowUnauthenticated = true
 	ln, accepted := acceptOne(t, serverCfg)
-	p := poolTo(t, ln.Addr().String(), func(c *TransportConfig) { c.AllowedKEMSuites = []chkem.SuiteID{xw} })
+	p := poolTo(t, ln.Addr().String(), func(c *TransportConfig) {
+		c.AllowUnauthenticated = true
+		c.AllowedKEMSuites = []chkem.SuiteID{xw}
+	})
 	if _, err := acquire(p); err != nil {
 		t.Fatal(err)
 	}

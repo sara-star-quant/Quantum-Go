@@ -13,6 +13,7 @@ import (
 
 func TestExportedErrorsUnsupportedKEMSuite(t *testing.T) {
 	cfg := tunnel.DefaultTransportConfig()
+	cfg.AllowUnauthenticated = true
 	cfg.KEMSuite = 0x7FFF
 	if _, err := tunnel.DialWithConfig("tcp", "127.0.0.1:1", cfg); !errors.Is(err, tunnel.ErrUnsupportedKEMSuite) {
 		t.Fatalf("err = %v, want tunnel.ErrUnsupportedKEMSuite", err)
@@ -30,7 +31,9 @@ func TestExportedErrorsInvalidPSK(t *testing.T) {
 func TestExportedErrorsPoolClosed(t *testing.T) {
 	addr, stop := startEchoServer(t)
 	defer stop()
-	pool, err := tunnel.NewPool("tcp", addr, tunnel.DefaultPoolConfig())
+	cfg := tunnel.DefaultPoolConfig()
+	cfg.TransportConfig.AllowUnauthenticated = true
+	pool, err := tunnel.NewPool("tcp", addr, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -46,6 +46,7 @@ func waitForRateLimitEvent(t *testing.T, ch <-chan string, name string) {
 func TestConnectionRateLimit(t *testing.T) {
 	// Configure server with MaxConnectionsPerIP = 1
 	config := tunnel.DefaultTransportConfig()
+	config.AllowUnauthenticated = true // the test is about rate limits, not authentication
 	config.RateLimit.MaxConnectionsPerIP = 1
 	config.RateLimit.HandshakeRateLimit = 0 // No limit for this test
 	observer := newRateLimitObserver()
@@ -120,6 +121,7 @@ func TestConnectionRateLimit(t *testing.T) {
 func TestHandshakeRateLimit(t *testing.T) {
 	// Configure server with HandshakeRateLimit = 1/sec, Burst = 1
 	config := tunnel.DefaultTransportConfig()
+	config.AllowUnauthenticated = true // the test is about rate limits, not authentication
 	config.RateLimit.HandshakeRateLimit = 1.0
 	config.RateLimit.HandshakeBurst = 1
 	observer := newRateLimitObserver()

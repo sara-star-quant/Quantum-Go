@@ -107,6 +107,7 @@ func TestRateLimitObserverReportsHandshakeLoad(t *testing.T) {
 	}
 	defer func() { _ = ln.Close() }()
 	cfg := tunnel.DefaultTransportConfig()
+	cfg.AllowUnauthenticated = true
 	cfg.MaxPendingHandshakes = 1
 	cfg.HandshakeTimeout = 10 * time.Second
 	cfg.RateLimitObserver = NewRateLimitObserver(collector, nil)

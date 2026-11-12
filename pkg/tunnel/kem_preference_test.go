@@ -51,7 +51,7 @@ func TestInitiatorSuiteRejectsUnoffered(t *testing.T) {
 	if _, err := kemPolicy(nil).initiator(0x7FFF); !qerrors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
 		t.Fatalf("unknown id: %v, want ErrUnsupportedKEMSuite", err)
 	}
-	_, err := DialWithConfig("tcp", "127.0.0.1:1", TransportConfig{KEMSuite: 0x7FFF})
+	_, err := DialWithConfig("tcp", "127.0.0.1:1", TransportConfig{KEMSuite: 0x7FFF, AllowUnauthenticated: true})
 	if !qerrors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
 		t.Fatalf("DialWithConfig: %v, want ErrUnsupportedKEMSuite before dialing", err)
 	}

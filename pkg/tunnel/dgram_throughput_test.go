@@ -42,7 +42,7 @@ func benchDatagramConn(b testing.TB) *DatagramConn {
 	if err := s.InitializeDatagramKeys(ms, constants.CipherSuiteAES256GCM); err != nil {
 		b.Fatalf("keys: %v", err)
 	}
-	ep, err := NewDatagramEndpoint(newDiscardConn())
+	ep, err := NewDatagramEndpoint(newDiscardConn(), WithAllowUnauthenticated())
 	if err != nil {
 		b.Fatalf("endpoint: %v", err)
 	}
