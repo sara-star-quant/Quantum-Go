@@ -664,9 +664,9 @@ func WithPSK(identity, key []byte) DatagramEndpointOption {
 	}
 }
 
-// WithKEMSuite sets the KEM suite a dialing endpoint offers first (default
-// CH-KEM-v1). It must be a registered suite, else construction fails with
-// ErrUnsupportedKEMSuite.
+// WithKEMSuite sets the KEM suite a dialing endpoint offers first (default CH-KEM-v1, or the
+// first allowed suite when WithAllowedKEMSuites excludes it). It must be a registered, allowed
+// suite, else construction fails with ErrUnsupportedKEMSuite.
 func WithKEMSuite(id chkem.SuiteID) DatagramEndpointOption {
 	return func(e *DatagramEndpoint) { e.kemSuite = id }
 }
@@ -745,9 +745,6 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 	}
 	for _, opt := range opts {
 		opt(e)
-	}
-	if err := kemPolicy(e.allowedKEMSuites).validate(); err != nil {
-		return nil, err
 	}
 	if _, err := kemPolicy(e.allowedKEMSuites).initiator(e.kemSuite); err != nil {
 		return nil, err

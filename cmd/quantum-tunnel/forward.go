@@ -110,6 +110,9 @@ func (f *forwarder) Close() error {
 // startForwardServer accepts tunnels on addr and hands each one to the single fixed
 // upstream. The peer never chooses a destination, so this cannot act as an open relay.
 func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim forwardLimits, logf func(string, ...any)) (*forwarder, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	ln, err := tunnel.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
@@ -610,7 +613,7 @@ func forwardCommand() {
 	upstream := fs.String("upstream", "", "Server side: hand each tunnel to this single fixed TCP address")
 	pskFile := fs.String("psk-file", "", "File holding a 32-byte PSK as 64 hex characters (mode 0600); required on both sides")
 	clientsFile := fs.String("clients-file", "", "Server side: file of \"identity hexkey\" lines, one PSK per client (mode 0600)")
-	suite := fs.String("suite", "", "Client side: KEM suite to offer first, chkem-v1 (default, ML-KEM-1024) or x-wing (ML-KEM-768, smaller handshake)")
+	suite := fs.String("suite", "", "Client side: KEM suite to offer first, chkem-v1 (default, ML-KEM-1024, or the first --allow-suite entry) or x-wing (ML-KEM-768, smaller handshake)")
 	allowSuites := fs.String("allow-suite", "", "Either side: only these KEM suites, comma-separated (chkem-v1, x-wing). Use chkem-v1 to refuse the smaller suite")
 	identity := fs.String("identity", "default", "PSK identity the client announces, and the server matches against --psk-file")
 	serverKey := fs.String("server-key", "", "Server side: static key file from keygen; clients must then pin it with --pin")

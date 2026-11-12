@@ -892,20 +892,31 @@ func TestForwardPinsWithKeygenFiles(t *testing.T) {
 }
 
 // --allow-suite chkem-v1 on the server refuses the smaller suite even when the client leads
-// with it, and the pair still connects on level 5. Bad names and a contradicting --suite fail
-// at startup.
+// with it: the session lands on level 5, which the test reads from the negotiated suite. Bad
+// names, a contradicting --suite and a list that allows nothing fail at startup.
 func TestForwardAllowSuite(t *testing.T) {
 	up, _ := startUpstream(t, echoHandler)
 	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
-	srvAuth := forwardAuth{pskFile: psk, allowSuites: "chkem-v1"}
-	cliAuth := forwardAuth{pskFile: psk, suite: "x-wing"}
-	c := dial(t, startPair(t, up, srvAuth, cliAuth, testLimits))
-	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
-	if _, err := c.Write([]byte("x")); err != nil {
+	srvCfg, err := buildForwardConfig(true, forwardAuth{pskFile: psk, allowSuites: "chkem-v1"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := io.ReadFull(c, make([]byte, 1)); err != nil {
+	srv, err := startForwardServer("127.0.0.1:0", up, srvCfg, testLimits, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	cliCfg, err := buildForwardConfig(false, forwardAuth{pskFile: psk, suite: "x-wing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := tunnel.DialWithConfig("tcp", srv.Addr().String(), cliCfg)
+	if err != nil {
 		t.Fatalf("a client leading with x-wing could not reach a server that allows only chkem-v1: %v", err)
+	}
+	defer func() { _ = raw.Close() }()
+	if got := raw.Peer().Suite; got != chkem.SuiteCHKEMv1 {
+		t.Fatalf("negotiated suite %v, want chkem-v1 (level 5)", got)
 	}
 
 	if _, err := buildForwardConfig(true, forwardAuth{pskFile: psk, allowSuites: "nope"}); err == nil {

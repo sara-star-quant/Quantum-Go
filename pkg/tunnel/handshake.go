@@ -233,13 +233,11 @@ func (h *Handshake) ProcessHelloRetryRequest(data []byte) error {
 	if !msg.Version.IsCompatible(protocol.Current) {
 		return qerrors.ErrUnsupportedVersion
 	}
+	// resolve refuses a suite this endpoint did not offer, so a HelloRetryRequest cannot steer
+	// the client off its own list.
 	suite, err := h.session.kemPolicy().resolve(msg.KEMSuite)
 	if err != nil {
 		return err
-	}
-	// The retried suite must be one we offered, or the server is steering us off-list.
-	if !h.session.kemPolicy().offered(msg.KEMSuite) {
-		return qerrors.ErrUnsupportedKEMSuite
 	}
 
 	// Adopt the suite and regenerate the ephemeral key share in it.
@@ -811,12 +809,6 @@ func selectCipherSuite(offered []constants.CipherSuite) constants.CipherSuite {
 
 	return 0 // No match
 }
-
-// supportedKEMSuiteIDs returns every locally supported KEM suite id as wire uint16s.
-func supportedKEMSuiteIDs() []uint16 { return kemPolicy(nil).ids() }
-
-// initiatorSuite resolves a configured starting suite id with no allowlist. 0 means the default.
-func initiatorSuite(id chkem.SuiteID) (chkem.Suite, error) { return kemPolicy(nil).initiator(id) }
 
 // resolveKEMSuite returns the suite for a wire id, or an error if this peer would not offer it.
 // Static-key suites use it directly, because they are independent of the ephemeral allowlist.

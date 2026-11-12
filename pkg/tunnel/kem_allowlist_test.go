@@ -108,6 +108,26 @@ func TestAllowedKEMSuitesRejectsEmptyIntersection(t *testing.T) {
 	if _, err := NewDatagramEndpoint(nil, WithAllowedKEMSuites(0x7FFF)); !errors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
 		t.Fatalf("NewDatagramEndpoint: got %v, want ErrUnsupportedKEMSuite", err)
 	}
+	if err := cfg.Validate(); !errors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
+		t.Fatalf("Validate: got %v, want ErrUnsupportedKEMSuite", err)
+	}
+	// A listener reports it on its first Accept, so a server cannot run with a list that allows nothing.
+	ln, err := Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	ln.SetConfig(cfg)
+	if _, err := ln.Accept(); !errors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
+		t.Fatalf("Accept: got %v, want ErrUnsupportedKEMSuite", err)
+	}
+	// The starting suite must be one the list allows.
+	conflict := DefaultTransportConfig()
+	conflict.AllowedKEMSuites = []chkem.SuiteID{v1}
+	conflict.KEMSuite = xw
+	if err := conflict.Validate(); !errors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
+		t.Fatalf("a starting suite outside the list: got %v", err)
+	}
 }
 
 // A pinned server key keeps its own suite: the allowlist governs the ephemeral exchange only,

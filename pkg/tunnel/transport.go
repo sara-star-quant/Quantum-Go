@@ -104,9 +104,9 @@ type TransportConfig struct {
 	// pinned ones.
 	RequireStaticAuth bool
 
-	// KEMSuite, when set on a client (Dial), is the KEM suite offered first. 0 means
-	// CH-KEM-v1. It must be a registered suite, else Dial fails with
-	// ErrUnsupportedKEMSuite. A server that prefers another offered suite steers the
+	// KEMSuite, when set on a client (Dial), is the KEM suite offered first. 0 means the default
+	// CH-KEM-v1, or the first allowed suite when AllowedKEMSuites excludes it. It must be a
+	// registered, allowed suite, else Dial fails with ErrUnsupportedKEMSuite. A server that prefers another offered suite steers the
 	// client with a HelloRetryRequest.
 	KEMSuite chkem.SuiteID
 
@@ -114,7 +114,8 @@ type TransportConfig struct {
 	// and accepts for the ephemeral key exchange. A server refuses a suite outside the list
 	// and steers the client to an allowed one; a client offers only allowed suites. Empty allows
 	// every supported suite. A non-empty list that allows no supported suite fails with
-	// ErrUnsupportedKEMSuite. A pinned or static key's own suite is not restricted by it.
+	// ErrUnsupportedKEMSuite from Dial, Validate and the first Accept. A pinned or static key's
+	// own suite is not restricted by it.
 	AllowedKEMSuites []chkem.SuiteID
 
 	// PSK is a pre-shared key (constants.PSKSize bytes) folded into the master
@@ -884,10 +885,7 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 		return nil, err
 	}
 
-	policy := kemPolicy(config.AllowedKEMSuites)
-	if err := policy.validate(); err != nil {
-		return nil, err
-	}
+	policy := kemPolicy(append([]chkem.SuiteID(nil), config.AllowedKEMSuites...))
 	suite, err := policy.initiator(config.KEMSuite)
 	if err != nil {
 		return nil, err
@@ -912,7 +910,7 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 	session.PinnedServerKey = config.PinnedServerKey
 	session.PSK = config.PSK
 	session.PSKIdentity = config.PSKIdentity
-	session.AllowedKEMSuites = config.AllowedKEMSuites
+	session.AllowedKEMSuites = policy
 
 	// Perform handshake
 	if config.HandshakeTimeout > 0 {
@@ -985,11 +983,27 @@ type acceptResult struct {
 	err    error
 }
 
+// Validate reports a configuration that cannot work, before any connection is made: a KEM suite
+// allowlist that allows no supported suite, or a starting suite the allowlist excludes. Dial runs
+// the same checks. A listener cannot return an error from SetConfig, so it checks on its first
+// Accept, and a server that wants to fail at startup calls Validate itself.
+func (c TransportConfig) Validate() error {
+	policy := kemPolicy(c.AllowedKEMSuites)
+	if err := policy.validate(); err != nil {
+		return err
+	}
+	_, err := policy.initiator(c.KEMSuite)
+	return err
+}
+
 // Accept waits for and returns the next tunnel connection. Handshakes run in their
 // own goroutines, so one stalled peer does not delay the others. A connection that
 // fails its rate-limit check or handshake is reported as an error from Accept, in
 // the order it finished.
 func (l *Listener) Accept() (*Tunnel, error) {
+	if err := l.config.Validate(); err != nil {
+		return nil, err
+	}
 	l.startOnce.Do(l.startAcceptLoop)
 	select {
 	case r := <-l.results:
@@ -1161,7 +1175,7 @@ func (l *Listener) createSession() (*Session, error) {
 	session.PSK = l.config.PSK
 	session.PSKIdentity = l.config.PSKIdentity
 	session.PSKLookup = l.config.PSKLookup
-	session.AllowedKEMSuites = l.config.AllowedKEMSuites
+	session.AllowedKEMSuites = append([]chkem.SuiteID(nil), l.config.AllowedKEMSuites...)
 	session.RequirePSK = l.config.RequirePSK
 	return session, nil
 }

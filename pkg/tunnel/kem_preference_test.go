@@ -12,7 +12,7 @@ import (
 // TestInitiatorSuitePreference starts the initiator on X-Wing; the default responder
 // accepts it on the first flight, so both sessions end on X-Wing with no retry.
 func TestInitiatorSuitePreference(t *testing.T) {
-	suite, err := initiatorSuite(chkem.SuiteXWing)
+	suite, err := kemPolicy(nil).initiator(chkem.SuiteXWing)
 	if err != nil {
 		t.Fatalf("initiatorSuite: %v", err)
 	}
@@ -41,14 +41,14 @@ func TestInitiatorSuitePreference(t *testing.T) {
 }
 
 func TestInitiatorSuiteZeroIsDefault(t *testing.T) {
-	s, err := initiatorSuite(0)
+	s, err := kemPolicy(nil).initiator(0)
 	if err != nil || s.ID() != chkem.SuiteCHKEMv1 {
 		t.Fatalf("zero id: suite=%v err=%v, want CH-KEM-v1", s, err)
 	}
 }
 
 func TestInitiatorSuiteRejectsUnoffered(t *testing.T) {
-	if _, err := initiatorSuite(0x7FFF); !qerrors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
+	if _, err := kemPolicy(nil).initiator(0x7FFF); !qerrors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
 		t.Fatalf("unknown id: %v, want ErrUnsupportedKEMSuite", err)
 	}
 	_, err := DialWithConfig("tcp", "127.0.0.1:1", TransportConfig{KEMSuite: 0x7FFF})

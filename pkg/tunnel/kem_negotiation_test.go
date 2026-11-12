@@ -25,7 +25,7 @@ func TestResolveKEMSuite(t *testing.T) {
 }
 
 func TestSupportedKEMSuiteIDsIncludesV1(t *testing.T) {
-	ids := supportedKEMSuiteIDs()
+	ids := kemPolicy(nil).ids()
 	if len(ids) == 0 || ids[0] != uint16(chkem.SuiteCHKEMv1) {
 		t.Fatalf("supported KEM suites = %v, want CH-KEM-v1 first", ids)
 	}
