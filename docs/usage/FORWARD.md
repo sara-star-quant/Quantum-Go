@@ -4,6 +4,19 @@
 
 It is not for Go services that already speak HTTPS or gRPC with each other: Go's own TLS offers hybrid post-quantum key exchange by default (see [AI and cloud workloads](AI_AND_CLOUD.md)). It is for the services TLS does not reach.
 
+## Where it fits
+
+| Where | Examples | Why a wrapper helps |
+|---|---|---|
+| Industrial and utilities | Modbus/TCP, DNP3, plaintext SCADA links | The protocols have no security and the devices stay in service for decades. A gateway pair in front of them adds authentication and encryption without touching the device. |
+| Finance and payments | FIX sessions, ISO 8583 links, HSM and batch file links | Plaintext or stunnel on private lines is common, sessions are long-lived, and the data stays sensitive for years. |
+| IoT and messaging | MQTT on 1883 through a local gateway | Constrained devices talk plain TCP to a nearby gateway; the gateway tunnels to the cloud broker. |
+| Infrastructure and cloud | Redis, Kafka, etcd, database links between sites, sidecars | "Trusted network" plaintext between sites and clusters gets a key-authenticated tunnel with no application change. |
+| AI and research | Model serving, bulk data movement between clusters | Long connections amortize the handshake; see the throughput notes in [PERFORMANCE](../PERFORMANCE.md). |
+| Satellite ground segment | Ground station to control center, VSAT and LEO backhaul | A plain TCP link like any other. Untested here, and the space link itself (CCSDS SDLS) is out of scope. |
+
+Where it does not help: services already on TLS 1.3 with hybrid post-quantum key exchange, UDP protocols (CoAP, syslog, NTP, QUIC and HTTP/3), Bluetooth, and anything that must run on a microcontroller. A wrapper hides traffic from the network; it does not add authentication to the application behind it.
+
 ## Quick start
 
 1. Make a pre-shared key and copy it to both hosts over a channel you trust:
@@ -76,7 +89,7 @@ A key file is refused when its group can write it or when others can touch it. U
 
 - **One tunnel per TCP connection.** Each connection costs one handshake and one round trip. That suits long-lived connections (HTTP/2 and gRPC, pooled database connections, bulk transfers). Short-lived HTTP/1.1 connections pay it every time, so keep connections alive.
 - **Half-close works.** A client that finishes sending and then waits for the reply gets it. The EOF travels inside the tunnel as a one-byte frame, with no change to the wire protocol.
-- **TCP only.** UDP is not forwarded, so HTTP/3 and QUIC are not covered. A UDP mode is planned after path-MTU handling; QUIC needs datagrams of at least 1200 bytes, which the tunnel overhead pushes past a typical MTU.
+- **TCP only.** UDP is not forwarded, so HTTP/3, QUIC, CoAP and syslog over UDP are not covered. Modern HTTP/3 stacks negotiate hybrid post-quantum key exchange in TLS 1.3 already.
 - **Limits:** `--max-conns` (default 1024), `--idle-timeout` (default 5 minutes, counted only when neither direction moves data; 0 disables it), a 10 second dial to the upstream and a 30 second client dial plus handshake. The listener also caps handshakes in flight at 1024. There is no per-IP or handshake rate limit in forward mode, and a connection over `--max-conns` still pays its handshake before it is refused, so keep the server port off the open internet or behind a firewall.
 - **Shutdown:** SIGINT and SIGTERM close the listener and cut open connections. There is no drain.
 - **Not yet measured on real hosts.** No throughput or latency numbers are published for this mode, and none should be assumed from the library's. Measure with your own workload.

@@ -41,6 +41,7 @@ Read this table before describing what Quantum-Go can or cannot do. "Shipped" na
 | Session resumption API | experimental, not wired into `Dial` and `Listen` ([#146](https://github.com/sara-star-quant/Quantum-Go/issues/146)) |
 | `net.Conn` adapter, HTTP and gRPC over the tunnel | planned ([#219](https://github.com/sara-star-quant/Quantum-Go/issues/219)) |
 | Forward mode that protects any TCP service without code changes | on `main`, unreleased ([#220](https://github.com/sara-star-quant/Quantum-Go/issues/220)); see [forward mode](usage/FORWARD.md) |
+| UDP forwarding (QUIC, HTTP/3, CoAP) | not planned: low impact, TLS already covers QUIC |
 | Traffic profiles and workload labels | planned ([#222](https://github.com/sara-star-quant/Quantum-Go/issues/222)) |
 | Authenticated peer identity, authorize hook, client device keys, live-session revocation | planned ([#196](https://github.com/sara-star-quant/Quantum-Go/issues/196)) |
 | Path-MTU discovery for datagrams | planned ([#144](https://github.com/sara-star-quant/Quantum-Go/issues/144)) |
