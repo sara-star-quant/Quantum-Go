@@ -8,7 +8,7 @@
 [![Codecov](https://codecov.io/gh/sara-star-quant/Quantum-Go/branch/main/graph/badge.svg)](https://codecov.io/gh/sara-star-quant/Quantum-Go)
 [![Go Build](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml/badge.svg)](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml)
 [![Security Level](https://img.shields.io/badge/Security-NIST%20Category%205-green)](https://csrc.nist.gov/projects/post-quantum-cryptography)
-[![FIPS Mode](https://img.shields.io/badge/FIPS%20140--3-Ready-orange)](docs/FIPS.md)
+[![FIPS build mode](https://img.shields.io/badge/FIPS%20build%20mode-not%20validated-orange)](docs/FIPS.md)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
 ---
@@ -122,6 +122,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 | [Configuration](docs/usage/CONFIGURATION.md) | Timeouts, rate limiting, sessions, authentication |
 | [CLI reference](docs/usage/CLI.md) | `quantum-tunnel` demos, key generation and benchmarks |
 | [Scope and status](docs/SCOPE.md) | What is shipped, planned or out of scope, and what the project is not |
+| [Stability](docs/STABILITY.md) | What you can rely on, what may change, the enforced bounds and what each error means |
 | [Performance](docs/PERFORMANCE.md) | Measured latency, handshake cost and throughput |
 | [Try it on AWS or Google Cloud](docs/usage/CLOUD_BENCH.md) | One script, two VMs, about ten minutes, torn down for you |
 | [Forward mode](docs/usage/FORWARD.md) | Protect any TCP service (HTTP, gRPC, a database) with the tunnel, without code changes |
