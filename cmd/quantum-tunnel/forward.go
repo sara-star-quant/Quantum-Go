@@ -115,8 +115,14 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	if _, isUnix := unixPath(upstream); isUnix && runtime.GOOS == "windows" {
-		return nil, errNoUnixSockets
+	if path, isUnix := unixPath(upstream); isUnix {
+		if runtime.GOOS == "windows" {
+			return nil, errNoUnixSockets
+		}
+		// Not fatal: the service may start after the forwarder. Say so, or every connection fails quietly.
+		if _, err := os.Stat(path); err != nil {
+			logf("upstream socket %s does not exist yet; connections fail until it does", path)
+		}
 	}
 	ln, err := tunnel.Listen("tcp", addr)
 	if err != nil {

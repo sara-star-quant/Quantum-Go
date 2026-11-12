@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -328,5 +329,43 @@ func TestListenPlainNeverDisplacesALiveSocket(t *testing.T) {
 	_ = first.Close()
 	if _, err := os.Lstat(sock); err != nil {
 		t.Fatalf("closing an old listener deleted the replacement's socket: %v", err)
+	}
+}
+
+// A unix upstream that does not exist yet is allowed, since the service may start later, but
+// the forwarder says so at startup.
+func TestForwardWarnsAboutAMissingUnixUpstream(t *testing.T) {
+	dir := shortDir(t)
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	cfg, err := buildForwardConfig(true, forwardAuth{pskFile: psk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logged []string
+	logf := func(format string, args ...any) { logged = append(logged, fmt.Sprintf(format, args...)) }
+
+	srv, err := startForwardServer("127.0.0.1:0", unixPrefix+filepath.Join(dir, "absent.sock"), cfg, testLimits, logf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = srv.Close()
+	if len(logged) != 1 || !strings.Contains(logged[0], "does not exist yet") {
+		t.Fatalf("logged %q, want one warning about the missing socket", logged)
+	}
+
+	present := filepath.Join(dir, "here.sock")
+	ln, err := net.Listen("unix", present)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	logged = nil
+	srv, err = startForwardServer("127.0.0.1:0", unixPrefix+present, cfg, testLimits, logf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = srv.Close()
+	if len(logged) != 0 {
+		t.Fatalf("an existing socket logged %q", logged)
 	}
 }

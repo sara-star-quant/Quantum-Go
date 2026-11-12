@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased][]
 
 ### Changed
+- **`forward` warns at startup** when a `--upstream unix:/path` socket does not exist yet, instead of failing every connection silently.
+
+### Changed
 - **Protocol specification, second pass**: the HelloRetryRequest transcript formula, the static-key role byte, the key and pin file formats, the alert layout and codes, the Finished key direction, the optional flag bytes of the ClientHello and the X-Wing encapsulation seed order are now written down, each checked against the code and a client written from the spec.
 
 ## [0.0.28][] - 2026-11-12

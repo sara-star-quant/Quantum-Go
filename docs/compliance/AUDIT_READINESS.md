@@ -75,7 +75,8 @@ bundles and the SLSA provenance. The release binaries build with `-trimpath` and
 commit, cgo off, so two builds of one commit in different directories, time zones and build caches match byte
 for byte; `scripts/repro-check.sh` checks all five targets on one host and CI runs it on every code change. That
 is a same-host, same-toolchain result. A reproduction on another machine needs the Go version and commit the
-release notes name and `make release VERSION=<version>`; no second machine has confirmed a match yet. The
+release notes name and `make release VERSION=<version>`. For v0.0.28 a second machine did exactly that
+(darwin-arm64, Go 1.26.10) and got a binary identical to the released one. The
 binaries inside the archives reproduce; the archives do not, because tar and gzip stamp times.
 
 ## 6. Known limitations (honest)
