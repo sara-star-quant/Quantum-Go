@@ -338,7 +338,7 @@ func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, err
 		if err := checkSecretFile(a.serverKey); err != nil {
 			return cfg, fmt.Errorf("--server-key: %w", err)
 		}
-		data, err := os.ReadFile(a.serverKey)
+		data, err := os.ReadFile(a.serverKey) // #nosec G304 -- path is an operator-supplied CLI key file argument; reading the named key is the command's purpose
 		if err != nil {
 			return cfg, fmt.Errorf("reading --server-key: %w", err)
 		}
@@ -350,7 +350,7 @@ func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, err
 		cfg.RequireStaticAuth = true
 	}
 	if !server && a.pin != "" {
-		data, err := os.ReadFile(a.pin)
+		data, err := os.ReadFile(a.pin) // #nosec G304 -- path is an operator-supplied CLI public key file argument
 		if err != nil {
 			return cfg, fmt.Errorf("reading --pin: %w", err)
 		}
@@ -397,7 +397,7 @@ func readPSKFile(path string) ([]byte, error) {
 	if err := checkSecretFile(path); err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is an operator-supplied CLI PSK file argument, permission-checked by checkSecretFile
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +413,7 @@ func readClientsFile(path string) (map[string][]byte, error) {
 	if err := checkSecretFile(path); err != nil {
 		return nil, err
 	}
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path is an operator-supplied CLI clients file argument, permission-checked by checkSecretFile
 	if err != nil {
 		return nil, err
 	}

@@ -441,6 +441,9 @@ func TestForwardRejectsConflictingAuthFlags(t *testing.T) {
 }
 
 func TestForwardRefusesLaxServerKeyFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows permission bits carry no meaning, so the check does not run there")
+	}
 	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
 	key := writeSecret(t, "server.key", "not read", 0o644)
 	_, err := buildForwardConfig(true, forwardAuth{pskFile: psk, serverKey: key})
