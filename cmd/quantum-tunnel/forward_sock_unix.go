@@ -3,27 +3,68 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"syscall"
 )
 
-// listenUnixPrivate binds a Unix socket that no other user can reach, even for an instant: the
-// umask is tightened around the bind, so the socket never exists with looser permissions, and
-// then the file is set to the requested mode. The umask is process-wide, but this runs during
-// startup before the forwarder serves anything.
+// checkSocketDir refuses a directory that another user owns or that group or others can write
+// to, sticky or not: they could replace the socket or hold a path in it. It checks this one
+// directory, not its ancestors, so place the socket in a directory the service owns.
+func checkSocketDir(dir string) error {
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
+	}
+	if fi.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("%s is writable by its group or others; put the socket in a private directory", dir)
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok && int(st.Uid) != os.Geteuid() {
+		return fmt.Errorf("%s is owned by another user; put the socket in a directory this user owns", dir)
+	}
+	return nil
+}
+
+// listenUnixPrivate binds a Unix socket that no other user can reach at any moment. It binds in a
+// fresh 0700 directory next to the target, sets the mode there, and only then renames the socket
+// into place, so the final path never exists with looser permissions and no process-wide state
+// such as the umask changes. The listener removes the final path when it closes.
 func listenUnixPrivate(path string, mode os.FileMode) (net.Listener, error) {
-	old := syscall.Umask(0o177)
-	ln, err := net.Listen("unix", path)
-	syscall.Umask(old)
+	stage, err := os.MkdirTemp(filepath.Dir(path), ".qt-")
 	if err != nil {
 		return nil, err
 	}
-	if mode != defaultSocketMode {
-		if err := os.Chmod(path, mode); err != nil {
-			_ = ln.Close()
-			return nil, err
-		}
+	defer func() { _ = os.RemoveAll(stage) }()
+	staged := filepath.Join(stage, "s")
+	ln, err := net.Listen("unix", staged)
+	if err != nil {
+		return nil, err
 	}
-	return ln, nil
+	if err := os.Chmod(staged, mode); err != nil {
+		_ = ln.Close()
+		return nil, err
+	}
+	if err := os.Rename(staged, path); err != nil {
+		_ = ln.Close()
+		return nil, err
+	}
+	return &removingListener{Listener: ln, path: path}, nil
+}
+
+// removingListener unlinks the socket's final path on Close, because the net package only knows
+// the staging path it bound.
+type removingListener struct {
+	net.Listener
+	path string
+}
+
+func (l *removingListener) Close() error {
+	err := l.Listener.Close()
+	_ = os.Remove(l.path)
+	return err
 }

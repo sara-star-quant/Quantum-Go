@@ -15,7 +15,7 @@ import (
 	"os/signal"
 	"runtime"
 	"slices"
-	"strconv"
+
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -115,6 +115,9 @@ func (f *forwarder) Close() error {
 func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim forwardLimits, logf func(string, ...any)) (*forwarder, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
+	}
+	if _, isUnix := unixPath(upstream); isUnix && runtime.GOOS == "windows" {
+		return nil, errNoUnixSockets
 	}
 	ln, err := tunnel.Listen("tcp", addr)
 	if err != nil {
@@ -219,7 +222,7 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 			select {
 			case sem <- struct{}{}:
 			default:
-				logf("rejecting %v: %d connections already open", conn.RemoteAddr(), lim.maxConns)
+				logf("rejecting %s: %d connections already open", connLabel(conn), lim.maxConns)
 				_ = conn.Close()
 				continue
 			}
@@ -234,7 +237,7 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 				}
 				defer func() { _ = t.Close() }()
 				sent, recv := pipe(conn, t, lim.idleTimeout)
-				logf("closed %v after %s: %d bytes sent, %d received", conn.RemoteAddr(), time.Since(start).Round(time.Millisecond), sent, recv)
+				logf("closed %s after %s: %d bytes sent, %d received", connLabel(conn), time.Since(start).Round(time.Millisecond), sent, recv)
 			}()
 		}
 	})
@@ -690,12 +693,14 @@ EXAMPLES:
 			log.Printf(format, args...)
 		}
 	}
-	mode, merr := strconv.ParseUint(*socketMode, 8, 32)
+	socketModeSet := false
+	fs.Visit(func(f *flag.Flag) { socketModeSet = socketModeSet || f.Name == "socket-mode" })
+	mode, merr := resolveSocketMode(*socketMode, socketModeSet, *listen)
 	if merr != nil {
-		fmt.Fprintf(os.Stderr, "--socket-mode %q is not an octal permission such as 0600\n", *socketMode)
+		fmt.Fprintln(os.Stderr, merr)
 		os.Exit(2)
 	}
-	lim := forwardLimits{socketMode: os.FileMode(mode), maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second, maxPerIP: *maxPerIP, handshakeRate: *handshakeRate}
+	lim := forwardLimits{socketMode: mode, maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second, maxPerIP: *maxPerIP, handshakeRate: *handshakeRate}
 
 	// Register before the listeners start, so a signal in the startup gap is not lost.
 	stop := make(chan os.Signal, 1)
@@ -718,7 +723,7 @@ EXAMPLES:
 			f, err = startForwardClient(bind, *connect, cfg, lim, logf)
 		}
 		if err == nil {
-			log.Printf("forwarding plain TCP on %v through tunnels to %s", f.Addr(), *connect)
+			log.Printf("forwarding the plain side on %v through tunnels to %s", f.Addr(), *connect)
 		}
 	}
 	if err != nil {

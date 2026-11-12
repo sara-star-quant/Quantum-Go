@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Release SBOM**: each release ships a signed SPDX SBOM, and the release notes name the Go version to reproduce with.
 
 ### Added
-- **Unix sockets for `forward`**: `--listen unix:/path` on the client and `--upstream unix:/path` on the server, so file permissions guard the plain hop instead of a loopback port. The listener binds private (mode 0600, `--socket-mode 0660` for a group), replaces a stale socket, refuses a live one, a regular file and a world-writable directory, and is not available on Windows.
+- **Unix sockets for `forward`**: `--listen unix:/path` on the client and `--upstream unix:/path` on the server, so file permissions guard the plain hop instead of a loopback port. The listener binds private in a staging directory (mode 0600, or 0660 with `--socket-mode`), replaces a socket left by a crash only when connecting to it is refused, and refuses a live socket, a regular file and a directory another user owns or others can write to. Not available on Windows.
 - **KEM suite allowlist**: `TransportConfig.AllowedKEMSuites`, `WithAllowedKEMSuites` and `forward --allow-suite` let an endpoint restrict the suites it offers and accepts, so an operator can require ML-KEM-1024 and refuse the smaller X-Wing suite. A server steers the client to an allowed suite, a list that allows none fails in `Dial`, `NewDatagramEndpoint`, the new `TransportConfig.Validate` and a listener's first `Accept`, and a pinned key keeps its own suite.
 
 ### Added

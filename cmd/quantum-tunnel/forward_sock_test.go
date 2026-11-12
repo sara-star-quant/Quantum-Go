@@ -103,7 +103,7 @@ func TestListenPlainSocketModes(t *testing.T) {
 	}
 	_ = ln.Close()
 
-	for _, bad := range []os.FileMode{0o666, 0o604, 0o1600} {
+	for _, bad := range []os.FileMode{0o666, 0o604, 0o1600, 0o200, 0o020, 0o060, 0o400} {
 		if ln, err := listenPlain(unixPrefix+filepath.Join(dir, "bad.sock"), bad); err == nil {
 			_ = ln.Close()
 			t.Fatalf("mode %#o was accepted", bad)
@@ -124,6 +124,35 @@ func TestListenPlainRefusesUnsafeTargets(t *testing.T) {
 	if ln, err := listenPlain(unixPrefix+filepath.Join(loose, "s.sock"), 0); err == nil {
 		_ = ln.Close()
 		t.Fatal("a socket in a world-writable directory was accepted")
+	}
+	sticky := filepath.Join(dir, "sticky")
+	if err := os.Mkdir(sticky, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sticky, os.ModeSticky|0o777); err != nil {
+		t.Fatal(err)
+	}
+	if ln, err := listenPlain(unixPrefix+filepath.Join(sticky, "s.sock"), 0); err == nil {
+		_ = ln.Close()
+		t.Fatal("a socket in a sticky world-writable directory was accepted")
+	}
+	group := filepath.Join(dir, "group")
+	if err := os.Mkdir(group, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(group, 0o770); err != nil {
+		t.Fatal(err)
+	}
+	if ln, err := listenPlain(unixPrefix+filepath.Join(group, "s.sock"), 0); err == nil {
+		_ = ln.Close()
+		t.Fatal("a socket in a group-writable directory was accepted")
+	}
+	long := unixPrefix + filepath.Join(dir, strings.Repeat("x", maxSocketPath))
+	if ln, err := listenPlain(long, 0); err == nil || !strings.Contains(err.Error(), "bytes") {
+		if err == nil {
+			_ = ln.Close()
+		}
+		t.Fatalf("an overlong path got %v, want a message naming the length", err)
 	}
 
 	if ln, err := listenPlain(unixPrefix+"@abstract", 0); err == nil || !strings.Contains(err.Error(), "abstract") {
@@ -172,5 +201,90 @@ func TestListenPlainStaleAndLiveSockets(t *testing.T) {
 	_ = ln.Close()
 	if _, err := os.Lstat(path); err == nil {
 		t.Fatal("closing the listener left its socket file behind")
+	}
+}
+
+// Only a refused connection proves a socket is stale. A socket that exists but cannot be probed
+// (here: the owner removed every permission) might still be live, so it stays and the start fails.
+func TestListenPlainLeavesAnUnprobeableSocketAlone(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can connect to any socket")
+	}
+	dir := shortDir(t)
+	path := filepath.Join(dir, "s.sock")
+	live, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = live.Close() }()
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if ln, err := listenPlain(unixPrefix+path, 0); err == nil {
+		_ = ln.Close()
+		t.Fatal("a socket that could not be probed was taken over")
+	}
+	if _, err := os.Lstat(path); err != nil {
+		t.Fatalf("the unprobeable socket was deleted: %v", err)
+	}
+}
+
+// Binding goes through a staging directory. Nothing of it may remain beside the socket, and the
+// final path must carry the requested mode from the first moment it exists.
+func TestListenPlainLeavesNoStagingDirectory(t *testing.T) {
+	dir := shortDir(t)
+	ln, err := listenPlain(unixPrefix+filepath.Join(dir, "s.sock"), 0o660)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "s.sock" {
+		t.Fatalf("directory holds %v, want only s.sock", entries)
+	}
+	_ = ln.Close()
+}
+
+func TestResolveSocketMode(t *testing.T) {
+	if m, err := resolveSocketMode("", false, ":8080"); err != nil || m != defaultSocketMode {
+		t.Fatalf("unset flag: %v %v", m, err)
+	}
+	if m, err := resolveSocketMode("0660", true, "unix:/x"); err != nil || m != 0o660 {
+		t.Fatalf("0660 on a unix address: %v %v", m, err)
+	}
+	if _, err := resolveSocketMode("0660", true, "127.0.0.1:8080"); err == nil {
+		t.Fatal("--socket-mode with a TCP listen address was silently accepted")
+	}
+	if _, err := resolveSocketMode("rwx", true, "unix:/x"); err == nil {
+		t.Fatal("a non-octal mode was accepted")
+	}
+	if err := checkSocketMode(0); err == nil {
+		t.Fatal("mode 0 was accepted")
+	}
+}
+
+func TestConnLabelForLocalSockets(t *testing.T) {
+	dir := shortDir(t)
+	ln, err := net.Listen("unix", filepath.Join(dir, "l.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	go func() {
+		c, err := net.Dial("unix", filepath.Join(dir, "l.sock"))
+		if err == nil {
+			defer func() { _ = c.Close() }()
+			time.Sleep(200 * time.Millisecond)
+		}
+	}()
+	c, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+	if got := connLabel(c); got != "local socket" {
+		t.Fatalf("label %q, want a readable name for a local socket", got)
 	}
 }

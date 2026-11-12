@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -17,6 +19,10 @@ const unixPrefix = "unix:"
 // defaultSocketMode lets only the owner connect. Pass 0660 to share the socket with a group.
 const defaultSocketMode os.FileMode = 0o600
 
+// maxSocketPath stays under the shortest sun_path limit in use (104 bytes on macOS and the BSDs,
+// 108 on Linux), so a long path gets a clear error instead of "invalid argument" from bind.
+const maxSocketPath = 100
+
 // unixPath returns the socket path of a "unix:" address.
 func unixPath(addr string) (string, bool) {
 	if p, ok := strings.CutPrefix(addr, unixPrefix); ok {
@@ -25,15 +31,53 @@ func unixPath(addr string) (string, bool) {
 	return "", false
 }
 
+// errNoUnixSockets is returned on platforms without Unix socket support in this tool.
+var errNoUnixSockets = errors.New("unix sockets are not supported on Windows")
+
 // dialUpstream connects to the fixed upstream: a TCP address, or a Unix socket as "unix:/path".
 func dialUpstream(upstream string, timeout time.Duration) (net.Conn, error) {
 	if path, ok := unixPath(upstream); ok {
 		if runtime.GOOS == "windows" {
-			return nil, errors.New("unix sockets are not supported on Windows")
+			return nil, errNoUnixSockets
 		}
 		return net.DialTimeout("unix", path, timeout)
 	}
 	return net.DialTimeout("tcp", upstream, timeout)
+}
+
+// connLabel names a local connection for the log. A Unix socket peer has no address, so it reads
+// "local socket" and not a blank.
+func connLabel(c net.Conn) string {
+	if a := c.RemoteAddr(); a != nil && a.String() != "" && a.String() != "@" {
+		return a.String()
+	}
+	return "local socket"
+}
+
+// resolveSocketMode turns the --socket-mode flag into a mode. The flag only means something for
+// a unix: --listen address, so setting it anywhere else is an error and not a silent no-op.
+func resolveSocketMode(value string, set bool, listen string) (os.FileMode, error) {
+	_, isUnix := unixPath(listen)
+	if !set {
+		return defaultSocketMode, nil
+	}
+	if !isUnix {
+		return 0, errors.New("--socket-mode applies only to a client --listen address of the form unix:/path")
+	}
+	m, err := strconv.ParseUint(value, 8, 32)
+	if err != nil {
+		return 0, fmt.Errorf("--socket-mode %q is not an octal permission such as 0600", value)
+	}
+	return os.FileMode(m), nil
+}
+
+// checkSocketMode accepts a mode that gives the owner read and write and nobody else anything but
+// the group: 0600 and 0660 are the sensible choices, and anything wider or narrower is a mistake.
+func checkSocketMode(mode os.FileMode) error {
+	if mode&0o600 != 0o600 || mode&0o007 != 0 || mode&^0o777 != 0 {
+		return fmt.Errorf("--socket-mode %#o must give the owner read and write and no access to others; use 0600 or 0660", mode)
+	}
+	return nil
 }
 
 // listenPlain opens the plain side of a client: a TCP address, or a Unix socket as "unix:/path"
@@ -44,20 +88,19 @@ func listenPlain(addr string, mode os.FileMode) (net.Listener, error) {
 		return net.Listen("tcp", addr)
 	}
 	if runtime.GOOS == "windows" {
-		return nil, errors.New("unix sockets are not supported on Windows")
+		return nil, errNoUnixSockets
 	}
 	if mode == 0 {
 		mode = defaultSocketMode
 	}
-	if mode&0o007 != 0 || mode&^0o777 != 0 {
-		return nil, fmt.Errorf("--socket-mode %#o would give access to every user; use 0600 or 0660", mode)
+	if err := checkSocketMode(mode); err != nil {
+		return nil, err
 	}
 	if strings.HasPrefix(path, "@") {
 		return nil, errors.New("abstract unix sockets have no file permissions; use a path")
 	}
-	path, err := filepath.Abs(path)
-	if err != nil {
-		return nil, err
+	if len(path) > maxSocketPath {
+		return nil, fmt.Errorf("socket path is %d bytes; keep it under %d (the operating system limit is about 104)", len(path), maxSocketPath)
 	}
 	if err := checkSocketDir(filepath.Dir(path)); err != nil {
 		return nil, err
@@ -68,24 +111,11 @@ func listenPlain(addr string, mode os.FileMode) (net.Listener, error) {
 	return listenUnixPrivate(path, mode)
 }
 
-// checkSocketDir refuses a directory other users can write to (unless it is sticky, like /tmp),
-// because they could replace the socket or race its permissions.
-func checkSocketDir(dir string) error {
-	fi, err := os.Stat(dir)
-	if err != nil {
-		return err
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("%s is not a directory", dir)
-	}
-	if fi.Mode().Perm()&0o022 != 0 && fi.Mode()&os.ModeSticky == 0 {
-		return fmt.Errorf("%s is writable by its group or others; put the socket in a private directory", dir)
-	}
-	return nil
-}
-
-// clearStaleSocket removes a leftover socket file that nothing answers on. A live socket, or a
-// path that is not a socket, is an error, so a restart never deletes another program's file.
+// clearStaleSocket removes a leftover socket file that nothing answers on. Only a refused
+// connection proves the file is stale. A live socket, a path that is not a socket, and any other
+// failure to connect (a full backlog, a permission error, a timeout) are errors, so a restart
+// never deletes a file that might still be in use. The probe is one short connection, which a
+// running forwarder on that path treats as a client and answers with a tunnel handshake.
 func clearStaleSocket(path string) error {
 	fi, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -97,9 +127,13 @@ func clearStaleSocket(path string) error {
 	if fi.Mode()&os.ModeSocket == 0 {
 		return fmt.Errorf("%s exists and is not a socket", path)
 	}
-	if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
+	c, err := net.DialTimeout("unix", path, time.Second)
+	if err == nil {
 		_ = c.Close()
 		return fmt.Errorf("%s is already in use", path)
+	}
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		return fmt.Errorf("cannot tell whether %s is in use, so it was left alone: %w", path, err)
 	}
 	return os.Remove(path)
 }
