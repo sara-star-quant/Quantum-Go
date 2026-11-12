@@ -545,3 +545,53 @@ func TestForwardServerRefusesSameIdentityInBothFiles(t *testing.T) {
 		t.Fatal("an identity in both files was accepted, so which key wins would be unclear")
 	}
 }
+
+// reloadKeys is what SIGHUP runs: a bad file keeps the current keys, and a server ignores
+// --server-key so a broken key file cannot block a PSK rotation.
+func TestReloadKeys(t *testing.T) {
+	up, _ := startUpstream(t, echoHandler)
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	auth := forwardAuth{pskFile: psk}
+	srvCfg, err := buildForwardConfig(true, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := startForwardServer("127.0.0.1:0", up, srvCfg, testLimits, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	before := srv.cfg.Load()
+
+	if err := os.WriteFile(psk, []byte("junk"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := reloadKeys(srv, true, auth, nopLog); err == nil {
+		t.Fatal("a corrupt file was reloaded")
+	}
+	if srv.cfg.Load() != before {
+		t.Fatal("a failed reload replaced the config")
+	}
+
+	if err := os.WriteFile(psk, []byte(randomPSK(t)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	auth.serverKey = filepath.Join(t.TempDir(), "missing.key") // a server reload must not read it
+	if err := reloadKeys(srv, true, auth, nopLog); err != nil {
+		t.Fatalf("a good PSK file was refused because of --server-key: %v", err)
+	}
+	if srv.cfg.Load() == before {
+		t.Fatal("a good reload did not swap the config")
+	}
+}
+
+func TestForwardRejectsBadIdentity(t *testing.T) {
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	if _, err := buildForwardConfig(true, forwardAuth{pskFile: psk, identity: strings.Repeat("x", 256)}); err == nil {
+		t.Fatal("a 256-byte identity was accepted")
+	}
+	clients := writeSecret(t, "clients.txt", strings.Repeat("x", 256)+" "+randomPSK(t)+"\n", 0o600)
+	if _, err := readClientsFile(clients); err == nil {
+		t.Fatal("a 256-byte client identity was accepted")
+	}
+}

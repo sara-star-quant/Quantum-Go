@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sara-star-quant/quantum-go/internal/constants"
 	"github.com/sara-star-quant/quantum-go/pkg/chkem"
 	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
@@ -320,6 +321,9 @@ func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, err
 	if a.identity == "" {
 		a.identity = "default"
 	}
+	if err := checkIdentity(a.identity); err != nil {
+		return cfg, fmt.Errorf("--identity: %w", err)
+	}
 
 	switch {
 	case a.insecure && (a.pskFile != "" || a.clientsFile != "" || a.serverKey != "" || a.pin != ""):
@@ -354,7 +358,7 @@ func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, err
 		}
 		for id, key := range clients {
 			if _, dup := table[id]; dup {
-				return cfg, fmt.Errorf("identity %q is in both --psk-file and --clients-file", id)
+				return cfg, fmt.Errorf("identity %q is in both --psk-file (its identity is --identity, default \"default\") and --clients-file; rename one", id)
 			}
 			table[id] = key
 		}
@@ -411,6 +415,32 @@ func checkSecretFile(path string) error {
 	return nil
 }
 
+// checkIdentity applies the tunnel's own bound to a PSK identity, so a bad one fails at
+// startup and on reload instead of as a client dial error later.
+func checkIdentity(id string) error {
+	if id == "" || len(id) > constants.MaxPSKIdentitySize {
+		return fmt.Errorf("an identity is 1 to %d bytes, got %d", constants.MaxPSKIdentitySize, len(id))
+	}
+	return nil
+}
+
+// reloadKeys re-reads the key files and swaps them into f. A server reloads PSKs only, so a
+// broken or changed --server-key cannot block a PSK rotation and is never silently ignored.
+// On any error the current keys stay in place.
+func reloadKeys(f *forwarder, server bool, a forwardAuth, logf func(string, ...any)) error {
+	if server {
+		a.serverKey = ""
+	}
+	next, err := buildForwardConfig(server, a)
+	if err != nil {
+		logf("reload failed, keeping the current keys: %v", err)
+		return err
+	}
+	f.Reload(next)
+	logf("reloaded keys; open connections keep the keys they started with")
+	return nil
+}
+
 func decodePSK(s string) ([]byte, error) {
 	s = strings.TrimSpace(s)
 	if len(s) != pskHexLen {
@@ -458,6 +488,9 @@ func readClientsFile(path string) (map[string][]byte, error) {
 		fields := strings.Fields(line)
 		if len(fields) != 2 {
 			return nil, fmt.Errorf("%s line %d: want \"identity hexkey\"", path, n)
+		}
+		if err := checkIdentity(fields[0]); err != nil {
+			return nil, fmt.Errorf("%s line %d: %w", path, n, err)
 		}
 		key, err := decodePSK(fields[1])
 		if err != nil {
@@ -569,6 +602,12 @@ EXAMPLES:
 	}
 	lim := forwardLimits{maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second}
 
+	// Register before the listeners start, so a signal in the startup gap is not lost.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+
 	var f *forwarder
 	if isServer {
 		f, err = startForwardServer(*serve, *upstream, cfg, lim, logf)
@@ -589,10 +628,6 @@ EXAMPLES:
 		os.Exit(1)
 	}
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	hup := make(chan os.Signal, 1)
-	signal.Notify(hup, syscall.SIGHUP)
 	for waiting := true; waiting; {
 		select {
 		case <-stop:
@@ -601,13 +636,7 @@ EXAMPLES:
 			fmt.Fprintln(os.Stderr, "Error: the listener stopped")
 			os.Exit(1)
 		case <-hup:
-			next, err := buildForwardConfig(isServer, auth)
-			if err != nil {
-				log.Printf("reload failed, keeping the current keys: %v", err)
-				continue
-			}
-			f.Reload(next)
-			log.Println("reloaded keys; open connections keep the keys they started with")
+			_ = reloadKeys(f, isServer, auth, logf)
 		}
 	}
 	log.Println("shutting down")
