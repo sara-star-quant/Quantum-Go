@@ -572,7 +572,10 @@ func (r *loadRecorder) OnConnectionRateLimit(string) {}
 func (r *loadRecorder) OnHandshakeRateLimit(string)  {}
 func (r *loadRecorder) OnHandshakeStarted()          { r.started.Add(1) }
 func (r *loadRecorder) OnHandshakeFinished()         { r.finished.Add(1) }
-func (r *loadRecorder) OnHandshakeShed(ip string)    { r.shed.Add(1); r.lastShedIP.Store(ip) }
+func (r *loadRecorder) OnHandshakeShed(ip string) {
+	r.lastShedIP.Store(ip) // store before counting: the test reads the address once the count moves
+	r.shed.Add(1)
+}
 
 // TestHandshakeLoadObserverSeesShedAndRelease checks the observer events around the pending
 // limit: the stalled first connection holds the slot, the second is reported shed with its
