@@ -10,8 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Reproducible release binaries**: builds use `-trimpath`, cgo off, a 12-character commit hash and the commit time as the build time, so two builds of one commit match byte for byte across directories, time zones and build caches on all five targets (checked in CI by `scripts/repro-check.sh`, one host and one Go version). The `build_time` a binary reports is now the commit time, or `unknown` outside a git checkout.
 - **Release SBOM**: each release ships a signed SPDX SBOM, and the release notes name the Go version to reproduce with.
+### Fixed
+- **Library version string**: `pkg/version.String()` returned the stale constant `v0.0.14` for every build. It now reads the version the Go toolchain recorded in the binary (the tag for a dependency or a `go install`, `devel` for a working tree). The `Major`, `Minor` and `Patch` constants are deprecated.
 
 ### Added
+- **`quantum-tunnel inventory`**: prints one JSON document describing the build, for audit and procurement evidence: version, build time and commit, Go version, platform, protocol version, KEM and cipher suites, FIPS build mode, whether Go's FIPS mode is on, the self-test result and the module dependencies. It holds no keys or addresses and describes Quantum-Go itself, not the network around it.
 - **Unix sockets for `forward`**: `--listen unix:/path` on the client and `--upstream unix:/path` on the server, so file permissions guard the plain hop instead of a loopback port. The listener binds private in a staging directory (mode 0600, or 0660 with `--socket-mode`), replaces a socket left by a crash only when connecting to it is refused, and refuses a live socket, a regular file and a directory another user owns or others can write to. Not available on Windows.
 - **KEM suite allowlist**: `TransportConfig.AllowedKEMSuites`, `WithAllowedKEMSuites` and `forward --allow-suite` let an endpoint restrict the suites it offers and accepts, so an operator can require ML-KEM-1024 and refuse the smaller X-Wing suite. A server steers the client to an allowed suite, a list that allows none fails in `Dial`, `NewDatagramEndpoint`, the new `TransportConfig.Validate` and a listener's first `Accept`, and a pinned key keeps its own suite.
 

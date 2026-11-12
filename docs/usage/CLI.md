@@ -123,6 +123,16 @@ quantum-tunnel keygen --pub-from server.key --out server
 
 The `--suite` flag selects the identity's KEM suite (`chkem-v1` default, or `x-wing`); the seed and pin files are tagged with the suite so a loader self-selects it. Keep `server.key` secret and persistent (load it on the server via `chkem.ParseTaggedKeyPair`); distribute `server.pub` to clients (pin it via `chkem.ParseTaggedPublicKey`). The command prints an SSH-style `SHA256:` fingerprint so operators can verify the pin out-of-band, and refuses to overwrite an existing file without `--force`. See [CONFIGURATION.md](CONFIGURATION.md#endpoint-authentication-v0012) for wiring the keys into a tunnel.
 
+## Inventory Mode
+
+```bash
+quantum-tunnel inventory
+```
+
+Prints one JSON document describing this build: version, commit, Go version, platform, protocol version, the KEM and cipher suites it can negotiate, FIPS build mode, whether Go's own FIPS mode is on, the self-test result and the module dependencies. Attach it to a deployment record or diff it between releases; `schema_version` changes when a field changes meaning.
+
+It holds no keys, addresses or configuration, and it describes Quantum-Go only, not the network around it. A FIPS build mode of `true` is not a validation claim; see [FIPS](../FIPS.md).
+
 ## Example Mode
 
 View standard implementation patterns directly in your terminal:

@@ -45,6 +45,8 @@ func main() {
 		keygenCommand()
 	case "forward":
 		forwardCommand()
+	case "inventory":
+		inventoryCommand()
 	case "version":
 		fmt.Printf("quantum-tunnel version %s\n", getVersion())
 		if buildTime != "unknown" {
@@ -73,6 +75,7 @@ COMMANDS:
     bench     Run performance benchmarks
     example   Show example usage with explanations
     keygen    Generate a static-key server identity for endpoint auth
+    inventory Print what this build is and can negotiate, as JSON (for audits)
     forward   Protect any TCP service with the tunnel, without code changes
     version   Print version information
     help      Show this help message
