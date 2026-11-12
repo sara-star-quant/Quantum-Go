@@ -7,58 +7,42 @@
 
 ## Current Status: v0.0.27
 
-> **Direction (Q4 2026).** Protocol 6.0 (one-round-trip handshake), batched datagram sends with UDP
-> offload, per-client PSKs and signed, attested releases have shipped (v0.0.17 and v0.0.18); v0.0.19 added the test-depth suites and fixed two concurrency bugs they found. v0.0.20 made KEM suites registrable from outside the module and let a client choose its first-offered suite. v0.0.21 added stream `SendBatch`, matchable sentinel errors and two-host throughput tooling. v0.0.23 (v0.0.22 never published) removed the per-record allocations from the stream and datagram paths and corrected the throughput figures. v0.0.24 fixed a 5 to 7 percent datagram loss at 1 to 4 Gbps (a larger inbox and receive buffer, plus an `InboxDropped` counter), gave the two-host bench parallel flows and a datagram mode, and shipped a script that reproduces the cloud measurements on AWS or Google Cloud. v0.0.25 changed only the release pipeline: provenance ships as a release asset and the workflow actions moved to Node 24. The
-> **assurance tier** is well underway: a written wire specification, published conformance vectors,
-> machine-checked ProVerif proofs and an audit-readiness package are in place. What remains is a
-> **third-party audit** and **real FIPS 140-3 / CMVP validation**, plus a test-depth push (tamper sweeps,
-> fault-injection and end-to-end suites, see the open issues). HQC code-based diversification (CH-KEM v2)
-> stays deferred behind that work until a trusted HQC primitive exists (circl `kem/hqc` or an audited
-> pure-Go port).
+Pre-1.0 and unaudited. The goal now is a smaller, better evidenced core, not more features: reduce what a reviewer has to trust, then widen adoption. Every item below has a GitHub issue or is a documented decision; items without an issue yet are marked "to file".
 
-### Next up
+### Scope discipline
 
-Tracked as GitHub issues, in this order:
+- **Reviewable core.** The protocol and crypto path (`pkg/chkem`, `pkg/crypto`, `pkg/protocol`, `pkg/tunnel`, `internal`) is 8,685 lines of Go outside tests, blanks and comments (`scripts/loc.sh`). CI now fails if it passes 10,000. The planned additions (peer identity, exporter, stricter parsing, device keys) come to roughly 700 lines, so the budget leaves about 600 lines of headroom. Lines of code rank last: correctness and clarity first, a small attack surface second, auditability third, performance fourth. A cleaner 9,500 lines beats a cleverer 8,000.
+- **Optional layers stay outside that count and out of the core:** `pkg/metrics`, `cmd/`, the forward mode and the benchmarks.
+- **No new transports, KEMs, AEADs or authentication systems** until the existing ones have stable failure semantics, tests and a review. Features that would add protocol surface wait for pilot evidence.
+- **Not planned:** UDP forwarding and QUIC (TLS 1.3 stacks already carry hybrid post-quantum key exchange), X.509 and enterprise PKI integration, a policy engine or management plane, and session resumption (removed in v0.0.26).
 
-1. Test depth to about 95% library coverage: handshake error paths, a suite x authentication x transport
-   x cipher matrix, untested public options, stream and pool fault injection, datagram rekey lifecycle,
-   crypto fault injection.
-2. Path-MTU discovery for the datagram transport.
-3. Throughput on real hardware (done in v0.0.21 to v0.0.24). A bench mode that runs client and server on separate hosts, Linux numbers from CI, in-place seal and open on the stream path, and a cloud script that reproduces the two-host numbers on AWS and Google Cloud.
-4. Striped multi-flow sessions. Document striping over `Pool` first; build a one-handshake bundle only if the Linux and two-host numbers show parallel flows gain enough to justify it. The cloud numbers now say they do: one tunnel flow stops at 10 to 14 Gbps on a 20 Gbps link while four flows fill it, and pipelining the receive across two cores (#193) is the alternative to weigh.
-5. A second independent implementation checked against the conformance vectors.
-6. Third-party audit and FIPS 140-3 validation (owner-driven, not an open task).
+### Now: assurance and security evidence
 
-## Strategic Priorities (valuation-driven)
+1. Peer identity on the server session ([#232](https://github.com/sara-star-quant/Quantum-Go/issues/232), in review).
+2. Test hardening for the forwarder and close paths: rekey during one-way transfers, chaos, race, SIGHUP end to end, fuzzing ([#238](https://github.com/sara-star-quant/Quantum-Go/issues/238)).
+3. A second implementation checked against the vectors: two spec-only passes are done and fixed spec and vector defects and two server bugs; a real outside implementer stays wanted ([#145](https://github.com/sara-star-quant/Quantum-Go/issues/145)).
+4. Formal models for the rekey ratchet, the datagram cookie and the replay window (to file); negotiation and downgrade are proven.
+5. Continuous fuzzing through OSS-Fuzz (to file) and a fuzz target for every state transition.
+6. Two pilots to learn what blocks adoption ([#240](https://github.com/sara-star-quant/Quantum-Go/issues/240)).
 
-For a cryptographic library, market evaluation is gated by reduction of trust-uncertainty, not
-feature count. Endpoint authentication and crypto-agility (negotiated suites + the standardized X-Wing
-combiner) have landed, so the deployability and bespoke-island blockers are largely cleared. The next
-arc (Q3 2026 onward) is the **assurance tier** - the work that converts a working library into a buyable
-one - sequenced by credibility impact, not version-tag order:
+### Next: contract, strictness and operations
 
-1. **Standards-conformance and interop** (see Design Influences 2.8). X-Wing already maps the hybrid to a
-   published, byte-exact combiner; extend that to a documented interop profile and alignment with the IETF
-   PQ-hybrid / TLS / Noise PQ directions, so the library conforms and interoperates rather than only
-   implementing. Standards drive adoption and erase the last of the bespoke-island liability.
-2. **Formal verification** (Lafourcade influence, see [Design Influences](DESIGN_INFLUENCES.md)). Labor,
-   not capital. A machine-checked proof of the CH-KEM composition is the highest credibility gain per
-   dollar and the clearest differentiator versus other Go PQ libraries; it also de-risks the paid audit.
-3. **Third-party security audit** (commercialization gate). Buyers buy audited crypto, not implemented
-   crypto. Sequenced after (1) and (2) make the audit cheaper and its findings stronger.
-4. **Real FIPS 140-3 validation** (capital-gated). The build mode plus POST/CST self-tests already exist;
-   this is the actual CMVP validation path that unlocks the government and regulated-enterprise segment.
+1. A written contract: release criteria, compatibility policy with a stable, experimental and internal API matrix, a failure-semantics table and a limits table (to file).
+2. Strict ClientHello parsing with an explicit extension rule, replacing today's silent acceptance of missing flags, trailing bytes and empty suite lists (to file).
+3. Move production ML-KEM and X-Wing to Go's standard library, which sits inside Go's FIPS 140-3 module, and keep circl for tests only (to file). This is the main certification step that is realistic now.
+4. Authorize hook and revocation pattern ([#233](https://github.com/sara-star-quant/Quantum-Go/issues/233)), revoke on reload and a session lifetime cap ([#234](https://github.com/sara-star-quant/Quantum-Go/issues/234)), key exporter ([#235](https://github.com/sara-star-quant/Quantum-Go/issues/235)).
+5. Forward operations: a loopback metrics and health endpoint, graceful drain, a tested container image and sidecar example, a runbook ([#205](https://github.com/sara-star-quant/Quantum-Go/issues/205); the rest to file).
+6. Evidence for operators: datagram loss visibility ([#195](https://github.com/sara-star-quant/Quantum-Go/issues/195)), handshake latency across cloud zones ([#189](https://github.com/sara-star-quant/Quantum-Go/issues/189)), service levels ([#203](https://github.com/sara-star-quant/Quantum-Go/issues/203)), soak and kernel settings on real clouds ([#204](https://github.com/sara-star-quant/Quantum-Go/issues/204)), path-MTU discovery ([#144](https://github.com/sara-star-quant/Quantum-Go/issues/144)), and shrinking duplicated code ([#192](https://github.com/sara-star-quant/Quantum-Go/issues/192)).
+7. Supply chain: an SBOM as a release asset and a reproducible-build check (to file).
+8. Client device keys with mutual authentication ([#236](https://github.com/sara-star-quant/Quantum-Go/issues/236)): the one new capability that removes a real risk, because a server holding every client's PSK is a single point of failure. It adds protocol surface, so it starts only with a written spec and a formal model, after the pilots say it is needed.
 
-Deferred and option-priced *behind* this arc: **CH-KEM v2 HQC diversification** (see Research Items). It
-adds cryptographic family diversity for the high-assurance segment, but only adds value if the HQC
-primitive is itself from a trusted, audited source, so it converts only when circl ships `kem/hqc` or a
-pure-Go HQC clears an audit. Shipping it via CGO or hand-rolled code-based crypto would spend trust rather
-than build it.
+### Later: after pilots or a review
 
-These sit explicitly *ahead of* the adoption/packaging tier - language bindings, data-plane performance,
-deployment tooling, enterprise glue (config management, HSM, Helm/Terraform), and compatibility with the
-current versions of mainstream VPN transport protocols. That tier drives adoption once the assurance work
-makes the library trustworthy, but it is table-stakes packaging rather than a standalone valuation multiplier.
+PROXY protocol v2 with identity ([#237](https://github.com/sara-star-quant/Quantum-Go/issues/237)), traffic profiles and labels ([#222](https://github.com/sara-star-quant/Quantum-Go/issues/222)), a `net.Conn` adapter and gRPC credential ([#219](https://github.com/sara-star-quant/Quantum-Go/issues/219)), the two-core stream split ([#193](https://github.com/sara-star-quant/Quantum-Go/issues/193)), HSM-backed keys ([#19](https://github.com/sara-star-quant/Quantum-Go/issues/19)), deployment tooling ([#20](https://github.com/sara-star-quant/Quantum-Go/issues/20)), optional long-horizon KEM suites ([#158](https://github.com/sara-star-quant/Quantum-Go/issues/158)), moving the benchmark and demo commands into their own binary, and X-Wing key reuse ([#239](https://github.com/sara-star-quant/Quantum-Go/issues/239)).
+
+### Third-party review and validation
+
+A paid audit and FIPS 140-3 validation wait until the protocol and API settle. Until then: prepare the audit dossier, ask applied-cryptography researchers for a design review, and apply for a sponsored audit (OSTIF sets a funding goal per project, so it needs sponsors). Using Go's validated module for the primitives is the route we can take without a certificate of our own.
 
 ### Completed Features
 - [x] CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)

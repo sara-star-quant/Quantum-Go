@@ -19,6 +19,14 @@ if [[ "${1:-}" == "--check" ]]; then
 		exit 1
 	fi
 	echo "README line count ok (claims $claimed, core is $core)"
+	# The reviewable core has a budget (docs/ROADMAP.md, scope discipline). Raise it only with a
+	# written reason, because every line here is a line an auditor must read.
+	budget=10000
+	if ((core > budget)); then
+		echo "core is $core lines, over the $budget line budget. Cut code or justify a new budget in docs/ROADMAP.md." >&2
+		exit 1
+	fi
+	echo "core within the $budget line budget"
 	exit 0
 fi
 
