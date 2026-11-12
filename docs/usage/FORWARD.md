@@ -42,6 +42,7 @@ Point the application at `127.0.0.1:8080`. It speaks plain TCP to its local forw
 ## What it protects, and what it does not
 
 - **Protected:** the bytes between the two forwarders are confidential, integrity-protected and forward-secret, with a hybrid post-quantum key exchange. The two forwarders authenticate each other with the PSK, and optionally the server's pinned key.
+- **A Unix socket guards the plain hop better than a port.** With `--listen unix:/run/app/qt.sock` the operating system's file permissions decide who may use the tunnel, where a loopback port admits every local user. The socket is created with mode 0600 and replaced after a crash, a live socket or a regular file at the path is never taken over, and a directory that others can write to is refused. Unix sockets are not available on Windows.
 - **Not protected:** the plain hop between the application and its local forwarder, and between the server forwarder and the service. Keep both on loopback or inside one pod or host. A bare `--listen :8080` binds `127.0.0.1`, not every interface.
 - **The PSK identifies the forwarder pair, not a person.** Anyone who can reach the client's local port uses the tunnel, so guard that port with loopback, OS permissions or network policy. Authenticated per-user identity is not available yet ([#196](https://github.com/sara-star-quant/Quantum-Go/issues/196)).
 - **Not hidden:** record sizes, timing and the number of connections are visible on the wire.
@@ -115,5 +116,7 @@ Forward mode sends each tunnel record's plaintext as one frame: a one-byte type 
 | `--max-conns`, `--idle-timeout` | both | connection and idle limits |
 | `--max-conns-per-ip`, `--handshake-rate` | server | per-address connection cap and global handshakes per second (0 disables) |
 | `--allow-suite` | both | only these KEM suites, comma-separated (`chkem-v1`, `x-wing`); use `chkem-v1` to refuse the smaller suite |
+| `--listen unix:/path`, `--upstream unix:/path` | client, server | use a Unix socket for the plain side instead of a TCP port; the listener creates it private (mode 0600) and refuses a world-writable directory |
+| `--socket-mode` | client | permission of a `unix:` listener, octal: `0600` owner only (default), `0660` owner and group; any mode that gives access to others is refused |
 | `--suite` | client | KEM suite to offer first: `chkem-v1` (default) or `x-wing`; the server follows |
 | `--insecure-no-auth`, `--verbose` | both | development only; log every connection |

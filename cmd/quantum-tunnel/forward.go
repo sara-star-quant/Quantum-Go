@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,6 +44,8 @@ type forwardLimits struct {
 	maxConns    int
 	idleTimeout time.Duration
 	dialTimeout time.Duration
+	// socketMode is the permission of a Unix socket on the plain side; 0 means 0600.
+	socketMode os.FileMode
 	// maxPerIP caps concurrent connections from one source address, and handshakeRate caps
 	// handshakes per second across all sources. Each handshake costs the server an ML-KEM
 	// operation before it knows who the peer is, so these bound what a stranger can spend.
@@ -181,7 +184,7 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 func serveOne(t *tunnel.Tunnel, upstream string, lim forwardLimits, logf func(string, ...any)) {
 	defer func() { _ = t.Close() }()
 	start := time.Now()
-	conn, err := net.DialTimeout("tcp", upstream, lim.dialTimeout)
+	conn, err := dialUpstream(upstream, lim.dialTimeout)
 	if err != nil {
 		logf("upstream %s: %v", upstream, err)
 		return
@@ -194,7 +197,7 @@ func serveOne(t *tunnel.Tunnel, upstream string, lim forwardLimits, logf func(st
 // startForwardClient accepts plain TCP on listen and carries each connection to connect
 // through its own tunnel.
 func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim forwardLimits, logf func(string, ...any)) (*forwarder, error) {
-	ln, err := net.Listen("tcp", listen)
+	ln, err := listenPlain(listen, lim.socketMode)
 	if err != nil {
 		return nil, err
 	}
@@ -607,13 +610,14 @@ func loopbackHost(addr string) (string, error) {
 
 func forwardCommand() {
 	fs := flag.NewFlagSet("forward", flag.ExitOnError)
-	listen := fs.String("listen", "", "Client side: accept plain TCP on this address (a bare :port binds 127.0.0.1)")
+	listen := fs.String("listen", "", "Client side: accept plain TCP on this address (a bare :port binds 127.0.0.1), or on a Unix socket as unix:/path")
 	connect := fs.String("connect", "", "Client side: carry each connection to this --serve address through a tunnel")
 	serve := fs.String("serve", "", "Server side: accept tunnels on this address")
-	upstream := fs.String("upstream", "", "Server side: hand each tunnel to this single fixed TCP address")
+	upstream := fs.String("upstream", "", "Server side: hand each tunnel to this single fixed TCP address, or Unix socket as unix:/path")
 	pskFile := fs.String("psk-file", "", "File holding a 32-byte PSK as 64 hex characters (mode 0600); required on both sides")
 	clientsFile := fs.String("clients-file", "", "Server side: file of \"identity hexkey\" lines, one PSK per client (mode 0600)")
 	suite := fs.String("suite", "", "Client side: KEM suite to offer first, chkem-v1 (default, ML-KEM-1024, or the first --allow-suite entry) or x-wing (ML-KEM-768, smaller handshake)")
+	socketMode := fs.String("socket-mode", "0600", "Client side: permission of a unix: socket, octal (0600 owner only, 0660 owner and group)")
 	allowSuites := fs.String("allow-suite", "", "Either side: only these KEM suites, comma-separated (chkem-v1, x-wing). Use chkem-v1 to refuse the smaller suite")
 	identity := fs.String("identity", "default", "PSK identity the client announces, and the server matches against --psk-file")
 	serverKey := fs.String("server-key", "", "Server side: static key file from keygen; clients must then pin it with --pin")
@@ -686,7 +690,12 @@ EXAMPLES:
 			log.Printf(format, args...)
 		}
 	}
-	lim := forwardLimits{maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second, maxPerIP: *maxPerIP, handshakeRate: *handshakeRate}
+	mode, merr := strconv.ParseUint(*socketMode, 8, 32)
+	if merr != nil {
+		fmt.Fprintf(os.Stderr, "--socket-mode %q is not an octal permission such as 0600\n", *socketMode)
+		os.Exit(2)
+	}
+	lim := forwardLimits{socketMode: os.FileMode(mode), maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second, maxPerIP: *maxPerIP, handshakeRate: *handshakeRate}
 
 	// Register before the listeners start, so a signal in the startup gap is not lost.
 	stop := make(chan os.Signal, 1)
@@ -701,8 +710,11 @@ EXAMPLES:
 			log.Printf("forwarding tunnels on %v to %s (limits: %d connections, %d per source address, %.0f handshakes per second; 0 means off)", f.Addr(), *upstream, *maxConns, *maxPerIP, *handshakeRate)
 		}
 	} else {
-		var bind string
-		if bind, err = loopbackHost(*listen); err == nil {
+		bind := *listen
+		if _, isUnix := unixPath(bind); !isUnix {
+			bind, err = loopbackHost(bind)
+		}
+		if err == nil {
 			f, err = startForwardClient(bind, *connect, cfg, lim, logf)
 		}
 		if err == nil {
