@@ -20,7 +20,7 @@ The protocol draws on published post-quantum cryptography research and public st
 
 **Our adaptation:** `DeriveResumptionSecret(psk, freshKEM)` combined the ticket secret with a fresh CH-KEM exchange (v0.0.9). Removed in v0.0.26: nothing in `Dial` or `Listen` used it and it gave no speedup, so it is kept here as history only.
 
-**Difference:** TLS 1.3 uses HKDF-based key scheduling with a PSK binder. CH-KEM uses SHAKE-256 with domain separation (`"CH-KEM-Tunnel-Resumption"`), feeding both the PSK and fresh KEM output into a single XOF derivation. Our construction is simpler because we have a single KEM type rather than negotiable key exchange groups.
+**Difference (history):** the removed construction used SHAKE-256 with its own domain separation label and fed both the PSK and fresh KEM output into a single XOF derivation. The label no longer exists in the code. The PSK mixing the library does ship is the handshake PSK, described in the protocol specification.
 
 ### 2.2 Frequent Key Refresh Cadence
 
@@ -121,7 +121,7 @@ The following normative standards directly govern our implementation:
 | NIST FIPS 202 | SHA-3 Standard (SHAKE-256) | Key derivation, domain separation |
 | NIST SP 800-56C Rev. 2 | Key-Derivation Methods in Key-Establishment Schemes | KDF design, context/role binding |
 | NIST SP 800-38D | Recommendation for GCM Mode | AEAD nonce construction |
-| RFC 8446 | TLS 1.3 | Handshake structure, PSK+ECDHE resumption model |
+| RFC 8446 | TLS 1.3 | Handshake structure, PSK+ECDHE model (the resumption part was removed in v0.0.26) |
 
 ---
 

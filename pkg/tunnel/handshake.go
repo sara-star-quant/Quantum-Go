@@ -469,7 +469,6 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	h.clientRandom = msg.Random
 
 	// Parse the client's public key
-
 	clientPublicKey, err := h.session.kemSuite.ParsePublicKey(msg.CHKEMPublicKey)
 	if err != nil {
 		return err

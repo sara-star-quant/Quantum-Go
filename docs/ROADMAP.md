@@ -179,16 +179,7 @@ Required for FIPS 140-3 validation.
 > The fixes are in how they are composed in the handshake, resumption, and rekey protocols.
 
 #### 1. Session Resumption Forward Secrecy
-_Historical: the resumption API was removed in v0.0.26 (#146)._
-**Priority:** Critical | **Effort:** High
-
-- [x] Perform fresh CH-KEM exchange during resumption (PSK + ECDHE mode)
-- [x] Mix ticket master secret with fresh KEM shared secret via `DeriveResumptionSecret`
-- [x] Ensure resumed sessions derive unique traffic keys per session
-- [x] Add test: verify resumed session keys differ from original session keys
-- [x] Add test: verify forward secrecy holds when ticket key is compromised
-
-**Reference:** TLS 1.3 PSK with (EC)DHE key exchange (RFC 8446, Section 2.2)
+_Historical: the resumption API (encrypted tickets with a fresh KEM exchange) was removed in v0.0.26 (#146), so this item no longer describes shipped code._
 
 #### 2. Verify Data Shared Secret Binding
 **Priority:** Critical | **Effort:** Medium
@@ -323,15 +314,7 @@ produce identical nonce sequences, breaking GCM confidentiality guarantees.
 **Reference:** NIST SP 800-38D Section 8.2 (deterministic nonce construction)
 
 #### 3. Resumption Ticket Server Binding
-_Moot: the resumption API was removed in v0.0.26 (#146)._
-**Priority:** High | **Effort:** Small
-
-Resumption tickets are not bound to the server that issued them. A captured ticket
-can be replayed against a different server that shares the same ticket encryption key.
-
-- [ ] Include `SHA-256(server_public_key)` in ticket plaintext
-- [ ] Validate server identity on ticket decryption
-- [ ] Add test: verify ticket from server A is rejected by server B
+_Moot: the resumption API was removed in v0.0.26 (#146), so there is nothing left to bind._
 
 #### 4. Handshake Timeout
 **Priority:** High | **Effort:** Low

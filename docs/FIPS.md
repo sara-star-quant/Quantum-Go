@@ -171,7 +171,6 @@ Session statistics include FIPS mode status and the negotiated cipher suite.
 
 1. **Build Consistency**: Ensure all deployed binaries are built with the same FIPS mode setting to avoid interoperability issues.
 
-
 2. **Logging**: Consider logging FIPS mode status at startup for audit purposes:
    ```go
    log.Printf("FIPS mode: %v", crypto.FIPSMode())

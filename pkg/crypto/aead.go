@@ -238,7 +238,8 @@ func (a *AEAD) Counter() uint64 {
 }
 
 // SetCounter sets the nonce counter value.
-// Use with caution - only for resuming sessions with known state.
+// Use with caution: moving the counter backwards reuses a nonce under the same key, which
+// breaks AES-GCM and ChaCha20-Poly1305 entirely. Nothing in this library calls it.
 func (a *AEAD) SetCounter(counter uint64) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
