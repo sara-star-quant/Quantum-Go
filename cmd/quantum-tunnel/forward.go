@@ -50,6 +50,26 @@ type forwardLimits struct {
 	handshakeRate float64
 }
 
+// refusalLog logs refused handshakes at most once a second and counts the rest, so a flood
+// the rate limits are absorbing does not become a flood of log lines.
+type refusalLog struct {
+	last       time.Time
+	suppressed int
+}
+
+func (r *refusalLog) note(logf func(string, ...any), err error) {
+	if time.Since(r.last) < time.Second {
+		r.suppressed++
+		return
+	}
+	if r.suppressed > 0 {
+		logf("handshake refused (a wrong PSK or key, a rate limit, or a peer that is not a tunnel client): %v (and %d more in the last second)", err, r.suppressed)
+	} else {
+		logf("handshake refused (a wrong PSK or key, a rate limit, or a peer that is not a tunnel client): %v", err)
+	}
+	r.last, r.suppressed = time.Now(), 0
+}
+
 // forwarder is a running client or server side of a forwarding pair.
 type forwarder struct {
 	addr    net.Addr
@@ -99,13 +119,14 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 	cfg.RateLimit = tunnel.RateLimitConfig{
 		MaxConnectionsPerIP: lim.maxPerIP,
 		HandshakeRateLimit:  lim.handshakeRate,
-		HandshakeBurst:      int(2 * lim.handshakeRate),
+		HandshakeBurst:      max(1, int(2*lim.handshakeRate)), // a burst of 0 would refuse every handshake
 	}
 	ln.SetConfig(cfg)
 	sem := make(chan struct{}, lim.maxConns)
 	f.wg.Go(func() {
 		defer close(f.done)
 		var prev error
+		var refusals refusalLog
 		for {
 			t, err := ln.Accept()
 			if err != nil {
@@ -121,7 +142,7 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 				prev = err
 				// A wrong PSK, a wrong pinned key, a rate-limited peer or a client that is not a
 				// tunnel peer all surface here; keep serving.
-				logf("handshake refused (a wrong PSK or key, a rate limit, or a peer that is not a tunnel client): %v", err)
+				refusals.note(logf, err)
 				continue
 			}
 			select {
@@ -476,7 +497,7 @@ func decodePSK(s string) ([]byte, error) {
 		return nil, fmt.Errorf("a PSK must be hex: %w", err)
 	}
 	if bytes.Count(key, key[:1]) == len(key) {
-		return nil, errors.New("a PSK of one repeated byte is not random; generate one with: openssl rand -hex 32")
+		return nil, errors.New("a PSK of one repeated byte looks like a placeholder; generate one with: openssl rand -hex 32")
 	}
 	return key, nil
 }
@@ -564,8 +585,8 @@ func forwardCommand() {
 	serverKey := fs.String("server-key", "", "Server side: static key file from keygen; clients must then pin it with --pin")
 	pin := fs.String("pin", "", "Client side: the server's public key file from keygen")
 	maxConns := fs.Int("max-conns", 1024, "Most connections held open at once")
-	maxPerIP := fs.Int("max-conns-per-ip", 128, "Server side: most concurrent connections from one source address (0 disables)")
-	handshakeRate := fs.Float64("handshake-rate", 500, "Server side: most handshakes per second across all sources (0 disables)")
+	maxPerIP := fs.Int("max-conns-per-ip", 256, "Server side: most concurrent connections from one source address; raise it above the largest --max-conns of any one client forwarder (0 disables)")
+	handshakeRate := fs.Float64("handshake-rate", 1000, "Server side: most handshakes per second across all sources (0 disables)")
 	idle := fs.Duration("idle-timeout", 5*time.Minute, "Close a connection after this long with no data in either direction (0 disables)")
 	insecure := fs.Bool("insecure-no-auth", false, "Skip authentication. For tests and development only: anyone who can reach the server can reach the upstream")
 	verbose := fs.Bool("verbose", false, "Log every connection")
@@ -643,7 +664,7 @@ EXAMPLES:
 	if isServer {
 		f, err = startForwardServer(*serve, *upstream, cfg, lim, logf)
 		if err == nil {
-			log.Printf("forwarding tunnels on %v to %s", f.Addr(), *upstream)
+			log.Printf("forwarding tunnels on %v to %s (limits: %d connections, %d per source address, %.0f handshakes per second; 0 means off)", f.Addr(), *upstream, *maxConns, *maxPerIP, *handshakeRate)
 		}
 	} else {
 		var bind string

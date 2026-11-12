@@ -645,9 +645,11 @@ func TestDecodePSKRejectsRepeatedByte(t *testing.T) {
 // cut off, with nothing handed to the upstream.
 func TestForwardUnknownFrameTypeEndsTheConnection(t *testing.T) {
 	var got atomic.Int64
+	upstreamDone := make(chan struct{})
 	up, _ := startUpstream(t, func(c net.Conn) {
 		n, _ := io.Copy(io.Discard, c)
 		got.Add(n)
+		close(upstreamDone)
 	})
 	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
 	cfg, err := buildForwardConfig(true, forwardAuth{pskFile: psk})
@@ -672,10 +674,14 @@ func TestForwardUnknownFrameTypeEndsTheConnection(t *testing.T) {
 	if err := raw.Send([]byte{0x07, 'x', 'y'}); err != nil {
 		t.Fatal(err)
 	}
-	cliCfg.ReadTimeout = 5 * time.Second
 	raw.SetReadTimeout(5 * time.Second)
 	if _, err := raw.Receive(); err == nil {
 		t.Fatal("the server kept the connection open after an unknown frame type")
+	}
+	select {
+	case <-upstreamDone: // the upstream connection closed, so the byte count is final
+	case <-time.After(5 * time.Second):
+		t.Fatal("the upstream connection stayed open after an unknown frame type")
 	}
 	if got.Load() != 0 {
 		t.Fatalf("the upstream received %d bytes from an unknown frame", got.Load())
@@ -712,4 +718,41 @@ func TestForwardPerIPConnectionLimit(t *testing.T) {
 		_ = second.Close()
 		t.Fatal("a second connection from the same address got through a limit of one")
 	}
+
+	// The slot frees when the first connection closes, so the same address can connect again.
+	_ = first.Close()
+	var again *tunnel.Tunnel
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		if again, err = tunnel.DialWithConfig("tcp", srv.Addr().String(), cliCfg); err == nil {
+			_ = again.Close()
+			return
+		}
+	}
+	t.Fatalf("the slot never freed after the first connection closed: %v", err)
+}
+
+func TestForwardHandshakeBurstNeverZero(t *testing.T) {
+	up, _ := startUpstream(t, echoHandler)
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	auth := forwardAuth{pskFile: psk}
+	srvCfg, err := buildForwardConfig(true, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lim := testLimits
+	lim.handshakeRate = 0.25 // slower than one every two seconds: a burst of 0 would refuse everyone
+	srv, err := startForwardServer("127.0.0.1:0", up, srvCfg, lim, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	cliCfg, err := buildForwardConfig(false, auth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := tunnel.DialWithConfig("tcp", srv.Addr().String(), cliCfg)
+	if err != nil {
+		t.Fatalf("a slow handshake rate refused the first handshake: %v", err)
+	}
+	_ = c.Close()
 }
