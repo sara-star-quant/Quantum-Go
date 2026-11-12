@@ -57,8 +57,11 @@ type Transport struct {
 	// Mutex for write operations
 	writeMu sync.Mutex
 
-	// Close state
+	// Close state. closed means no more traffic: it is set by Close and when the peer sends
+	// close_notify. released means Close has run its cleanup (session keys zeroized, socket
+	// closed), which a peer's close_notify alone must not skip.
 	closed   bool
+	released bool
 	closedMu sync.RWMutex
 }
 
@@ -603,10 +606,12 @@ func (t *Transport) sendAlert(level protocol.AlertLevel, code protocol.AlertCode
 // Close gracefully closes the transport.
 func (t *Transport) Close() error {
 	t.closedMu.Lock()
-	if t.closed {
+	if t.released {
 		t.closedMu.Unlock()
 		return nil
 	}
+	t.released = true
+	peerClosed := t.closed // the peer already said goodbye: skip our own alert
 	t.closed = true
 	t.closedMu.Unlock()
 
@@ -615,7 +620,7 @@ func (t *Transport) Close() error {
 	isEstablished := t.session.State() == SessionStateEstablished
 	t.closedMu.RUnlock()
 
-	if isEstablished {
+	if isEstablished && !peerClosed {
 		// Use a very short timeout for close notification to avoid blocking
 		_ = t.conn.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
 		msg := t.codec.EncodeAlert(protocol.AlertLevelWarning, protocol.AlertCodeCloseNotify, "connection closed")
