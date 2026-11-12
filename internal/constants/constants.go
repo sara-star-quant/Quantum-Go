@@ -90,9 +90,6 @@ const (
 	// DomainSeparatorRekey is used in rekey derivation
 	DomainSeparatorRekey = "CH-KEM-Tunnel-Rekey"
 
-	// DomainSeparatorResumption is used in resumption secret derivation
-	DomainSeparatorResumption = "CH-KEM-Tunnel-Resumption"
-
 	// DomainSeparatorDatagramNonce is used to derive the per-direction datagram
 	// nonce prefixes. The datagram transport never transmits the nonce; it derives
 	// nonce = prefix || seq, so the prefix must be agreed by both sides from the

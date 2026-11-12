@@ -235,18 +235,6 @@ Master Secret (32B)
                   output: verify_data (32B)
 ```
 
-**Session Resumption Key Derivation (PSK + ECDHE):**
-
-```
-Ticket Secret (PSK, 32B)
-        │
-        └──> Fresh CH-KEM Exchange ──> Fresh Secret (32B)
-                │
-                └──> SHAKE-256("CH-KEM-Tunnel-Resumption")
-                          input: [PSK || Fresh Secret]
-                          output: Resumed Master Secret (32B)
-```
-
 ---
 
 ## 5. Key Management

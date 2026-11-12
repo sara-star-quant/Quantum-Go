@@ -76,12 +76,6 @@ var (
 	// ErrCipherSuiteNotFIPSApproved indicates a cipher suite is not FIPS 140-3 approved
 	ErrCipherSuiteNotFIPSApproved = errors.New("protocol: cipher suite not FIPS approved")
 
-	// ErrInvalidTicket indicates a session ticket is invalid or malformed
-	ErrInvalidTicket = errors.New("protocol: invalid ticket")
-
-	// ErrExpiredTicket indicates a session ticket has expired
-	ErrExpiredTicket = errors.New("protocol: expired ticket")
-
 	// ErrServerKeyMismatch indicates the server did not prove possession of the
 	// pinned static key (wrong key, or static auth required but not negotiated).
 	ErrServerKeyMismatch = errors.New("protocol: server static key mismatch")

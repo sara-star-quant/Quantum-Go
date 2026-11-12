@@ -113,12 +113,6 @@ type Handshake struct {
 	hrrSuite         chkem.SuiteID
 	hrrDone          bool
 
-	// Resumption state
-	ticket        []byte         // Client ticket to send
-	ticketSecret  []byte         // Initiator's secret for the ticket
-	ticketManager *TicketManager // Server ticket manager to verify
-	resumed       bool           // Whether this is a resumed session
-
 	// datagram selects InitializeDatagramKeys (epoch-keyed, derived nonces) over
 	// the stream InitializeKeys at completion. The datagram FSM sets it; the
 	// stream path leaves it false and is byte-for-byte unchanged.
@@ -144,17 +138,6 @@ func NewHandshake(session *Session) *Handshake {
 	}
 }
 
-// SetTicket sets the session ticket for resumption (initiator).
-func (h *Handshake) SetTicket(ticket, secret []byte) {
-	h.ticket = ticket
-	h.ticketSecret = secret
-}
-
-// SetTicketManager sets the ticket manager for resumption (responder).
-func (h *Handshake) SetTicketManager(tm *TicketManager) {
-	h.ticketManager = tm
-}
-
 // sendHandshakeAlert sends a handshake failure alert. Best effort.
 func sendHandshakeAlert(rw io.ReadWriter, codec *protocol.Codec, code protocol.AlertCode, desc string) {
 	msg := codec.EncodeAlert(protocol.AlertLevelFatal, code, desc)
@@ -178,7 +161,6 @@ func (h *Handshake) CreateClientHello() ([]byte, error) {
 	msg := &protocol.ClientHello{
 		Version:        protocol.Current,
 		Random:         h.clientRandom,
-		SessionID:      h.ticket,
 		KEMSuite:       uint16(h.session.kemSuite.ID()),
 		KEMSuites:      supportedKEMSuiteIDs(),
 		CHKEMPublicKey: h.session.LocalKeyPair.PublicKey().Bytes(),
@@ -313,11 +295,6 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 		return qerrors.ErrUnsupportedKEMSuite
 	}
 
-	// Check if server accepted resumption
-	if len(msg.SessionID) > 0 && h.ticket != nil && bytes.Equal(msg.SessionID, h.ticket) {
-		h.resumed = true
-	}
-
 	// Store server random
 	h.serverRandom = msg.Random
 
@@ -331,17 +308,7 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 	if err != nil {
 		return err
 	}
-
-	if h.resumed {
-		// PSK+KEM mode: mix ticket secret with fresh KEM secret
-		h.sharedSecret, err = crypto.DeriveResumptionSecret(h.ticketSecret, freshSecret)
-		if err != nil {
-			return err
-		}
-		crypto.Zeroize(freshSecret)
-	} else {
-		h.sharedSecret = freshSecret
-	}
+	h.sharedSecret = freshSecret
 
 	// Add to transcript
 	h.transcript.Write(data)
@@ -501,17 +468,8 @@ func (h *Handshake) ProcessClientHello(data []byte) error {
 	// Store client random
 	h.clientRandom = msg.Random
 
-	// Check for resumption
-	if len(msg.SessionID) > 0 && h.ticketManager != nil {
-		secret, err := h.session.Resume(msg.SessionID, h.ticketManager)
-		if err == nil {
-			h.resumed = true
-			h.ticketSecret = secret
-			h.session.ID = msg.SessionID
-		}
-	}
+	// Parse the client's public key
 
-	// Always parse client's public key (needed for fresh KEM exchange even during resumption)
 	clientPublicKey, err := h.session.kemSuite.ParsePublicKey(msg.CHKEMPublicKey)
 	if err != nil {
 		return err
@@ -613,23 +571,12 @@ func (h *Handshake) CreateServerHello() ([]byte, error) {
 	// Generate server random
 	h.serverRandom = crypto.MustSecureRandomBytes(32)
 
-	// Always perform fresh KEM exchange (even during resumption for forward secrecy)
 	ct, freshSecret, err := h.session.kemSuite.Encapsulate(h.session.RemotePublicKey, chkem.RoleResponder)
 	if err != nil {
 		return nil, err
 	}
 	ctBytes := ct.Bytes()
-
-	if h.resumed {
-		// PSK+KEM mode: mix ticket secret with fresh KEM secret
-		h.sharedSecret, err = crypto.DeriveResumptionSecret(h.ticketSecret, freshSecret)
-		if err != nil {
-			return nil, err
-		}
-		crypto.Zeroize(freshSecret)
-	} else {
-		h.sharedSecret = freshSecret
-	}
+	h.sharedSecret = freshSecret
 
 	msg := &protocol.ServerHello{
 		Version:         protocol.Current,
@@ -985,7 +932,7 @@ func readEncryptedRecord(r io.Reader) ([]byte, error) {
 // InitiatorHandshake performs the complete handshake as initiator.
 // initiatorExchangeHellos sends the ClientHello, handles an optional
 // HelloRetryRequest (one retry, resending the ClientHello in the server's suite),
-// and processes the ServerHello. Shared by the fresh and resumption initiator drivers.
+// and processes the ServerHello. Shared by the stream and datagram initiator drivers.
 func initiatorExchangeHellos(h *Handshake, rw io.ReadWriter) error {
 	clientHello, err := h.CreateClientHello()
 	if err != nil {
@@ -1025,7 +972,7 @@ func initiatorExchangeHellos(h *Handshake, rw io.ReadWriter) error {
 
 // responderExchangeHellos reads the ClientHello, sends a HelloRetryRequest if the
 // client's KEM suite is unsupported (one retry), processes the resulting ClientHello,
-// and sends the ServerHello. Shared by the fresh and resumption responder drivers.
+// and sends the ServerHello. Shared by the stream and datagram responder drivers.
 func responderExchangeHellos(h *Handshake, rw io.ReadWriter) error {
 	clientHello, err := h.codec.ReadMessage(rw)
 	if err != nil {
@@ -1182,54 +1129,4 @@ func ResponderHandshake(session *Session, rw io.ReadWriter) error {
 	}
 
 	return err
-}
-
-// InitiatorResumptionHandshake performs the complete handshake as initiator with resumption.
-func InitiatorResumptionHandshake(session *Session, rw io.ReadWriter, ticket, secret []byte) error {
-	observer := session.observer
-	var done func(error)
-	if observer != nil {
-		_, done = observer.OnHandshakeStart(context.Background())
-	}
-
-	err := func() error {
-		h := NewHandshake(session)
-		h.SetTicket(ticket, secret)
-
-		// Exchange hellos (with an optional HelloRetryRequest) and process ServerHello.
-		if err := initiatorExchangeHellos(h, rw); err != nil {
-			return err
-		}
-
-		return initiatorFinish(h, rw)
-	}()
-
-	if observer != nil {
-		if err != nil {
-			if qerrors.Is(err, qerrors.ErrAuthenticationFailed) {
-				observer.OnAuthFailure()
-			}
-			if isProtocolError(err) {
-				observer.OnProtocolError(err)
-			}
-		}
-		if done != nil {
-			done(err)
-		}
-	}
-
-	return err
-}
-
-// ResponderResumptionHandshake performs the complete handshake as responder with resumption.
-func ResponderResumptionHandshake(session *Session, rw io.ReadWriter, tm *TicketManager) error {
-	h := NewHandshake(session)
-	h.SetTicketManager(tm)
-
-	// Receive ClientHello (with an optional HelloRetryRequest), send the
-	// ServerHello + ServerFinished flight, then verify ClientFinished.
-	if err := responderExchangeHellos(h, rw); err != nil {
-		return err
-	}
-	return responderFinish(h, rw)
 }

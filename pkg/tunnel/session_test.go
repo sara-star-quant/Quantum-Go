@@ -1,7 +1,6 @@
 package tunnel
 
 import (
-	"bytes"
 	"testing"
 	"time"
 
@@ -259,39 +258,5 @@ func TestSessionInitializeAfterClose(t *testing.T) {
 	err := session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
 	if err == nil {
 		t.Error("expected error for initialization after close")
-	}
-}
-
-func TestSessionExportTicketResume(t *testing.T) {
-	tmKey := make([]byte, 32)
-	_ = crypto.SecureRandom(tmKey)
-	tm, _ := NewTicketManager(tmKey, time.Hour)
-
-	session, _ := NewSession(RoleInitiator)
-	masterSecret := make([]byte, constants.CHKEMSharedSecretSize)
-	_ = crypto.SecureRandom(masterSecret)
-	_ = session.InitializeKeys(masterSecret, constants.CipherSuiteAES256GCM)
-	ticket, err := session.ExportTicket(tm)
-	if err != nil {
-		t.Fatalf("ExportTicket failed: %v", err)
-	}
-	if len(ticket) == 0 {
-		t.Fatal("exported empty ticket")
-	}
-
-	// Test Resume - returns PSK without initializing keys (keys are set after fresh KEM exchange)
-	session2, _ := NewSession(RoleResponder)
-	resumedSecret, err := session2.Resume(ticket, tm)
-	if err != nil {
-		t.Fatalf("Resume failed: %v", err)
-	}
-
-	if !bytes.Equal(masterSecret, resumedSecret) {
-		t.Errorf("resumed secret mismatch:\nwant: %x\ngot:  %x", masterSecret, resumedSecret)
-	}
-
-	// Resume should NOT set state to Established - that happens after fresh KEM exchange
-	if session2.State() == SessionStateEstablished {
-		t.Error("Resume should not set state to Established (keys are initialized later after KEM exchange)")
 	}
 }

@@ -25,8 +25,6 @@ var (
 	ErrMessageTooLarge = qerrors.ErrMessageTooLarge
 	ErrSessionExpired  = qerrors.ErrSessionExpired
 	ErrInvalidState    = qerrors.ErrInvalidState
-	ErrInvalidTicket   = qerrors.ErrInvalidTicket
-	ErrExpiredTicket   = qerrors.ErrExpiredTicket
 
 	// Tunnel lifecycle.
 	ErrTunnelClosed    = qerrors.ErrTunnelClosed

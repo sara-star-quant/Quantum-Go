@@ -183,11 +183,7 @@ The client advertises the identity label so the server selects the matching key,
    - There is **no certificate- or token-based client identity**: PSK proves shared-secret possession, not a per-client asymmetric credential.
    - For per-client asymmetric identity today, layer it externally (mTLS-style certificates).
 
-2. **Resumption tickets not bound to server identity** (planned: a later stream-hardening release):
-   - Session tickets contain only master secret and cipher suite
-   - A captured ticket could theoretically be replayed against a different server
-   - Risk is low: requires the attacker to know the ticket encryption key
-   - Full fix: include `SHA-256(server_public_key)` in ticket plaintext
+2. **Resumption tickets**: removed in v0.0.26 together with the unused resumption API, so the old server-binding gap no longer exists. Every connection does a full handshake.
 
 #### Implementation-level
 

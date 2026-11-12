@@ -111,7 +111,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 | Hybrid guarantee | Secure if either algorithm is secure |
 | Endpoint authentication | Opt-in: static-key server pinning, require-auth, per-client PSK mutual auth |
 | Forward secrecy | Ephemeral keys per session and per rekey |
-| Session resumption | Experimental low-level ticket API; not used by `Dial` or `Listen` ([details](docs/usage/CONFIGURATION.md#session-resumption)) |
+| Session resumption | Removed in v0.0.26: it gave no speedup, so every connection does a full handshake |
 | FIPS 140-3 | Build mode with POST and CST self-tests ([docs](docs/FIPS.md)); not a validated module |
 
 ## Documentation

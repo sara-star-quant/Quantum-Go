@@ -92,27 +92,6 @@ func TestHandshakeErrorPaths(t *testing.T) {
 	}
 }
 
-func TestHandshakeResumptionErrorPaths(t *testing.T) {
-	clientConn, serverConn := net.Pipe()
-	defer func() { _ = clientConn.Close() }()
-	defer func() { _ = serverConn.Close() }()
-
-	session, _ := NewSession(RoleInitiator)
-
-	// Test HandshakeResumptionErrorPaths with closed connection
-	_ = clientConn.Close()
-	err := InitiatorResumptionHandshake(session, clientConn, []byte("ticket"), []byte("secret"))
-	if err == nil {
-		t.Error("expected error for resumption handshake on closed connection")
-	}
-
-	session2, _ := NewSession(RoleResponder)
-	err = ResponderResumptionHandshake(session2, serverConn, nil)
-	if err == nil {
-		t.Error("expected error for resumption handshake on closed connection (responder)")
-	}
-}
-
 func TestHandshakeSelectCipherSuite(t *testing.T) {
 	// No common cipher suite
 	offered := []constants.CipherSuite{constants.CipherSuite(0xFF)}

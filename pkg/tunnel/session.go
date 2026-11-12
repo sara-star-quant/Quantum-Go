@@ -647,47 +647,6 @@ func (s *Session) Rekey(newMasterSecret []byte) error {
 	return nil
 }
 
-// ExportTicket creates an encrypted session ticket for resumption.
-func (s *Session) ExportTicket(tm *TicketManager) ([]byte, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if s.State() != SessionStateEstablished {
-		return nil, qerrors.ErrInvalidState
-	}
-
-	if s.masterSecret == nil {
-		return nil, qerrors.ErrInvalidState
-	}
-
-	ticket := &SessionTicket{
-		Version:      1,
-		CipherSuite:  s.CipherSuite,
-		MasterSecret: make([]byte, len(s.masterSecret)),
-		CreatedAt:    s.EstablishedAt,
-	}
-	copy(ticket.MasterSecret, s.masterSecret)
-
-	return tm.EncryptTicket(ticket)
-}
-
-// Resume restores a session from an encrypted ticket (called by responder).
-// Returns the ticket's master secret (PSK) for mixing with a fresh KEM secret.
-// Does NOT initialize traffic keys - that happens after the fresh KEM exchange.
-func (s *Session) Resume(ticketBytes []byte, tm *TicketManager) ([]byte, error) {
-	ticket, err := tm.DecryptTicket(ticketBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	// Store cipher suite from ticket
-	s.mu.Lock()
-	s.CipherSuite = ticket.CipherSuite
-	s.mu.Unlock()
-
-	return ticket.MasterSecret, nil
-}
-
 // Close securely closes the session and zeroizes sensitive data.
 func (s *Session) Close() {
 	s.mu.Lock()

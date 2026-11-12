@@ -82,15 +82,6 @@ suites := protocol.SupportedCipherSuites()
 // Returns: [CipherSuiteAES256GCM]
 ```
 
-#### Session Resumption
-
-Session tickets created with non-FIPS cipher suites (ChaCha20-Poly1305) will be rejected when resuming in FIPS mode. This forces a full handshake with a FIPS-approved cipher suite.
-
-```go
-// Attempting to resume a ChaCha20-Poly1305 session in FIPS mode
-// will return ErrCipherSuiteNotFIPSApproved
-```
-
 #### Error Handling
 
 FIPS mode introduces a new error type:
@@ -180,14 +171,13 @@ Session statistics include FIPS mode status and the negotiated cipher suite.
 
 1. **Build Consistency**: Ensure all deployed binaries are built with the same FIPS mode setting to avoid interoperability issues.
 
-2. **Ticket Rotation**: When transitioning from standard to FIPS mode, existing session tickets using ChaCha20-Poly1305 will be rejected. Plan for increased handshake load during transition.
 
-3. **Logging**: Consider logging FIPS mode status at startup for audit purposes:
+2. **Logging**: Consider logging FIPS mode status at startup for audit purposes:
    ```go
    log.Printf("FIPS mode: %v", crypto.FIPSMode())
    ```
 
-4. **Testing**: Always run the full test suite with `-tags fips` before deploying FIPS builds.
+3. **Testing**: Always run the full test suite with `-tags fips` before deploying FIPS builds.
 
 ## Power-On Self-Tests (POST)
 
@@ -303,7 +293,6 @@ if crypto.CSTEnabled() {
 
 This error occurs when:
 - Attempting to use ChaCha20-Poly1305 in FIPS mode
-- Resuming a session ticket created with a non-FIPS cipher suite
 
 **Solution**: Ensure all parties use AES-256-GCM or rebuild without FIPS mode if ChaCha20-Poly1305 is required.
 

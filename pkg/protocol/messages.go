@@ -23,7 +23,7 @@ import (
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 )
 
-// maxSessionIDLen bounds the SessionID field (it carries a resumption ticket in a
+// maxSessionIDLen bounds the SessionID field (reserved on the wire; it once carried a resumption ticket in a
 // ClientHello). The wire length is one byte, so a longer value would truncate silently.
 const maxSessionIDLen = 255
 
@@ -129,7 +129,8 @@ type ClientHello struct {
 	// Random nonce for freshness (32 bytes)
 	Random []byte
 
-	// SessionID for session resumption (16 bytes, or empty for new session)
+	// SessionID is reserved on the wire and sent empty. It once carried a resumption ticket;
+	// a receiver ignores any value.
 	SessionID []byte
 
 	// KEMSuite is the KEM suite id the client's CHKEMPublicKey key share uses.

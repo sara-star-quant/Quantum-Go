@@ -18,7 +18,5 @@ func isProtocolError(err error) bool {
 		qerrors.Is(err, qerrors.ErrHandshakeFailed) ||
 		qerrors.Is(err, qerrors.ErrSessionExpired) ||
 		qerrors.Is(err, qerrors.ErrInvalidState) ||
-		qerrors.Is(err, qerrors.ErrMessageTooLarge) ||
-		qerrors.Is(err, qerrors.ErrInvalidTicket) ||
-		qerrors.Is(err, qerrors.ErrExpiredTicket)
+		qerrors.Is(err, qerrors.ErrMessageTooLarge)
 }

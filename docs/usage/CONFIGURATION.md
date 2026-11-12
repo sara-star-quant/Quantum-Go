@@ -135,10 +135,3 @@ rateObserver := metrics.NewRateLimitObserver(collector, metrics.GetLogger())
 config.RateLimitObserver = rateObserver
 ```
 
-## Session Resumption
-
-Resumption is a low-level building block, not an automatic feature. `Dial`, `Listen` and the datagram transport do not issue or use tickets.
-
-- **What exists**: `TicketManager` encrypts and decrypts tickets, `Session.ExportTicket` and `Session.Resume` produce and consume them, and `InitiatorResumptionHandshake` / `ResponderResumptionHandshake` run a resumed handshake over a stream you manage yourself.
-- **What a resumed handshake does**: it mixes the ticket secret with a fresh CH-KEM exchange, so forward secrecy is kept. It still performs the key exchange, so it is not faster than a full handshake.
-- **What is missing**: no message makes the server hand a ticket to the client after a full handshake, there is no client-side ticket cache, and tickets are not yet bound to the issuing server's identity. Treat tickets as an experimental API.

@@ -297,7 +297,6 @@ All labels are ASCII. `KDF` and `TH` are defined in Section 2.
 | `CH-KEM-Tunnel-Authentication` | static-key auth fold (Section 5.5) |
 | `CH-KEM-Tunnel-PSK` | pre-shared-key fold (Section 5.5) |
 | `CH-KEM-Tunnel-Rekey` | rekey secret derivation (Section 8) |
-| `CH-KEM-Tunnel-Resumption` | resumption secret derivation |
 
 ## 11. Conformance
 

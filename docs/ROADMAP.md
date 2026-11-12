@@ -27,8 +27,7 @@ Tracked as GitHub issues, in this order:
 3. Throughput on real hardware (done in v0.0.21 to v0.0.24). A bench mode that runs client and server on separate hosts, Linux numbers from CI, in-place seal and open on the stream path, and a cloud script that reproduces the two-host numbers on AWS and Google Cloud.
 4. Striped multi-flow sessions. Document striping over `Pool` first; build a one-handshake bundle only if the Linux and two-host numbers show parallel flows gain enough to justify it. The cloud numbers now say they do: one tunnel flow stops at 10 to 14 Gbps on a 20 Gbps link while four flows fill it, and pipelining the receive across two cores (#193) is the alternative to weigh.
 5. A second independent implementation checked against the conformance vectors.
-6. A decision on the experimental resumption API: wire it into `Dial` and `Listen`, or remove it.
-7. Third-party audit and FIPS 140-3 validation (owner-driven, not an open task).
+6. Third-party audit and FIPS 140-3 validation (owner-driven, not an open task).
 
 ## Strategic Priorities (valuation-driven)
 
@@ -64,7 +63,7 @@ makes the library trustworthy, but it is table-stakes packaging rather than a st
 ### Completed Features
 - [x] CH-KEM hybrid key exchange (X25519 + ML-KEM-1024)
 - [x] Network Rekey Protocol (handshake and activation)
-- [x] Session Resumption (encrypted tickets)
+- [x] Session Resumption (encrypted tickets); removed in v0.0.26 because nothing used it
 - [x] Alert Protocol (standardized error reporting)
 - [x] Graceful shutdown with CloseNotify
 - [x] Comprehensive test suite (85%+ coverage on core packages)
@@ -180,6 +179,7 @@ Required for FIPS 140-3 validation.
 > The fixes are in how they are composed in the handshake, resumption, and rekey protocols.
 
 #### 1. Session Resumption Forward Secrecy
+_Historical: the resumption API was removed in v0.0.26 (#146)._
 **Priority:** Critical | **Effort:** High
 
 - [x] Perform fresh CH-KEM exchange during resumption (PSK + ECDHE mode)
@@ -323,6 +323,7 @@ produce identical nonce sequences, breaking GCM confidentiality guarantees.
 **Reference:** NIST SP 800-38D Section 8.2 (deterministic nonce construction)
 
 #### 3. Resumption Ticket Server Binding
+_Moot: the resumption API was removed in v0.0.26 (#146)._
 **Priority:** High | **Effort:** Small
 
 Resumption tickets are not bound to the server that issued them. A captured ticket

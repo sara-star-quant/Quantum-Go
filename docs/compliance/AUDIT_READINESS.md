@@ -74,7 +74,6 @@ vulnerabilities. License: Apache 2.0 (with a `NOTICE` file); dependencies are pe
 
 - The handshake is unauthenticated by default; endpoint authentication (static-key pinning, PSK mutual) is
   opt-in. An unconfigured tunnel provides encryption and forward secrecy but not peer identity.
-- Resumption tickets are not yet bound to server identity (verified-open; design captured, not shipped).
 - Sequence-based nonces assume a session's keys are used only through the session; `Send` and `SendBatch`
   are serialized per session, so concurrent senders are safe.
 - KEM-suite negotiation and HelloRetryRequest are covered by the transcript-agreement proof and by tests,

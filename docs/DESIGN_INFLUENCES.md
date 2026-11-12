@@ -18,7 +18,7 @@ The protocol draws on published post-quantum cryptography research and public st
 
 **Concept:** Resumed sessions should combine a pre-shared key (ticket secret) with a fresh key exchange to provide forward secrecy, rather than relying on the ticket secret alone.
 
-**Our adaptation:** `DeriveResumptionSecret(psk, freshKEM)` combines the ticket secret with a fresh CH-KEM exchange. Implemented in v0.0.9.
+**Our adaptation:** `DeriveResumptionSecret(psk, freshKEM)` combined the ticket secret with a fresh CH-KEM exchange (v0.0.9). Removed in v0.0.26: nothing in `Dial` or `Listen` used it and it gave no speedup, so it is kept here as history only.
 
 **Difference:** TLS 1.3 uses HKDF-based key scheduling with a PSK binder. CH-KEM uses SHAKE-256 with domain separation (`"CH-KEM-Tunnel-Resumption"`), feeding both the PSK and fresh KEM output into a single XOF derivation. Our construction is simpler because we have a single KEM type rather than negotiable key exchange groups.
 

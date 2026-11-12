@@ -11,7 +11,7 @@ route operating-system network traffic.
   source address, and rebinds only after an AEAD-authenticated packet.
 - **Reliable handshake** - the post-quantum handshake retransmits lost flights with
   backoff over a lossy UDP path.
-- **Rekey, resumption, and idle reaping** for long-lived sessions.
+- **Rekey and idle reaping** for long-lived sessions.
 
 **What the library does NOT do (the integrating application's responsibility):**
 
@@ -38,7 +38,7 @@ Read this table before describing what Quantum-Go can or cannot do. "Shipped" na
 | FIPS build mode with power-on self-tests | shipped, v0.0.7; not a validated module |
 | Datagram drop counter (`InboxDropped`) | shipped, v0.0.24 |
 | Two-host and cloud benchmarking (`bench`, `scripts/cloud-bench.sh`) | shipped, v0.0.24 |
-| Session resumption API | experimental, not wired into `Dial` and `Listen` ([#146](https://github.com/sara-star-quant/Quantum-Go/issues/146)) |
+| Session resumption | removed in v0.0.26 ([#146](https://github.com/sara-star-quant/Quantum-Go/issues/146)): it never sped anything up; every connection does a full handshake |
 | `net.Conn` adapter, HTTP and gRPC over the tunnel | planned ([#219](https://github.com/sara-star-quant/Quantum-Go/issues/219)) |
 | Forward mode that protects any TCP service without code changes | on `main`, unreleased ([#220](https://github.com/sara-star-quant/Quantum-Go/issues/220)); see [forward mode](usage/FORWARD.md) |
 | UDP forwarding (QUIC, HTTP/3, CoAP) | not planned: low impact, TLS already covers QUIC |
