@@ -70,6 +70,13 @@ Direct dependencies are few and reputable: `cloudflare/circl` (PQ primitives), `
 `go.mod`/`go.sum`. `govulncheck` runs in CI (the `vuln` job) and currently reports no known
 vulnerabilities. License: Apache 2.0 (with a `NOTICE` file); dependencies are permissively licensed.
 
+Every release ships a signed SPDX SBOM (`sbom.spdx.json`) beside the archives, the checksums, the Sigstore
+bundles and the SLSA provenance. The release binaries build with `-trimpath` and a build time taken from the
+commit, so two builds of one commit in different directories match byte for byte; `scripts/repro-check.sh`
+proves it for all five targets and CI runs it on every code change. To reproduce a release, check out the tag
+and run `make release VERSION=<version>` with the Go version named in the release notes (the toolchain is part
+of the input). The binaries inside the archives reproduce; the archives do not, because tar and gzip stamp times.
+
 ## 6. Known limitations (honest)
 
 - The handshake is unauthenticated by default; endpoint authentication (static-key pinning, PSK mutual) is

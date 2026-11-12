@@ -6,13 +6,16 @@ BINARY_NAME=quantum-tunnel
 CMD_DIR=./cmd/quantum-tunnel
 BIN_DIR=./bin
 VERSION?=0.0.4
-BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
+# The build time is the commit time, so two builds of one commit stamp the same value and the
+# binaries match byte for byte. Outside a git checkout it falls back to the wall clock.
+BUILD_TIME=$(shell TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%d_%H:%M:%S 2>/dev/null || date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X main.gitCommit=$(GIT_COMMIT)"
 
 # Go commands
 GOCMD=go
-GOBUILD=$(GOCMD) build
+# -trimpath keeps the build directory out of the binary, which reproducible builds need.
+GOBUILD=$(GOCMD) build -trimpath
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get

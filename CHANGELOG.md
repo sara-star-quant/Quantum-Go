@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Changed
+- **Reproducible release binaries**: builds use `-trimpath` and take the build time from the commit, so two builds of one commit match byte for byte on all five targets, checked in CI by `scripts/repro-check.sh`. The `build_time` a binary reports is now the commit time.
+- **Release SBOM**: each release ships a signed SPDX SBOM, and the release notes name the Go version to reproduce with.
+
 ### Added
 - **Peer identity on the server session**: `Tunnel.Peer()` and `DatagramConn.Peer()` return `PeerInfo{Identity, Suite, RemoteAddr}`, and `Session.PeerIdentity()` returns the PSK identity the peer proved it holds. The server records it only after the peer's Finished verifies, so a peer that failed authentication never appears. It is nil on a client and when no PSK identity was proven. The proof is possession of the key `PSKLookup` returns for that name, so give every identity its own key; the forwarder now refuses a clients file where two identities share one.
 

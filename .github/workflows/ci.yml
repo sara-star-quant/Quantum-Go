@@ -207,23 +207,14 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  # Builds the real CLI for every release target from one Linux job (Go cross-compiles), then
+  # checks that two builds in different directories produce identical binaries. This replaced a
+  # per-OS matrix that compiled the empty root package and needed macOS and Windows runners.
   build:
-    name: Build
-    runs-on: ${{ matrix.os }}
+    name: Build and reproduce
+    runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            go-version: "1.26.x"
-            bin: app
-          - os: macos-latest
-            go-version: "1.26.x"
-            bin: app
-          - os: windows-latest
-            go-version: "1.26.x"
-            bin: app.exe
 
     steps:
       - name: Checkout code
@@ -232,23 +223,21 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: "1.26.x"
           cache: true
 
-      # Build a single package (.) into a single output file.
-      - name: Build
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          go build -trimpath -ldflags="-s -w" -o "dist/${{ matrix.bin }}" .
+      - name: Reproducible build check
+        run: scripts/repro-check.sh
 
-      - name: Upload Binaries
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      # A dry run of the release step, so a broken SBOM fails here and not on a tag.
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
-          name: binaries-${{ matrix.os }}
-          path: dist/
-          retention-days: 14
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
 
   security:
     name: Security Scan

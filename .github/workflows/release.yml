@@ -52,6 +52,17 @@ jobs:
         VERSION: ${{ steps.get_version.outputs.VERSION }}
       run: make release
 
+    # The SBOM lists the modules and versions the binaries were built from. It is signed and
+    # shipped with the release like the archives.
+    - name: Generate SBOM
+      uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+      with:
+        path: .
+        format: spdx-json
+        output-file: bin/release/sbom.spdx.json
+        upload-artifact: false
+        upload-release-assets: false
+
     - name: Attest build provenance
       id: attest
       uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
@@ -82,7 +93,7 @@ jobs:
     - name: Sign release artifacts
       run: |
         set -euo pipefail
-        for f in bin/release/*.tar.gz bin/release/*.zip bin/release/checksums-sha256.txt; do
+        for f in bin/release/*.tar.gz bin/release/*.zip bin/release/checksums-sha256.txt bin/release/sbom.spdx.json; do
           cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
         done
 
@@ -110,6 +121,8 @@ jobs:
           echo
           echo "macOS (arm64): download \`quantum-tunnel-$VERSION-darwin-arm64.tar.gz\`. Windows (amd64): download \`quantum-tunnel-$VERSION-windows-amd64.zip\`."
           echo
+          echo "Built with $(go version | cut -d' ' -f3). To reproduce the binaries, check out the tag and run \`make release VERSION=$VERSION\` with the same Go version; the binaries inside the archives match, the archives themselves do not (tar and gzip stamp times)."
+          echo
           echo "### Verify checksums"
           echo '```bash'
           echo "shasum -a 256 -c checksums-sha256.txt"
@@ -132,6 +145,7 @@ jobs:
           bin/release/*.zip
           bin/release/checksums-sha256.txt
           bin/release/*.sigstore.json
+          bin/release/sbom.spdx.json
           bin/release/provenance.intoto.jsonl
           scan/scancode.json
         body_path: release_notes.md
