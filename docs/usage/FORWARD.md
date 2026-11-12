@@ -76,8 +76,9 @@ A key file is refused when its group can write it or when others can touch it. U
 
 - **One tunnel per TCP connection.** Each connection costs one handshake and one round trip. That suits long-lived connections (HTTP/2 and gRPC, pooled database connections, bulk transfers). Short-lived HTTP/1.1 connections pay it every time, so keep connections alive.
 - **Half-close works.** A client that finishes sending and then waits for the reply gets it. The EOF travels inside the tunnel as a one-byte frame, with no change to the wire protocol.
-- **TCP only.** UDP is not forwarded.
-- **Limits:** `--max-conns` (default 1024), `--idle-timeout` (default 5 minutes) and a 10 second dial to the upstream. Handshake limits come from the tunnel's own rate limiting.
+- **TCP only.** UDP is not forwarded, so HTTP/3 and QUIC are not covered. A UDP mode is planned after path-MTU handling; QUIC needs datagrams of at least 1200 bytes, which the tunnel overhead pushes past a typical MTU.
+- **Limits:** `--max-conns` (default 1024), `--idle-timeout` (default 5 minutes, counted only when neither direction moves data; 0 disables it), a 10 second dial to the upstream and a 30 second client dial plus handshake. The listener also caps handshakes in flight at 1024. There is no per-IP or handshake rate limit in forward mode, and a connection over `--max-conns` still pays its handshake before it is refused, so keep the server port off the open internet or behind a firewall.
+- **Shutdown:** SIGINT and SIGTERM close the listener and cut open connections. There is no drain.
 - **Not yet measured on real hosts.** No throughput or latency numbers are published for this mode, and none should be assumed from the library's. Measure with your own workload.
 
 ## Flags

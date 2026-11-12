@@ -48,12 +48,15 @@ type forwarder struct {
 	closeFn func() error
 	closed  atomic.Bool
 	wg      sync.WaitGroup
+	// done closes when the accept loop ends, so the command can exit when a listener dies
+	// instead of idling with nothing to serve.
+	done chan struct{}
 }
 
 func (f *forwarder) Addr() net.Addr { return f.addr }
 
 // Close stops accepting and waits for the accept loop to finish. Connections already
-// piping run to their own end.
+// piping are cut when the process exits; there is no drain.
 func (f *forwarder) Close() error {
 	f.closed.Store(true)
 	err := f.closeFn()
@@ -69,15 +72,24 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 		return nil, err
 	}
 	ln.SetConfig(cfg)
-	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close}
+	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close, done: make(chan struct{})}
 	sem := make(chan struct{}, lim.maxConns)
 	f.wg.Go(func() {
+		defer close(f.done)
+		var prev error
 		for {
 			t, err := ln.Accept()
 			if err != nil {
 				if f.closed.Load() {
 					return
 				}
+				// Once the underlying listener fails, Accept returns the same error forever;
+				// handshake failures are a fresh error each time.
+				if prev != nil && errors.Is(err, prev) {
+					logf("listener failed: %v", err)
+					return
+				}
+				prev = err
 				// A wrong PSK, a wrong pinned key, a rate-limited peer or a client that is not a
 				// tunnel peer all surface here; keep serving.
 				logf("handshake refused (a wrong PSK or key, a rate limit, or a peer that is not a tunnel client): %v", err)
@@ -119,16 +131,18 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 	if err != nil {
 		return nil, err
 	}
-	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close}
+	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close, done: make(chan struct{})}
 	sem := make(chan struct{}, lim.maxConns)
 	f.wg.Go(func() {
+		defer close(f.done)
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
-				if f.closed.Load() {
+				if f.closed.Load() || errors.Is(err, net.ErrClosed) {
 					return
 				}
 				logf("accept: %v", err)
+				time.Sleep(100 * time.Millisecond) // out of descriptors and the like: do not spin
 				continue
 			}
 			select {
@@ -158,6 +172,8 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 
 // pipe copies both directions between a TCP connection and a tunnel until each side has
 // finished, or until either fails, and returns the byte counts (TCP to tunnel, tunnel to TCP).
+// A connection is idle only when neither direction moved data for the idle timeout, so a long
+// upload with a silent upstream, or a long download with a silent client, stays open.
 func pipe(conn net.Conn, t *tunnel.Tunnel, idle time.Duration) (sent, recv int64) {
 	var once sync.Once
 	abort := func() {
@@ -166,6 +182,37 @@ func pipe(conn net.Conn, t *tunnel.Tunnel, idle time.Duration) (sent, recv int64
 			_ = t.Close()
 		})
 	}
+	var last atomic.Int64
+	touch := func() { last.Store(time.Now().UnixNano()) }
+	touch()
+	finished := make(chan struct{})
+	defer close(finished)
+	if idle > 0 {
+		go func() {
+			tick := time.NewTicker(max(idle/4, time.Millisecond))
+			defer tick.Stop()
+			for {
+				select {
+				case <-finished:
+					return
+				case <-tick.C:
+					if time.Since(time.Unix(0, last.Load())) > idle {
+						abort()
+						return
+					}
+				}
+			}
+		}()
+	}
+
+	// Both directions end with an EOF frame. The tunnel keeps being read after the peer's EOF
+	// so rekeys and the close alert still get processed; the pair ends when both EOFs are done.
+	var halves atomic.Int32
+	halfDone := func() {
+		if halves.Add(1) == 2 {
+			abort()
+		}
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -173,9 +220,6 @@ func pipe(conn net.Conn, t *tunnel.Tunnel, idle time.Duration) (sent, recv int64
 		defer wg.Done()
 		buf := make([]byte, forwardChunk)
 		for {
-			if idle > 0 {
-				_ = conn.SetReadDeadline(time.Now().Add(idle))
-			}
 			n, err := conn.Read(buf[1:])
 			if n > 0 {
 				buf[0] = frameData
@@ -183,13 +227,16 @@ func pipe(conn net.Conn, t *tunnel.Tunnel, idle time.Duration) (sent, recv int64
 					abort()
 					return
 				}
+				touch()
 				atomic.AddInt64(&sent, int64(n))
 			}
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					if serr := t.Send([]byte{frameEOF}); serr != nil {
 						abort()
+						return
 					}
+					halfDone()
 					return
 				}
 				abort()
@@ -207,6 +254,7 @@ func pipe(conn net.Conn, t *tunnel.Tunnel, idle time.Duration) (sent, recv int64
 				abort()
 				return
 			}
+			touch()
 			switch data[0] {
 			case frameData:
 				if len(data) > 1 {
@@ -223,7 +271,7 @@ func pipe(conn net.Conn, t *tunnel.Tunnel, idle time.Duration) (sent, recv int64
 				if tc, ok := conn.(*net.TCPConn); ok {
 					_ = tc.CloseWrite()
 				}
-				return
+				halfDone()
 			default:
 				abort()
 				return
@@ -249,16 +297,16 @@ type forwardAuth struct {
 // buildForwardConfig turns the flags into a transport config. Authentication is mandatory:
 // the server needs a PSK source (otherwise anyone could reach the upstream) and the client
 // needs a PSK, unless --insecure-no-auth is given for tests and development.
-func buildForwardConfig(server bool, a forwardAuth, idle time.Duration) (tunnel.TransportConfig, error) {
+func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, error) {
 	cfg := tunnel.DefaultTransportConfig()
-	if idle > 0 {
-		cfg.ReadTimeout = idle
-	}
+	cfg.ReadTimeout = 0 // the idle timeout in pipe covers both directions; a per-read timeout would not
 	if a.identity == "" {
 		a.identity = "default"
 	}
 
 	switch {
+	case a.insecure && (a.pskFile != "" || a.clientsFile != "" || a.serverKey != "" || a.pin != ""):
+		return cfg, errors.New("--insecure-no-auth cannot be combined with --psk-file, --clients-file, --server-key or --pin: it would ignore them")
 	case a.insecure:
 		return cfg, nil
 	case server && a.pskFile == "" && a.clientsFile == "":
@@ -287,6 +335,9 @@ func buildForwardConfig(server bool, a forwardAuth, idle time.Duration) (tunnel.
 	}
 
 	if server && a.serverKey != "" {
+		if err := checkSecretFile(a.serverKey); err != nil {
+			return cfg, fmt.Errorf("--server-key: %w", err)
+		}
 		data, err := os.ReadFile(a.serverKey)
 		if err != nil {
 			return cfg, fmt.Errorf("reading --server-key: %w", err)
@@ -382,6 +433,9 @@ func readClientsFile(path string) (map[string][]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s line %d: %w", path, n, err)
 		}
+		if _, dup := table[fields[0]]; dup {
+			return nil, fmt.Errorf("%s line %d: identity %q appears twice", path, n, fields[0])
+		}
 		table[fields[0]] = key
 	}
 	if err := sc.Err(); err != nil {
@@ -418,7 +472,7 @@ func forwardCommand() {
 	serverKey := fs.String("server-key", "", "Server side: static key file from keygen; clients must then pin it with --pin")
 	pin := fs.String("pin", "", "Client side: the server's public key file from keygen")
 	maxConns := fs.Int("max-conns", 1024, "Most connections held open at once")
-	idle := fs.Duration("idle-timeout", 5*time.Minute, "Close a connection after this long without data (0 disables)")
+	idle := fs.Duration("idle-timeout", 5*time.Minute, "Close a connection after this long with no data in either direction (0 disables)")
 	insecure := fs.Bool("insecure-no-auth", false, "Skip authentication. For tests and development only: anyone who can reach the server can reach the upstream")
 	verbose := fs.Bool("verbose", false, "Log every connection")
 
@@ -468,7 +522,7 @@ EXAMPLES:
 	cfg, err := buildForwardConfig(isServer, forwardAuth{
 		pskFile: *pskFile, clientsFile: *clientsFile, identity: *identity,
 		serverKey: *serverKey, pin: *pin, insecure: *insecure,
-	}, *idle)
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(2)
@@ -506,7 +560,12 @@ EXAMPLES:
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
+	select {
+	case <-stop:
+	case <-f.done:
+		fmt.Fprintln(os.Stderr, "Error: the listener stopped")
+		os.Exit(1)
+	}
 	log.Println("shutting down")
 	_ = f.Close()
 }

@@ -79,11 +79,11 @@ func echoHandler(c net.Conn) {
 // returns the address an application connects to.
 func startPair(t *testing.T, upstream string, srvAuth, cliAuth forwardAuth, lim forwardLimits) string {
 	t.Helper()
-	srvCfg, err := buildForwardConfig(true, srvAuth, lim.idleTimeout)
+	srvCfg, err := buildForwardConfig(true, srvAuth)
 	if err != nil {
 		t.Fatalf("server config: %v", err)
 	}
-	cliCfg, err := buildForwardConfig(false, cliAuth, lim.idleTimeout)
+	cliCfg, err := buildForwardConfig(false, cliAuth)
 	if err != nil {
 		t.Fatalf("client config: %v", err)
 	}
@@ -288,13 +288,13 @@ func TestForwardPerClientIdentities(t *testing.T) {
 }
 
 func TestForwardRefusesToStartWithoutAuth(t *testing.T) {
-	if _, err := buildForwardConfig(true, forwardAuth{}, time.Minute); err == nil {
+	if _, err := buildForwardConfig(true, forwardAuth{}); err == nil {
 		t.Fatal("the server started without any authentication")
 	}
-	if _, err := buildForwardConfig(false, forwardAuth{}, time.Minute); err == nil {
+	if _, err := buildForwardConfig(false, forwardAuth{}); err == nil {
 		t.Fatal("the client started without a PSK")
 	}
-	if _, err := buildForwardConfig(true, forwardAuth{insecure: true}, time.Minute); err != nil {
+	if _, err := buildForwardConfig(true, forwardAuth{insecure: true}); err != nil {
 		t.Fatalf("--insecure-no-auth was refused: %v", err)
 	}
 }
@@ -412,5 +412,47 @@ func TestLoopbackHost(t *testing.T) {
 	}
 	if _, err := loopbackHost("no-port"); err == nil {
 		t.Error("an address without a port was accepted")
+	}
+}
+
+// A download with a silent client is not idle: the upstream keeps sending for longer than the
+// idle timeout and the connection must survive to the end.
+func TestForwardOneWayTrafficIsNotIdle(t *testing.T) {
+	up, _ := startUpstream(t, func(c net.Conn) {
+		for range 8 {
+			_, _ = c.Write([]byte("tick"))
+			time.Sleep(150 * time.Millisecond)
+		}
+	})
+	lim := testLimits
+	lim.idleTimeout = 500 * time.Millisecond // shorter than the 1.2s the upstream streams for
+	c := dial(t, sharedPSKPair(t, up, lim))
+	data, err := io.ReadAll(c)
+	if err != nil || len(data) != 32 {
+		t.Fatalf("got %d bytes, err %v; want all 32 bytes with a clean end", len(data), err)
+	}
+}
+
+func TestForwardRejectsConflictingAuthFlags(t *testing.T) {
+	p := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	if _, err := buildForwardConfig(false, forwardAuth{insecure: true, pskFile: p}); err == nil {
+		t.Fatal("--insecure-no-auth with --psk-file was accepted and would ignore the PSK")
+	}
+}
+
+func TestForwardRefusesLaxServerKeyFile(t *testing.T) {
+	psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	key := writeSecret(t, "server.key", "not read", 0o644)
+	_, err := buildForwardConfig(true, forwardAuth{pskFile: psk, serverKey: key})
+	if err == nil || !strings.Contains(err.Error(), "chmod 600") {
+		t.Fatalf("a 0644 --server-key was not refused with a chmod hint: %v", err)
+	}
+}
+
+func TestReadClientsFileRejectsDuplicateIdentity(t *testing.T) {
+	k := randomPSK(t)
+	p := writeSecret(t, "clients.txt", "alice "+k+"\nalice "+k+"\n", 0o600)
+	if _, err := readClientsFile(p); err == nil || !strings.Contains(err.Error(), "twice") {
+		t.Fatalf("a duplicate identity was accepted: %v", err)
 	}
 }

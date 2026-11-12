@@ -67,7 +67,8 @@ type TransportConfig struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	// HandshakeTimeout bounds how long the responder waits for a peer to complete the
-	// handshake on Accept. Without it a stalled peer pins a goroutine and session
+	// handshake on Accept, and how long the initiator spends on the TCP connect plus the
+	// handshake in DialWithConfig. Without it a stalled peer pins a goroutine and session
 	// indefinitely (slow-loris). 0 means no handshake deadline.
 	HandshakeTimeout time.Duration
 	// MaxPendingHandshakes caps the connections a Listener holds mid-handshake or
@@ -856,7 +857,7 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 	}
 
 	// Connect
-	conn, err := net.Dial(network, address)
+	conn, err := (&net.Dialer{Timeout: config.HandshakeTimeout}).Dial(network, address)
 	if err != nil {
 		return nil, err
 	}
@@ -876,6 +877,9 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 	session.PSKIdentity = config.PSKIdentity
 
 	// Perform handshake
+	if config.HandshakeTimeout > 0 {
+		_ = conn.SetDeadline(time.Now().Add(config.HandshakeTimeout))
+	}
 	if err := InitiatorHandshake(session, conn); err != nil {
 		if session.observer != nil {
 			session.observer.OnSessionFailed(err)
@@ -883,6 +887,9 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 		}
 		_ = conn.Close()
 		return nil, err
+	}
+	if config.HandshakeTimeout > 0 {
+		_ = conn.SetDeadline(time.Time{})
 	}
 
 	// Create transport

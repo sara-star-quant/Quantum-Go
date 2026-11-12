@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **`quantum-tunnel forward`**: protects any TCP service, HTTP, gRPC and database traffic included, without code changes. One side runs next to the service and one next to its users, and each TCP connection gets its own post-quantum tunnel; half-close is preserved by an in-band EOF frame, so there is no wire change. Both sides require authentication (a PSK, optionally per client and with a pinned server key), the server forwards only to one fixed upstream, and it caps connections, idle time and the upstream dial. TCP only. See `docs/usage/FORWARD.md`.
 
+### Changed
+- **`DialWithConfig` honors `HandshakeTimeout`**: the initiator now bounds the TCP connect and the handshake with it (30 seconds by default), where it used to wait without limit on a peer that never answered.
+
 ## [0.0.25][] - 2026-11-11
 
 **Theme:** The release pipeline catches up. Each release now ships its signed SLSA provenance as a file, so Scorecard's Signed-Releases check and `gh attestation verify` both find it, and the GitHub Actions in every workflow move to current majors that run on Node 24. There is no library, CLI or wire change in this release; it exists to prove the new pipeline on a real tag.
