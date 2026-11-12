@@ -160,6 +160,23 @@ func loadSecretKey(path string) (*chkem.KeyPair, error) {
 	return kp, nil
 }
 
+// loadPinKey reads a base64 suite-tagged public pin file, the form keygen writes.
+func loadPinKey(path string) (*chkem.PublicKey, error) {
+	data, err := os.ReadFile(path) // #nosec G304 -- path is an operator-supplied CLI public key file argument
+	if err != nil {
+		return nil, err
+	}
+	pin, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(data)))
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", path, err)
+	}
+	pub, err := chkem.ParseTaggedPublicKey(pin)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return pub, nil
+}
+
 // writeFile creates path with the given mode and refuses to clobber an existing
 // file unless force is set, so a stray run never overwrites a live secret.
 func writeFile(path string, data []byte, perm os.FileMode, force bool) error {

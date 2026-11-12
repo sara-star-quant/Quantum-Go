@@ -838,3 +838,55 @@ func TestForwardRefusesIdentitiesSharingAKey(t *testing.T) {
 		t.Fatalf("a clients file with a shared key was accepted: %v", err)
 	}
 }
+
+// The files `keygen` writes must work with --server-key and --pin as the docs promise, for
+// both suites. An earlier loader read them as raw bytes and refused every real file.
+func TestForwardPinsWithKeygenFiles(t *testing.T) {
+	for _, suite := range []string{"chkem-v1", "x-wing"} {
+		t.Run(suite, func(t *testing.T) {
+			dir := t.TempDir()
+			gen := func(name string) (key, pub string) {
+				out := filepath.Join(dir, name)
+				if err := runKeygen(out, false, "", suite, io.Discard); err != nil {
+					t.Fatal(err)
+				}
+				return out + ".key", out + ".pub"
+			}
+			serverKey, serverPub := gen("server")
+			_, otherPub := gen("other")
+			psk := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+			up, _ := startUpstream(t, echoHandler)
+
+			roundTrip := func(addr string) error {
+				c := dial(t, addr)
+				_ = c.SetDeadline(time.Now().Add(8 * time.Second))
+				if _, err := c.Write([]byte("x")); err != nil {
+					return err
+				}
+				_, err := io.ReadFull(c, make([]byte, 1))
+				return err
+			}
+
+			good := startPair(t, up,
+				forwardAuth{pskFile: psk, serverKey: serverKey},
+				forwardAuth{pskFile: psk, pin: serverPub}, testLimits)
+			if err := roundTrip(good); err != nil {
+				t.Fatalf("a client that pins the server's keygen pin failed: %v", err)
+			}
+
+			wrong := startPair(t, up,
+				forwardAuth{pskFile: psk, serverKey: serverKey},
+				forwardAuth{pskFile: psk, pin: otherPub}, testLimits)
+			if err := roundTrip(wrong); err == nil {
+				t.Fatal("a client that pins a different key got through")
+			}
+
+			unpinned := startPair(t, up,
+				forwardAuth{pskFile: psk, serverKey: serverKey},
+				forwardAuth{pskFile: psk}, testLimits)
+			if err := roundTrip(unpinned); err == nil {
+				t.Fatal("a client with no pin got through a server that requires static auth")
+			}
+		})
+	}
+}

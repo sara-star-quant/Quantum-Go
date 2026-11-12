@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Peer identity on the server session**: `Tunnel.Peer()` and `DatagramConn.Peer()` return `PeerInfo{Identity, Suite, RemoteAddr}`, and `Session.PeerIdentity()` returns the PSK identity the peer proved it holds. The server records it only after the peer's Finished verifies, so a peer that failed authentication never appears. It is nil on a client and when no PSK identity was proven. The proof is possession of the key `PSKLookup` returns for that name, so give every identity its own key; the forwarder now refuses a clients file where two identities share one.
 
+### Fixed
+- **`forward --server-key` and `--pin` now load the files `keygen` writes** (v0.0.26 and v0.0.27): the forwarder read them as raw bytes while `keygen` writes base64, so every real key file was refused and server pinning through forward mode did not work. Both flags share keygen's loaders now, and a test pins with real keygen output for both suites.
+
 ## [0.0.27][] - 2026-11-12
 
 **Theme:** A security patch for the `forward` server in v0.0.26. Upgrade if you run it. It also corrects gaps in the protocol specification and adds a formal model of suite negotiation.

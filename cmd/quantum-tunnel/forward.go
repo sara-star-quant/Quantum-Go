@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
-	"github.com/sara-star-quant/quantum-go/pkg/chkem"
 	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
@@ -442,25 +441,17 @@ func buildForwardConfig(server bool, a forwardAuth) (tunnel.TransportConfig, err
 		if err := checkSecretFile(a.serverKey); err != nil {
 			return cfg, fmt.Errorf("--server-key: %w", err)
 		}
-		data, err := os.ReadFile(a.serverKey) // #nosec G304 -- path is an operator-supplied CLI key file argument; reading the named key is the command's purpose
+		kp, err := loadSecretKey(a.serverKey)
 		if err != nil {
-			return cfg, fmt.Errorf("reading --server-key: %w", err)
-		}
-		kp, err := chkem.ParseTaggedKeyPair(data)
-		if err != nil {
-			return cfg, fmt.Errorf("parsing --server-key: %w", err)
+			return cfg, fmt.Errorf("--server-key: %w", err)
 		}
 		cfg.StaticKeyPair = kp
 		cfg.RequireStaticAuth = true
 	}
 	if !server && a.pin != "" {
-		data, err := os.ReadFile(a.pin) // #nosec G304 -- path is an operator-supplied CLI public key file argument
+		pub, err := loadPinKey(a.pin)
 		if err != nil {
-			return cfg, fmt.Errorf("reading --pin: %w", err)
-		}
-		pub, err := chkem.ParseTaggedPublicKey(data)
-		if err != nil {
-			return cfg, fmt.Errorf("parsing --pin: %w", err)
+			return cfg, fmt.Errorf("--pin: %w", err)
 		}
 		cfg.PinnedServerKey = pub
 	}
