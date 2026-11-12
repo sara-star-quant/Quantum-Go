@@ -595,14 +595,14 @@ func TestHandshakeLoadObserverSeesShedAndRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first dial: %v", err)
 	}
-	waitFor(t, "first handshake start", func() bool { return rec.started.Load() == 1 })
+	waitUntil(t, "first handshake start", func() bool { return rec.started.Load() == 1 })
 
 	second, err := net.Dial("tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatalf("second dial: %v", err)
 	}
 	defer func() { _ = second.Close() }()
-	waitFor(t, "second connection shed", func() bool { return rec.shed.Load() == 1 })
+	waitUntil(t, "second connection shed", func() bool { return rec.shed.Load() == 1 })
 	if ip, _ := rec.lastShedIP.Load().(string); ip != "127.0.0.1" {
 		t.Fatalf("shed ip = %q, want 127.0.0.1", ip)
 	}
@@ -611,16 +611,5 @@ func TestHandshakeLoadObserverSeesShedAndRelease(t *testing.T) {
 	}
 
 	_ = first.Close() // peer hangs up: the stalled handshake fails and frees its slot
-	waitFor(t, "slot release", func() bool { return rec.finished.Load() == 1 })
-}
-
-func waitFor(t *testing.T, what string, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatalf("timed out waiting for %s", what)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitUntil(t, "slot release", func() bool { return rec.finished.Load() == 1 })
 }

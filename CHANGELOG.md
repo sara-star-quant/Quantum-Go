@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **`quantum-tunnel forward`**: protects any TCP service, HTTP, gRPC and database traffic included, without code changes. One side runs next to the service and one next to its users, and each TCP connection gets its own post-quantum tunnel; half-close is preserved by an in-band EOF frame, so there is no wire change. Both sides require authentication (a PSK, optionally per client and with a pinned server key), the server forwards only to one fixed upstream, and it caps connections, idle time and the upstream dial. TCP only. See `docs/usage/FORWARD.md`.
-- **Handshake load metrics**: the stream listener now reports in-flight handshakes and shed connections through the optional `tunnel.HandshakeLoadObserver`. `metrics.RateLimitObserver` implements it and the Prometheus exporter publishes `pending_handshakes` (gauge) and `handshakes_shed_total` (counter), so a `MaxPendingHandshakes` flood is visible instead of silent.
+- **Handshake load metrics**: the stream listener now reports its handshake slots in use and shed connections through the optional `tunnel.HandshakeLoadObserver`. `metrics.RateLimitObserver` implements it and the Prometheus exporter publishes `pending_handshakes` (gauge) and `handshakes_shed_total` (counter), so a `MaxPendingHandshakes` flood is visible instead of silent.
 
 ### Changed
 - **`DialWithConfig` honors `HandshakeTimeout`**: the initiator now bounds the TCP connect and the handshake with it (30 seconds by default), where it used to wait without limit on a peer that never answered.

@@ -80,11 +80,11 @@ func (e *PrometheusExporter) WriteMetrics(w io.Writer) {
 	e.writeType(pw, "packets_received_total", "counter")
 	e.writeMetric(pw, "packets_received_total", labels, float64(snap.PacketsRecv))
 
-	e.writeHelp(pw, "pending_handshakes", "Stream handshakes in flight now")
+	e.writeHelp(pw, "pending_handshakes", "Stream handshake slots in use now: mid-handshake or waiting for Accept (stream transport only)")
 	e.writeType(pw, "pending_handshakes", "gauge")
 	e.writeMetric(pw, "pending_handshakes", labels, float64(snap.PendingHandshakes))
 
-	e.writeHelp(pw, "handshakes_shed_total", "Connections closed on arrival because every handshake slot was taken")
+	e.writeHelp(pw, "handshakes_shed_total", "Stream connections closed on arrival because every handshake slot was taken (stream transport only)")
 	e.writeType(pw, "handshakes_shed_total", "counter")
 	e.writeMetric(pw, "handshakes_shed_total", labels, float64(snap.HandshakesShed))
 

@@ -979,9 +979,14 @@ func (l *Listener) startAcceptLoop() {
 	go l.acceptLoop()
 }
 
+// loadObserver returns the configured observer when it also reports handshake load, else nil.
+func (l *Listener) loadObserver() HandshakeLoadObserver {
+	load, _ := l.config.RateLimitObserver.(HandshakeLoadObserver)
+	return load
+}
+
 // acceptLoop accepts raw connections and hands each to its own handshake goroutine.
 func (l *Listener) acceptLoop() {
-	load, _ := l.config.RateLimitObserver.(HandshakeLoadObserver) // nil when not implemented
 	for {
 		conn, err := l.listener.Accept()
 		if err != nil {
@@ -991,23 +996,25 @@ func (l *Listener) acceptLoop() {
 		}
 		select {
 		case l.pending <- struct{}{}:
-			if load != nil {
+			if load := l.loadObserver(); load != nil {
 				load.OnHandshakeStarted()
 			}
 		default:
-			if load != nil {
-				load.OnHandshakeShed(extractRemoteIP(conn))
+			remoteIP := extractRemoteIP(conn)
+			_ = conn.Close() // too many connections in flight: shed load, then tell the observer
+			if load := l.loadObserver(); load != nil {
+				load.OnHandshakeShed(remoteIP)
 			}
-			_ = conn.Close() // too many connections in flight: shed load
 			continue
 		}
 		go func() {
 			t, err := l.handshakeConn(conn)
 			l.deliver(acceptResult{tunnel: t, err: err})
-			<-l.pending
-			if load != nil {
+			// Report before freeing the slot, so an observer's gauge never exceeds the limit.
+			if load := l.loadObserver(); load != nil {
 				load.OnHandshakeFinished()
 			}
+			<-l.pending
 		}()
 	}
 }

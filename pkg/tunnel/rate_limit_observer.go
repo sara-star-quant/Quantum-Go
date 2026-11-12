@@ -1,10 +1,13 @@
 package tunnel
 
 // HandshakeLoadObserver is an optional extension of RateLimitObserver. When the observer set in
-// TransportConfig.RateLimitObserver also implements it, the stream Listener reports how many
-// handshakes are in flight and when it sheds a connection because MaxPendingHandshakes is
-// reached. The calls are events, not a running total, so an observer keeps an exact gauge by
-// adding on start and subtracting on finish.
+// TransportConfig.RateLimitObserver also implements it, the stream Listener reports the slots
+// MaxPendingHandshakes limits (a connection mid-handshake, or finished and waiting for Accept)
+// and when it sheds a connection because every slot is taken. The calls are events, so an
+// observer keeps an exact gauge by adding on start and subtracting on finish, and the gauge
+// never exceeds the limit. A decorator that wraps an observer must forward these methods too,
+// or the load events are lost. The calls run on the accept path, so they must not block.
+// Stream listeners only: the datagram transport does not report them.
 type HandshakeLoadObserver interface {
 	// OnHandshakeStarted is called when a connection takes a handshake slot.
 	OnHandshakeStarted()

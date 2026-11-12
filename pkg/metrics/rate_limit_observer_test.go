@@ -2,8 +2,12 @@ package metrics
 
 import (
 	"bytes"
+	"net"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 func TestMaskIP(t *testing.T) {
@@ -90,4 +94,44 @@ func TestRateLimitObserverEmptyIP(t *testing.T) {
 	if snap.HandshakeRateLimits != 1 {
 		t.Fatalf("expected HandshakeRateLimits to be 1, got %d", snap.HandshakeRateLimits)
 	}
+}
+
+// TestRateLimitObserverReportsHandshakeLoad wires a real stream Listener to the metrics
+// observer: a stalled peer holds the only slot, the next connection is shed and counted, and
+// closing the stalled peer returns the gauge to zero.
+func TestRateLimitObserverReportsHandshakeLoad(t *testing.T) {
+	collector := NewCollector(nil)
+	ln, err := tunnel.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	cfg := tunnel.DefaultTransportConfig()
+	cfg.MaxPendingHandshakes = 1
+	cfg.HandshakeTimeout = 10 * time.Second
+	cfg.RateLimitObserver = NewRateLimitObserver(collector, nil)
+	ln.SetConfig(cfg)
+	go func() { _, _ = ln.Accept() }()
+
+	wait := func(what string, ok func(Snapshot) bool) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); !ok(collector.Snapshot()); time.Sleep(10 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s: %+v", what, collector.Snapshot())
+			}
+		}
+	}
+	first, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait("one slot in use", func(s Snapshot) bool { return s.PendingHandshakes == 1 })
+	second, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = second.Close() }()
+	wait("one shed", func(s Snapshot) bool { return s.HandshakesShed == 1 })
+	_ = first.Close()
+	wait("slot released", func(s Snapshot) bool { return s.PendingHandshakes == 0 })
 }
