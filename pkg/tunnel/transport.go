@@ -90,7 +90,8 @@ type TransportConfig struct {
 
 	// StaticKeyPair, when set on a server (Listen), is the long-term CH-KEM
 	// identity the server proves possession of. Generate and persist it with
-	// chkem.GenerateStaticKeyPair. Nil means unauthenticated (default).
+	// chkem.GenerateStaticKeyPair. Nil leaves the server unauthenticated
+	// unless a PSK is set; with neither, Accept returns ErrAuthenticationRequired.
 	StaticKeyPair *chkem.KeyPair
 
 	// PinnedServerKey, when set on a client (Dial), is the server static public
@@ -999,7 +1000,8 @@ func handshakeOver(conn net.Conn, session *Session, config TransportConfig) (*Tu
 
 // ListenInsecure creates a listener that accepts unauthenticated clients. Prefer Listen with
 // SetConfig carrying a PSK, per-client PSKs or a static key; this is for tests, demos and
-// benchmarks.
+// benchmarks. SetConfig replaces the whole configuration, so set AllowUnauthenticated again if you
+// call it afterwards.
 func ListenInsecure(network, address string) (*Listener, error) {
 	ln, err := Listen(network, address)
 	if err != nil {

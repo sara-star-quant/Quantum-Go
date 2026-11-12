@@ -395,7 +395,7 @@ func main() {
     }()
 
     // Client
-    client, _ := tunnel.Dial("tcp", "localhost:8443")
+    client, _ := tunnel.DialInsecure("tcp", "localhost:8443") // demo only: use DialWithConfig with a PSK
     defer client.Close()
 
     client.Send([]byte("Hello, quantum-resistant world!"))
