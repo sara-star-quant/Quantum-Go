@@ -7,11 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
-### Removed
-- **Session resumption API** (breaking, experimental): `TicketManager`, `NewTicketManager`, `SessionTicket`, `Session.ExportTicket`, `Session.Resume`, `Handshake.SetTicket`, `Handshake.SetTicketManager`, `InitiatorResumptionHandshake`, `ResponderResumptionHandshake`, `crypto.DeriveResumptionSecret` and `ErrInvalidTicket` / `ErrExpiredTicket`. Nothing in `Dial`, `Listen` or the datagram transport used them, a resumed handshake still did a full key exchange, and tickets were not bound to the issuing server. The wire format is unchanged: the ClientHello `SessionID` field stays and goes out empty, and the ServerHello keeps carrying the server's session id. Closes [#146](https://github.com/sara-star-quant/Quantum-Go/issues/146).
+## [0.0.26][] - 2026-11-12
 
-### Fixed
-- **Close after the peer closed**: when a peer closed gracefully, the receiving side marked its tunnel closed on the peer's close notice, and a later `Close` returned early. The socket then stayed open until garbage collection, the session keys stayed un-zeroized, and a `MaxConnectionsPerIP` slot never freed, so an address could eventually lock itself out. `Close` now always releases the connection.
+**Theme:** `quantum-tunnel forward` arrives: it puts the post-quantum tunnel in front of any TCP service with no code change, with mandatory authentication, key reload on SIGHUP, rate limits and an optional X-Wing suite. The release also fixes a socket and connection-slot leak after a peer closes gracefully, adds handshake load metrics, and removes the unused session resumption API.
 
 ### Added
 - **Rate limits on the `forward` server**: `--max-conns-per-ip` (default 256) and `--handshake-rate` (default 1000 per second) bound what an unauthenticated peer can spend, using the library's existing limiter. A PSK made of one repeated byte is now refused.
@@ -22,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **`DialWithConfig` honors `HandshakeTimeout`**: the initiator now bounds the TCP connect and the handshake with it (30 seconds by default), where it used to wait without limit on a peer that never answered.
+
+### Fixed
+- **Close after the peer closed**: when a peer closed gracefully, the receiving side marked its tunnel closed on the peer's close notice, and a later `Close` returned early. The socket then stayed open until garbage collection, the session keys stayed un-zeroized, and a `MaxConnectionsPerIP` slot never freed, so an address could eventually lock itself out. `Close` now always releases the connection.
+
+### Removed
+- **Session resumption API** (breaking, experimental): `TicketManager`, `NewTicketManager`, `SessionTicket`, `Session.ExportTicket`, `Session.Resume`, `Handshake.SetTicket`, `Handshake.SetTicketManager`, `InitiatorResumptionHandshake`, `ResponderResumptionHandshake`, `crypto.DeriveResumptionSecret` and `ErrInvalidTicket` / `ErrExpiredTicket`. Nothing in `Dial`, `Listen` or the datagram transport used them, a resumed handshake still did a full key exchange, and tickets were not bound to the issuing server. The wire format is unchanged: the ClientHello `SessionID` field stays and goes out empty, and the ServerHello keeps carrying the server's session id. Closes [#146](https://github.com/sara-star-quant/Quantum-Go/issues/146).
 
 ## [0.0.25][] - 2026-11-11
 
@@ -523,7 +527,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.25...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.26...HEAD
+[0.0.26]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.25...v0.0.26
 [0.0.25]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.24...v0.0.25
 [0.0.24]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.23...v0.0.24
 [0.0.23]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.21...v0.0.23
