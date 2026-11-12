@@ -12,12 +12,15 @@
 //	import "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 //
 //	// Server
+//	cfg := tunnel.DefaultTransportConfig()
+//	cfg.PSK, cfg.PSKIdentity = psk, []byte("client-1")
 //	listener, _ := tunnel.Listen("tcp", ":8443")
+//	listener.SetConfig(cfg)
 //	conn, _ := listener.Accept()
 //	data, _ := conn.Receive()
 //
 //	// Client
-//	client, _ := tunnel.Dial("tcp", "localhost:8443")
+//	client, _ := tunnel.DialWithConfig("tcp", "localhost:8443", cfg)
 //	client.Send([]byte("Hello!"))
 //
 // For low-level CH-KEM key encapsulation:

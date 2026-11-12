@@ -7,15 +7,19 @@
 //
 // # Stream transport
 //
-// Dial and Listen give a length-prefixed, encrypted stream. Each accepted
+// Dial and Listen give a length-prefixed, encrypted stream. Authentication is mandatory: set a PSK, a
+// pinned or static key, or AllowUnauthenticated (DialInsecure, ListenInsecure). Each accepted
 // connection handshakes in its own goroutine, so one slow peer does not block the
 // others.
 //
+//	cfg := tunnel.DefaultTransportConfig()
+//	cfg.PSK, cfg.PSKIdentity = psk, []byte("client-1")
 //	ln, _ := tunnel.Listen("tcp", ":8443")
+//	ln.SetConfig(cfg)
 //	conn, _ := ln.Accept()
 //	msg, _ := conn.Receive()
 //
-//	c, _ := tunnel.Dial("tcp", "server:8443")
+//	c, _ := tunnel.DialWithConfig("tcp", "server:8443", cfg)
 //	_ = c.Send([]byte("hello"))
 //
 // # Datagram transport

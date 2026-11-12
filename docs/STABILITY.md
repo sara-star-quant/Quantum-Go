@@ -55,4 +55,4 @@ Until the failure-behavior tests listed in [#238](https://github.com/sara-star-q
 
 ## Authentication default
 
-The library does not require authentication: `Dial` and `Listen` with no PSK and no pin give an encrypted, forward-secret tunnel to a peer nobody has identified, which an active attacker can sit in the middle of. The `forward` command refuses to start without a PSK. Whether the library should also demand an explicit opt-in is an open decision on the [roadmap](ROADMAP.md); it would be a breaking change.
+The library requires authentication since the next release. An endpoint needs a PSK or lookup, a static key (server) or a pinned server key (client), or an explicit `AllowUnauthenticated`; otherwise `Dial`, `Accept`, `NewDatagramEndpoint` and `NewPool` return `ErrAuthenticationRequired`. Both sides opt in to run unauthenticated, which an active attacker can sit in the middle of. `DialInsecure` and `ListenInsecure` exist for tests, demos and benchmarks.

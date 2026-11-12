@@ -22,7 +22,11 @@ import (
 
 func main() {
     // Server
+    cfg := tunnel.DefaultTransportConfig()
+    cfg.PSK, cfg.PSKIdentity = psk, []byte("client-1") // 32+ random bytes shared out of band
+
     listener, _ := tunnel.Listen("tcp", ":8443")
+    listener.SetConfig(cfg)
     defer listener.Close()
 
     go func() {
@@ -48,7 +52,10 @@ import (
 )
 
 func main() {
-    client, _ := tunnel.Dial("tcp", "localhost:8443")
+    cfg := tunnel.DefaultTransportConfig()
+    cfg.PSK, cfg.PSKIdentity = psk, []byte("client-1") // the same PSK as the server
+
+    client, _ := tunnel.DialWithConfig("tcp", "localhost:8443", cfg)
     defer client.Close()
 
     client.Send([]byte("Hello, quantum-resistant world!"))

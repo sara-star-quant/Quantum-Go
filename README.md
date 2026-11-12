@@ -57,15 +57,21 @@ Stream (TCP):
 ```go
 import "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 
+cfg := tunnel.DefaultTransportConfig()
+cfg.PSK, cfg.PSKIdentity = psk, []byte("client-1") // 32+ random bytes shared out of band
+
 // Server
 ln, _ := tunnel.Listen("tcp", ":8443")
+ln.SetConfig(cfg)
 conn, _ := ln.Accept()
 msg, _ := conn.Receive()
 
 // Client
-c, _ := tunnel.Dial("tcp", "server:8443")
+c, _ := tunnel.DialWithConfig("tcp", "server:8443", cfg)
 _ = c.Send([]byte("hello"))
 ```
+
+Authentication is required: a PSK, a pinned or static server key, or `AllowUnauthenticated = true` (`DialInsecure` and `ListenInsecure` for tests and demos). Without one, `Dial` and `Accept` return `ErrAuthenticationRequired`.
 
 Datagram (UDP), with batching and Linux UDP offload:
 

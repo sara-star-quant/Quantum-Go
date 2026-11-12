@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased][]
 
 ### Changed
+- **BREAKING: authentication is required.** `Dial`, `Accept`, `NewDatagramEndpoint` and `NewPool` return `ErrAuthenticationRequired` unless the endpoint carries a PSK or PSK lookup, a static key (server) or a pinned server key (client), or sets `AllowUnauthenticated` (`WithAllowUnauthenticated()` for datagrams). Both sides must opt in to run without authentication, which leaves the tunnel open to an active man in the middle. `tunnel.Dial` is now `tunnel.DialInsecure`, and `tunnel.ListenInsecure` is the matching listener for tests, demos and benchmarks. Migration: set `PSK` and `PSKIdentity` on `TransportConfig` and use `DialWithConfig`, or switch to the `Insecure` helpers to keep today's behavior.
+
+### Changed
 - **`forward` warns at startup** when a `--upstream unix:/path` socket does not exist yet, instead of failing every connection silently.
 
 ### Changed
