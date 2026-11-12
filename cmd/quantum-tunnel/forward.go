@@ -15,7 +15,6 @@ import (
 	"os/signal"
 	"runtime"
 	"slices"
-
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -619,7 +618,7 @@ func forwardCommand() {
 	upstream := fs.String("upstream", "", "Server side: hand each tunnel to this single fixed TCP address, or Unix socket as unix:/path")
 	pskFile := fs.String("psk-file", "", "File holding a 32-byte PSK as 64 hex characters (mode 0600); required on both sides")
 	clientsFile := fs.String("clients-file", "", "Server side: file of \"identity hexkey\" lines, one PSK per client (mode 0600)")
-	suite := fs.String("suite", "", "Client side: KEM suite to offer first, chkem-v1 (default, ML-KEM-1024, or the first --allow-suite entry) or x-wing (ML-KEM-768, smaller handshake)")
+	suite := fs.String("suite", "", "Client side: KEM suite to offer first, chkem-v1 (default, ML-KEM-1024, or the first allowed suite when --allow-suite excludes it) or x-wing (ML-KEM-768, smaller handshake)")
 	socketMode := fs.String("socket-mode", "0600", "Client side: permission of a unix: socket, octal (0600 owner only, 0660 owner and group)")
 	allowSuites := fs.String("allow-suite", "", "Either side: only these KEM suites, comma-separated (chkem-v1, x-wing). Use chkem-v1 to refuse the smaller suite")
 	identity := fs.String("identity", "default", "PSK identity the client announces, and the server matches against --psk-file")

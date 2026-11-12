@@ -19,11 +19,17 @@ var (
 	gitCommit = "unknown" // Set via -ldflags "-X main.gitCommit=..."
 )
 
+// getVersion returns the stamped version, or the one the toolchain recorded, always with a leading
+// v so a make build and a go install report the same form. "dev" and "devel" stay as they are.
 func getVersion() string {
-	if version != "" {
-		return version
+	v := version
+	if v == "" {
+		v = pkgversion.String()
 	}
-	return pkgversion.String()
+	if v != "dev" && v != "devel" && !strings.HasPrefix(v, "v") {
+		v = "v" + v
+	}
+	return v
 }
 
 func main() {

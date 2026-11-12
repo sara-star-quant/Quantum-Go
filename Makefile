@@ -5,7 +5,8 @@
 BINARY_NAME=quantum-tunnel
 CMD_DIR=./cmd/quantum-tunnel
 BIN_DIR=./bin
-VERSION?=0.0.4
+# Releases pass VERSION explicitly. A local build takes the nearest tag, or "dev" with no git.
+VERSION?=$(shell git describe --tags --always 2>/dev/null | sed 's/^v//' || echo dev)
 # The build time is the commit time, so two builds of one commit stamp the same value. Outside a
 # git checkout it is "unknown" and never the wall clock, which would silently break the match.
 BUILD_TIME=$(shell TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%d_%H:%M:%S 2>/dev/null || echo unknown)
@@ -17,7 +18,9 @@ LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME) -X 
 GOCMD=go
 # -trimpath keeps the build directory out of the binary, and CGO_ENABLED=0 keeps the result
 # independent of whether the host has a C compiler; both matter for reproducible builds.
-GOBUILD=CGO_ENABLED=0 $(GOCMD) build -trimpath
+# -buildvcs=false leaves the tree's git state out: a release job adds untracked files (the license
+# scan, the SBOM), which Go would otherwise record as vcs.modified=true. The commit is stamped below.
+GOBUILD=CGO_ENABLED=0 $(GOCMD) build -trimpath -buildvcs=false
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get

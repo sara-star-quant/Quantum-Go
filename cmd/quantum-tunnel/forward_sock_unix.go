@@ -49,22 +49,33 @@ func listenUnixPrivate(path string, mode os.FileMode) (net.Listener, error) {
 		_ = ln.Close()
 		return nil, err
 	}
-	if err := os.Rename(staged, path); err != nil {
+	// Link, not rename: it refuses to replace an existing path, so a second forwarder that lost a
+	// race for the same path fails here and never displaces the first one's live socket.
+	if err := os.Link(staged, path); err != nil {
+		_ = ln.Close()
+		return nil, fmt.Errorf("%s is already in use: %w", path, err)
+	}
+	placed, err := os.Lstat(path)
+	if err != nil {
 		_ = ln.Close()
 		return nil, err
 	}
-	return &removingListener{Listener: ln, path: path}, nil
+	return &removingListener{Listener: ln, path: path, placed: placed}, nil
 }
 
 // removingListener unlinks the socket's final path on Close, because the net package only knows
-// the staging path it bound.
+// the staging path it bound. It removes the path only while it still names this listener's own
+// socket, so a restart that already replaced it is left alone.
 type removingListener struct {
 	net.Listener
-	path string
+	path   string
+	placed os.FileInfo
 }
 
 func (l *removingListener) Close() error {
 	err := l.Listener.Close()
-	_ = os.Remove(l.path)
+	if cur, statErr := os.Lstat(l.path); statErr == nil && os.SameFile(cur, l.placed) {
+		_ = os.Remove(l.path)
+	}
 	return err
 }

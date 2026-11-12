@@ -462,28 +462,19 @@ func (p *Pool) createConn(ctx context.Context) (*pooledConn, error) {
 		return nil, err
 	}
 
-	// Create session as initiator
-	session, err := NewSession(RoleInitiator)
+	// Build the session from the transport config, so a pooled connection carries the same PSK,
+	// pin and suite policy as a dialed one.
+	session, err := initiatorSession(p.config.TransportConfig)
 	if err != nil {
 		_ = conn.Close()
 		return nil, err
 	}
-
-	// Perform handshake
-	if err := InitiatorHandshake(session, conn); err != nil {
-		_ = conn.Close()
-		return nil, err
-	}
-
-	// Create transport
-	transport, err := NewTransport(session, conn, p.config.TransportConfig)
+	tun, err := handshakeOver(conn, session, p.config.TransportConfig)
 	if err != nil {
-		_ = conn.Close()
 		return nil, err
 	}
 
-	tunnel := &Tunnel{Transport: transport}
-	pc := newPooledConn(tunnel, p)
+	pc := newPooledConn(tun, p)
 
 	dialDuration := time.Since(dialStart)
 	p.stats.recordConnectionCreated(dialDuration)

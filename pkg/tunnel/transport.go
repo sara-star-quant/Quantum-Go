@@ -881,26 +881,40 @@ func Dial(network, address string) (*Tunnel, error) {
 
 // DialWithConfig establishes a new tunnel with custom configuration.
 func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, error) {
+	// Reject a bad configuration before opening a connection.
 	if err := validatePSK(config.PSK, config.PSKIdentity); err != nil {
 		return nil, err
 	}
+	if _, err := kemPolicy(config.AllowedKEMSuites).initiator(config.KEMSuite); err != nil {
+		return nil, err
+	}
 
+	conn, err := (&net.Dialer{Timeout: config.HandshakeTimeout}).Dial(network, address)
+	if err != nil {
+		return nil, err
+	}
+	session, err := initiatorSession(config)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return handshakeOver(conn, session, config)
+}
+
+// initiatorSession builds the initiator session a configuration describes: the KEM suite policy,
+// the PSK and the pinned server key. Dial and the connection pool both use it, so a pooled
+// connection authenticates exactly like a dialed one.
+func initiatorSession(config TransportConfig) (*Session, error) {
+	if err := validatePSK(config.PSK, config.PSKIdentity); err != nil {
+		return nil, err
+	}
 	policy := kemPolicy(append([]chkem.SuiteID(nil), config.AllowedKEMSuites...))
 	suite, err := policy.initiator(config.KEMSuite)
 	if err != nil {
 		return nil, err
 	}
-
-	// Connect
-	conn, err := (&net.Dialer{Timeout: config.HandshakeTimeout}).Dial(network, address)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create session as initiator
 	session, err := NewSessionWithSuite(RoleInitiator, suite)
 	if err != nil {
-		_ = conn.Close()
 		return nil, err
 	}
 	if observer := observerFromConfig(config, session); observer != nil {
@@ -911,8 +925,12 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 	session.PSK = config.PSK
 	session.PSKIdentity = config.PSKIdentity
 	session.AllowedKEMSuites = policy
+	return session, nil
+}
 
-	// Perform handshake
+// handshakeOver runs the initiator handshake over conn, bounded by HandshakeTimeout, and wraps the
+// result as a Tunnel. It closes conn on failure.
+func handshakeOver(conn net.Conn, session *Session, config TransportConfig) (*Tunnel, error) {
 	if config.HandshakeTimeout > 0 {
 		_ = conn.SetDeadline(time.Now().Add(config.HandshakeTimeout))
 	}
@@ -928,7 +946,6 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 		_ = conn.SetDeadline(time.Time{})
 	}
 
-	// Create transport
 	transport, err := NewTransport(session, conn, config)
 	if err != nil {
 		if session.observer != nil {
@@ -938,7 +955,6 @@ func DialWithConfig(network, address string, config TransportConfig) (*Tunnel, e
 		_ = conn.Close()
 		return nil, err
 	}
-
 	return &Tunnel{Transport: transport}, nil
 }
 
@@ -970,6 +986,7 @@ type Listener struct {
 	closeOnce sync.Once
 	pending   chan struct{}
 	acceptErr error
+	startErr  error // a configuration error found on the first Accept
 }
 
 // maxPendingHandshakes is the default for TransportConfig.MaxPendingHandshakes: the
@@ -1001,10 +1018,10 @@ func (c TransportConfig) Validate() error {
 // fails its rate-limit check or handshake is reported as an error from Accept, in
 // the order it finished.
 func (l *Listener) Accept() (*Tunnel, error) {
-	if err := l.config.Validate(); err != nil {
-		return nil, err
-	}
 	l.startOnce.Do(l.startAcceptLoop)
+	if l.startErr != nil {
+		return nil, l.startErr
+	}
 	select {
 	case r := <-l.results:
 		return r.tunnel, r.err
@@ -1019,6 +1036,8 @@ func (l *Listener) Accept() (*Tunnel, error) {
 	}
 }
 
+// startAcceptLoop prepares the listener's state and, unless its configuration is unusable, starts
+// accepting. A bad allowlist is recorded in startErr and returned by Accept, and Close still works.
 func (l *Listener) startAcceptLoop() {
 	l.results = make(chan acceptResult, 64)
 	l.stopped = make(chan struct{})
@@ -1028,6 +1047,11 @@ func (l *Listener) startAcceptLoop() {
 		limit = maxPendingHandshakes
 	}
 	l.pending = make(chan struct{}, limit)
+	// The listener's own policy is checked once; the client-only KEMSuite is not its concern.
+	if err := kemPolicy(l.config.AllowedKEMSuites).validate(); err != nil {
+		l.startErr = err
+		return
+	}
 	go l.acceptLoop()
 }
 

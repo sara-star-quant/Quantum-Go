@@ -28,9 +28,10 @@ const (
 const develVersion = "devel"
 
 // String returns the library version the Go toolchain recorded in this binary: the tag for a
-// program that depends on Quantum-Go or was installed with `go install`, or "devel" for a build
-// from a working tree. Release binaries from this project carry their own stamped version in the
-// command-line tool.
+// program that depends on Quantum-Go or was installed with `go install`. A build inside a git
+// checkout can carry a pseudo-version or a +dirty suffix that the toolchain derives from the
+// repository, and with no version information it is "devel". The command-line tool prefers the
+// version stamped into its release binaries.
 func String() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {

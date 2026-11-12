@@ -103,7 +103,7 @@ func TestListenPlainSocketModes(t *testing.T) {
 	}
 	_ = ln.Close()
 
-	for _, bad := range []os.FileMode{0o666, 0o604, 0o1600, 0o200, 0o020, 0o060, 0o400} {
+	for _, bad := range []os.FileMode{0o666, 0o604, 0o1600, 0o200, 0o020, 0o060, 0o400, 0o700, 0o760, 0o670} {
 		if ln, err := listenPlain(unixPrefix+filepath.Join(dir, "bad.sock"), bad); err == nil {
 			_ = ln.Close()
 			t.Fatalf("mode %#o was accepted", bad)
@@ -286,5 +286,47 @@ func TestConnLabelForLocalSockets(t *testing.T) {
 	defer func() { _ = c.Close() }()
 	if got := connLabel(c); got != "local socket" {
 		t.Fatalf("label %q, want a readable name for a local socket", got)
+	}
+}
+
+// A second forwarder on the same path must fail without displacing the first, and the first
+// closing after a restart replaced its path must not delete the new socket.
+func TestListenPlainNeverDisplacesALiveSocket(t *testing.T) {
+	dir := shortDir(t)
+	path := unixPrefix + filepath.Join(dir, "s.sock")
+	first, err := listenPlain(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second, err := listenPlain(path, 0); err == nil {
+		_ = second.Close()
+		t.Fatal("a second listener took over a live socket path")
+	}
+	// The first must still accept connections.
+	go func() {
+		c, err := net.Dial("unix", filepath.Join(dir, "s.sock"))
+		if err == nil {
+			_ = c.Close()
+		}
+	}()
+	if c, err := first.Accept(); err != nil {
+		t.Fatalf("the first listener stopped working after a second tried to start: %v", err)
+	} else {
+		_ = c.Close()
+	}
+
+	// Simulate a restart that already replaced the path: the old listener's Close leaves it alone.
+	sock := filepath.Join(dir, "s.sock")
+	if err := os.Remove(sock); err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = replacement.Close() }()
+	_ = first.Close()
+	if _, err := os.Lstat(sock); err != nil {
+		t.Fatalf("closing an old listener deleted the replacement's socket: %v", err)
 	}
 }

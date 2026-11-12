@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Release SBOM**: each release ships a signed SPDX SBOM, and the release notes name the Go version to reproduce with.
 
 ### Fixed
-- **Library version string**: `pkg/version.String()` returned the stale constant `v0.0.14` for every build. It now reads the version the Go toolchain recorded in the binary (the tag for a dependency or a `go install`, `devel` for a working tree). The `Major`, `Minor` and `Patch` constants are deprecated.
+- **Pool ignored its security settings** (v0.0.12 and later): a `Pool` built its connections without the PSK, pinned server key or KEM suite allowlist in its transport config, so a pool that pinned a server key did not verify it, and a pool with a PSK could not reach a server that required one. Pools now authenticate exactly like `Dial` and bound the handshake with `HandshakeTimeout`. A GitHub security advisory covers it.
+- **Release binaries recorded `vcs.modified=true`**: the release job added untracked files, which Go stamps as a dirty tree. Builds now leave VCS state out and carry the commit through the build flags.
+- **Library version string**: `pkg/version.String()` returned the stale constant `v0.0.14` for every build, and `make build` without `VERSION` stamped `0.0.4`. The library now reads the version the Go toolchain recorded, `make` defaults to the nearest git tag, and the CLI always reports a leading `v`. The `Major`, `Minor` and `Patch` constants are deprecated.
 - **`forward --server-key` and `--pin` now load the files `keygen` writes** (v0.0.26 and v0.0.27): the forwarder read them as raw bytes while `keygen` writes base64, so every real key file was refused and server pinning through forward mode did not work. Both flags share keygen's loaders now, and a test pins with real keygen output for both suites.
 
 ## [0.0.27][] - 2026-11-12

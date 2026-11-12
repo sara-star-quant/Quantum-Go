@@ -19,9 +19,10 @@ const unixPrefix = "unix:"
 // defaultSocketMode lets only the owner connect. Pass 0660 to share the socket with a group.
 const defaultSocketMode os.FileMode = 0o600
 
-// maxSocketPath stays under the shortest sun_path limit in use (104 bytes on macOS and the BSDs,
-// 108 on Linux), so a long path gets a clear error instead of "invalid argument" from bind.
-const maxSocketPath = 100
+// maxSocketPath leaves room for the staging directory that binding adds (about 20 bytes) under the
+// shortest sun_path limit in use (104 bytes on macOS and the BSDs, 108 on Linux), so a long path
+// gets a clear error instead of "invalid argument" from bind.
+const maxSocketPath = 80
 
 // unixPath returns the socket path of a "unix:" address.
 func unixPath(addr string) (string, bool) {
@@ -68,13 +69,16 @@ func resolveSocketMode(value string, set bool, listen string) (os.FileMode, erro
 	if err != nil {
 		return 0, fmt.Errorf("--socket-mode %q is not an octal permission such as 0600", value)
 	}
+	if m == 0 {
+		return 0, errors.New("--socket-mode 0 would lock out every user; use 0600 or 0660")
+	}
 	return os.FileMode(m), nil
 }
 
-// checkSocketMode accepts a mode that gives the owner read and write and nobody else anything but
-// the group: 0600 and 0660 are the sensible choices, and anything wider or narrower is a mistake.
+// checkSocketMode accepts exactly 0600 (owner) and 0660 (owner and group). Anything else is a
+// mistake: wider exposes the tunnel, narrower locks the owner out.
 func checkSocketMode(mode os.FileMode) error {
-	if mode&0o600 != 0o600 || mode&0o007 != 0 || mode&^0o777 != 0 {
+	if mode != 0o600 && mode != 0o660 {
 		return fmt.Errorf("--socket-mode %#o must give the owner read and write and no access to others; use 0600 or 0660", mode)
 	}
 	return nil

@@ -161,3 +161,20 @@ func TestAllowedKEMSuitesDoNotRestrictTheStaticKeySuite(t *testing.T) {
 		t.Fatalf("session suite %v, want %v", got, v1)
 	}
 }
+
+// A server config copied from a client config can carry a KEMSuite the allowlist excludes. The
+// listener has no use for that field, so it must keep accepting.
+func TestListenerIgnoresTheClientOnlyKEMSuite(t *testing.T) {
+	serverCfg := DefaultTransportConfig()
+	serverCfg.AllowedKEMSuites = []chkem.SuiteID{v1}
+	serverCfg.KEMSuite = xw // meaningful only to a dialer
+	serverCfg.HandshakeTimeout = 5 * time.Second
+	ln, accepted := acceptOne(t, serverCfg)
+	c, err := DialWithConfig("tcp", ln.Addr().String(), DefaultTransportConfig())
+	if err != nil {
+		t.Fatalf("a listener with a stray KEMSuite refused a client: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	s := <-accepted
+	t.Cleanup(func() { _ = s.Close() })
+}
