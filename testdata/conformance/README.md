@@ -48,6 +48,8 @@ Seed and coin semantics:
   `X25519_ephemeral_public || ML-KEM_ciphertext`; the shared secret follows the
   Section 4.1 combiner with the encapsulator role = responder (`0x02`).
 - X-Wing `seed` (32 bytes) is the X-Wing key-derivation seed; `encap_seed` (64 bytes) is
-  the X-Wing encapsulation seed (draft-connolly-cfrg-xwing-kem).
+  the X-Wing encapsulation seed (draft-connolly-cfrg-xwing-kem): the first 32 bytes are the
+  ML-KEM-768 encapsulation coins and the last 32 bytes the X25519 ephemeral scalar. That is the
+  opposite order from CH-KEM-v1's `encap_seed` above.
 - The nonce in a record vector is `nonce_prefix || seq` (4 + 8 bytes); the AEAD AAD is
   the 8-byte big-endian `seq`.

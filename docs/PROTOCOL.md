@@ -136,7 +136,8 @@ HelloRetryRequest 0x05.
 Over a stream transport, ClientHello, ServerHello, and HelloRetryRequest are framed as
 `type(1) || len32(payload) || payload`. ClientFinished and ServerFinished are sent as encrypted records,
 `len32(L) || nonce(12) || aead_ct`, where `aead_ct` is the AEAD seal of the framed Finished message
-(`type(1) || len32(32) || verify_data`) under the sender's direction of the handshake key, with empty AAD.
+(`type(1) || len32(32) || verify_data`) under the sender's direction of the handshake key, with empty AAD:
+ClientFinished uses `init_key` and ServerFinished uses `resp_key` (Section 5.4).
 Unlike the data plane, the 12-byte nonce travels in the record: it is a 4-byte zero prefix followed by an
 8-byte big-endian counter that starts at 0 for each direction, so both Finished records carry an all-zero
 nonce. The handshake IVs of Section 5.4 are not used for these records. `L` is the length of
@@ -167,8 +168,10 @@ HelloRetryRequest:
 
 `version` is `major(1) || minor(1)`; protocol 6.0 is `06 00`. For CH-KEM-v1, `pk` is `x25519(32) ||
 mlkem1024(1568)` and `ct` is `x25519_ephemeral(32) || mlkem1024_ct(1568)`. The two flags are the last two
-fields of the payload, in the order shown; a receiver ignores any bytes after them, and a field placed
-anywhere else fails the handshake with a generic alert. The conformance vectors hold one
+fields of the payload, in the order shown. Older peers omit them, so a payload that ends before `static_flag`,
+or before `psk_flag`, counts that flag as 0, and a receiver ignores any bytes after the last field. A field placed
+anywhere else fails the handshake with a generic alert. Making the parser strict, with an explicit extension
+rule, is tracked in [#251](https://github.com/sara-star-quant/Quantum-Go/issues/251). The conformance vectors hold one
 encoded example of each message.
 
 ### 5.2 KEM-suite negotiation and HelloRetryRequest
@@ -185,9 +188,16 @@ ClientHello; `clientRandom`, `SessionID`, and the `KEMSuites` list stay stable a
 exchange is bounded to a single HelloRetryRequest per handshake.
 
 The HelloRetryRequest is bound into the transcript using the RFC 8446 Section 4.4.1 synthetic message hash:
-on a retry the transcript becomes `SHA3-256(ClientHello1) || HelloRetryRequest || ClientHello2 || ...`
-instead of `ClientHello1 || ...`. Both peers compute the same substitution, so tampering with the first
+on a retry the transcript becomes `TH(ClientHello1) || HelloRetryRequest || ClientHello2 || ...`
+instead of `ClientHello1 || ...`. `TH` is the function of Section 2 over the single framed ClientHello1 (its
+5-byte header included), so the 32 bytes written are `SHA3-256( len32(1) || len32(|CH1|) || CH1 )`, not a plain
+hash of the message. They go into the transcript with no message header, unlike RFC 8446's `message_hash`, and
+the HelloRetryRequest and ClientHello2 follow framed. Both peers compute the same substitution, so tampering with the first
 ClientHello (a downgrade attempt) diverges the two transcripts and fails the Finished MAC.
+
+The server decides to retry from the key share's suite id alone: it does not parse that key share, and it does not
+require the share's suite to appear in the supported list or the list to be in any order. Tightening this is tracked
+in [#251](https://github.com/sara-star-quant/Quantum-Go/issues/251).
 
 The responder echoes the negotiated `KEMSuite` in ServerHello; the initiator rejects a mismatched echo.
 The suite is therefore bound both by the explicit echo and by the transcript.
@@ -237,7 +247,15 @@ sequence number and is not transmitted.
 - **Static-key server pinning.** The client encapsulates to a pinned server static key (in that key's own
   suite, independent of the negotiated ephemeral suite) and folds the result:
   `master_secret = KDF( "CH-KEM-Tunnel-Authentication", [ ss, static_secret ], 32 )`. Only the holder of the
-  matching private key derives the same secret; a wrong pin fails closed at the Finished MAC.
+  matching private key derives the same secret; a wrong pin fails closed at the Finished MAC. The client is the
+  encapsulator for this leg, so it binds its own role, `0x01`, and the server decapsulates with the same value
+  (the ephemeral leg of Section 4.1 is the opposite: the server encapsulates and both bind `0x02`). A server
+  holding a static key that receives a ClientHello with `static_flag` 0 does not continue: it answers with a
+  fatal alert (Section 7) and sends no ServerHello, which tells a prober that the server requires a pin. The
+  pin and key files `quantum-tunnel keygen` writes are base64 text: the `.key` file holds
+  `suite(2) || seed`, with a 96-byte seed for CH-KEM-v1 (X25519 scalar, then the 64-byte ML-KEM key seed) and a
+  32-byte seed for X-Wing, and the `.pub` file holds `suite(2) || public key` (1,600 bytes for CH-KEM-v1, 1,216
+  for X-Wing). The suite id is the key's own and is independent of the negotiated ephemeral suite.
 - **Pre-shared key (mutual).** When both peers hold a PSK and the client advertises the matching identity
   (the `psk_flag` field of the ClientHello, Section 5.1), the PSK folds after any static fold:
   `master_secret = KDF( "CH-KEM-Tunnel-PSK", [ master_secret_so_far, psk ], 32 )`, with the two inputs in that
@@ -287,9 +305,16 @@ rekey well before that; reaching the cap aborts rather than overrunning the key'
 
 Sequence numbers start at 0 in each direction. The first data record a sender emits carries `seq` 0.
 
-Keepalive and shutdown: Ping (0x12) / Pong (0x13) keepalives, a Close (0x14) graceful-shutdown
-notification, and an Alert (0xF0) carrying a sanitized error code all share the record layer. Alert text
-stays generic so a prober learns nothing.
+Keepalive and shutdown: Ping (0x12) / Pong (0x13) keepalives and an Alert (0xF0) all share the framing of the
+record layer. A graceful close sends the `close_notify` alert; the Close type (0x14) is defined and a receiver
+acts on it, but the stream transport's shutdown uses the alert.
+
+An Alert is framed like any message and sent in the clear, not under the traffic key, both during the handshake
+and after it. Its payload is `level(1) || code(1) || len8 text || text`. Levels: `0x01` warning, `0x02` fatal.
+Codes: `0x01` unexpected message, `0x02` bad ciphertext, `0x03` handshake failure, `0x04` unsupported version,
+`0x05` unsupported cipher, `0x06` decryption failed, `0x07` internal error, `0x08` close notify. A graceful close
+is level `0x01`, code `0x08`, text `connection closed`; a failed handshake is level `0x02`, code `0x03`, text
+`handshake failed`. Alert text stays generic so a prober learns nothing.
 
 ## 8. Rekey (key rotation with forward secrecy)
 

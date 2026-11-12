@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Changed
+- **Protocol specification, second pass**: the HelloRetryRequest transcript formula, the static-key role byte, the key and pin file formats, the alert layout and codes, the Finished key direction, the optional flag bytes of the ClientHello and the X-Wing encapsulation seed order are now written down, each checked against the code and a client written from the spec.
+
 ## [0.0.28][] - 2026-11-12
 
 **Theme:** A security patch for connection pools. A `Pool` now applies its pinned server key, PSK and KEM suite allowlist; before, it connected without them. Upgrade if you use a `Pool` with a pin or a PSK. The release also adds a KEM suite allowlist, Unix sockets for `forward`, an `inventory` command, peer identity on the server session, reproducible binaries and a signed SBOM.
