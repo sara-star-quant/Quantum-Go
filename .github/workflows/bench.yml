@@ -33,6 +33,53 @@ jobs:
           go test ./test/benchmark/ -run xxx -benchtime 20x \
             -bench 'Handshake$|HandshakeStaticAuth|HandshakePSK|HandshakeLatency' | tee bench.txt
 
+      - name: Runner CPU
+        shell: bash
+        run: |
+          { echo "cpu: $( (lscpu 2>/dev/null | grep -m1 'Model name' | sed 's/.*: *//') || true)$( (sysctl -n machdep.cpu.brand_string 2>/dev/null) || true)$( (wmic cpu get name 2>/dev/null | sed -n 2p) || true)"; } | tee cpu.txt
+
+      - name: KEM backends, interleaved on one machine
+        shell: bash
+        run: |
+          # default: circl. fips: crypto/mlkem from the current toolchain. module: crypto/mlkem
+          # from Go's frozen FIPS 140-3 module snapshot (what GOFIPS140 users run).
+          go test -c -o kem-default.test ./pkg/chkem/
+          go test -tags fips -c -o kem-fips.test ./pkg/chkem/
+          GOFIPS140=v1.0.0 go test -tags fips -c -o kem-module.test ./pkg/chkem/
+          # module-new: the newer snapshot bundled with the toolchain, when it has one.
+          GOFIPS140=v1.26.0 go test -tags fips -c -o kem-module-new.test ./pkg/chkem/ || rm -f kem-module-new.test
+          GOFIPS140=v1.26.0 go test -tags fips -c -o hs-module-new.test ./test/benchmark/ || rm -f hs-module-new.test
+          go test -c -o hs-default.test ./test/benchmark/
+          GOFIPS140=v1.0.0 go test -tags fips -c -o hs-module.test ./test/benchmark/
+          : > kem-default.txt; : > kem-fips.txt; : > kem-module.txt; : > kem-module-new.txt; : > hs-default.txt; : > hs-module.txt; : > hs-module-new.txt
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            ./kem-default.test -test.run xxx -test.bench 'Suites/chkem-v1' -test.benchtime 300ms >> kem-default.txt
+            ./kem-fips.test    -test.run xxx -test.bench 'Suites/chkem-v1' -test.benchtime 300ms >> kem-fips.txt
+            ./kem-module.test  -test.run xxx -test.bench 'Suites/chkem-v1' -test.benchtime 300ms >> kem-module.txt
+            [ -x kem-module-new.test ] && ./kem-module-new.test -test.run xxx -test.bench 'Suites/chkem-v1' -test.benchtime 300ms >> kem-module-new.txt
+            ./hs-default.test  -test.run xxx -test.bench 'Handshake$' -test.benchtime 20x >> hs-default.txt
+            [ -x hs-module-new.test ] && ./hs-module-new.test -test.run xxx -test.bench 'Handshake$' -test.benchtime 20x >> hs-module-new.txt
+            ./hs-module.test   -test.run xxx -test.bench 'Handshake$' -test.benchtime 20x >> hs-module.txt
+          done
+          {
+            echo "KEM, circl vs stdlib (current toolchain):"
+            python3 scripts/bench-ab.py kem-default.txt kem-fips.txt circl stdlib
+            echo
+            echo "KEM, circl vs stdlib in the frozen FIPS module (GOFIPS140=v1.0.0):"
+            python3 scripts/bench-ab.py kem-default.txt kem-module.txt circl module
+            echo
+            echo "Whole handshake (both sides, no network), circl vs FIPS module:"
+            python3 scripts/bench-ab.py hs-default.txt hs-module.txt circl module
+            if [ -s hs-module-new.txt ]; then
+              echo
+              echo "Whole handshake, circl vs the newer FIPS module snapshot (GOFIPS140=v1.26.0):"
+              python3 scripts/bench-ab.py hs-default.txt hs-module-new.txt circl module-new
+              echo
+              echo "KEM, circl vs the newer FIPS module snapshot:"
+              python3 scripts/bench-ab.py kem-default.txt kem-module-new.txt circl module-new
+            fi
+          } | tee kem.txt
+
       - name: Datagram goodput
         shell: bash
         run: go test ./pkg/tunnel/ -run xxx -bench 'DatagramEndToEnd$|DatagramEndToEndBatch' -benchtime 3s | tee goodput.txt
@@ -55,6 +102,7 @@ jobs:
             echo "### ${{ matrix.os }} ($(go env GOOS)/$(go env GOARCH), $(go version | cut -d' ' -f3))"
             echo '```'
             grep -E '^Benchmark' bench.txt
+            cat cpu.txt kem.txt
             grep -E '^Benchmark' goodput.txt
             grep -E '^Benchmark' streambatch.txt
             [ -f soak.txt ] && grep -E '^(--- |ok|FAIL)' soak.txt
@@ -66,6 +114,15 @@ jobs:
           name: bench-${{ matrix.os }}
           path: |
             bench.txt
+            kem.txt
+            kem-default.txt
+            kem-fips.txt
+            kem-module.txt
+            hs-default.txt
+            hs-module.txt
+            kem-module-new.txt
+            hs-module-new.txt
+            cpu.txt
             goodput.txt
             streambatch.txt
             soak.txt
