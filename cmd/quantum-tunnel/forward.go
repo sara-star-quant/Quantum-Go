@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/pkg/metrics"
 	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
@@ -91,6 +92,8 @@ type forwarder struct {
 	// cfg is the live transport config. A reload swaps it: new connections use the new keys,
 	// open ones keep the keys they started with.
 	cfg atomic.Pointer[tunnel.TransportConfig]
+	// ops holds the counts, readiness and drain state the metrics endpoint reports.
+	ops *forwardOps
 }
 
 func (f *forwarder) Addr() net.Addr { return f.addr }
@@ -100,8 +103,15 @@ func (f *forwarder) Addr() net.Addr { return f.addr }
 // keeps the static key it started with; changing --server-key needs a restart.
 func (f *forwarder) Reload(next tunnel.TransportConfig) { f.cfg.Store(&next) }
 
+// Drain stops accepting, reports not ready, and waits up to timeout for open connections to
+// finish. It returns true when they all did. The caller cuts whatever is left by exiting.
+func (f *forwarder) Drain(timeout time.Duration) bool {
+	_ = f.Close()
+	return f.ops.drain(timeout)
+}
+
 // Close stops accepting and waits for the accept loop to finish. Connections already
-// piping are cut when the process exits; there is no drain.
+// piping are cut when the process exits; Drain waits for them first.
 func (f *forwarder) Close() error {
 	f.closed.Store(true)
 	err := f.closeFn()
@@ -128,7 +138,7 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 	if err != nil {
 		return nil, err
 	}
-	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close, done: make(chan struct{})}
+	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close, done: make(chan struct{}), ops: newForwardOps()}
 	stored := cfg // the listener gets a copy whose lookup reads the live config
 	f.cfg.Store(&stored)
 	cfg.PSKLookup = func(identity []byte) []byte {
@@ -142,8 +152,12 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 		HandshakeRateLimit:  lim.handshakeRate,
 		HandshakeBurst:      max(1, int(2*lim.handshakeRate)), // a burst of 0 would refuse every handshake
 	}
+	// The observer counts handshake load and rate-limit hits for the metrics endpoint. Its own
+	// log lines go nowhere: the refusal log below already reports them, throttled.
+	cfg.RateLimitObserver = metrics.NewRateLimitObserver(f.ops.collector, metrics.NewLogger(metrics.WithOutput(io.Discard)))
 	ln.SetConfig(cfg)
 	sem := make(chan struct{}, lim.maxConns)
+	f.ops.ready.Store(true)
 	f.wg.Go(func() {
 		defer close(f.done)
 		acceptFails := 0
@@ -169,6 +183,7 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 				}
 				// A wrong PSK, a wrong pinned key, a rate-limited peer or a client that is not a
 				// tunnel peer all surface here; keep serving.
+				f.ops.refused.Add(1)
 				refusals.note(logf, err)
 				continue
 			}
@@ -180,25 +195,29 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 				_ = t.Close()
 				continue
 			}
+			done := f.ops.serving()
 			go func() {
+				defer done()
 				defer func() { <-sem }()
-				serveOne(t, upstream, lim, logf)
+				serveOne(t, upstream, lim, logf, f.ops)
 			}()
 		}
 	})
 	return f, nil
 }
 
-func serveOne(t *tunnel.Tunnel, upstream string, lim forwardLimits, logf func(string, ...any)) {
+func serveOne(t *tunnel.Tunnel, upstream string, lim forwardLimits, logf func(string, ...any), ops *forwardOps) {
 	defer func() { _ = t.Close() }()
 	start := time.Now()
 	conn, err := dialUpstream(upstream, lim.dialTimeout)
 	if err != nil {
+		ops.dialFailed.Add(1)
 		logf("upstream %s: %v", upstream, err)
 		return
 	}
 	defer func() { _ = conn.Close() }()
 	sent, recv := pipe(conn, t, lim.idleTimeout)
+	ops.bytes(recv, sent)
 	logf("closed %v after %s: %d bytes to upstream, %d back", t.RemoteAddr(), time.Since(start).Round(time.Millisecond), recv, sent)
 }
 
@@ -209,9 +228,10 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 	if err != nil {
 		return nil, err
 	}
-	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close, done: make(chan struct{})}
+	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close, done: make(chan struct{}), ops: newForwardOps()}
 	f.cfg.Store(&cfg)
 	sem := make(chan struct{}, lim.maxConns)
+	f.ops.ready.Store(true)
 	f.wg.Go(func() {
 		defer close(f.done)
 		for {
@@ -231,17 +251,21 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 				_ = conn.Close()
 				continue
 			}
+			done := f.ops.serving()
 			go func() {
+				defer done()
 				defer func() { <-sem }()
 				defer func() { _ = conn.Close() }()
 				start := time.Now()
 				t, err := tunnel.DialWithConfig("tcp", connect, *f.cfg.Load())
 				if err != nil {
+					f.ops.dialFailed.Add(1)
 					logf("tunnel to %s: %v", connect, err)
 					return
 				}
 				defer func() { _ = t.Close() }()
 				sent, recv := pipe(conn, t, lim.idleTimeout)
+				f.ops.bytes(sent, recv)
 				logf("closed %s after %s: %d bytes sent, %d received", connLabel(conn), time.Since(start).Round(time.Millisecond), sent, recv)
 			}()
 		}
@@ -524,10 +548,14 @@ func reloadKeys(f *forwarder, server bool, a forwardAuth, logf func(string, ...a
 	}
 	next, err := buildForwardConfig(server, a)
 	if err != nil {
+		f.ops.reloadFailed.Add(1)
+		f.ops.lastReloadOK.Store(0)
 		logf("reload failed, keeping the current keys: %v", err)
 		return err
 	}
 	f.Reload(next)
+	f.ops.reloads.Add(1)
+	f.ops.lastReloadOK.Store(1)
 	logf("reloaded keys; open connections keep the keys they started with")
 	return nil
 }
@@ -637,6 +665,8 @@ func forwardCommand() {
 	idle := fs.Duration("idle-timeout", 5*time.Minute, "Close a connection after this long with no data in either direction (0 disables)")
 	insecure := fs.Bool("insecure-no-auth", false, "Skip authentication. For tests and development only: anyone who can reach the server can reach the upstream")
 	verbose := fs.Bool("verbose", false, "Log every connection")
+	metricsAddr := fs.String("metrics-addr", "", "Serve /metrics, /healthz and /readyz on this address (off by default; a bare :port binds 127.0.0.1, a wildcard address is refused)")
+	drainTimeout := fs.Duration("drain-timeout", 30*time.Second, "On SIGTERM or Ctrl-C, stop accepting and let open connections finish for this long before cutting them (0 cuts at once); a second signal cuts at once")
 
 	fs.Usage = func() {
 		fmt.Println(`USAGE: quantum-tunnel forward [options]
@@ -737,6 +767,17 @@ EXAMPLES:
 		os.Exit(1)
 	}
 
+	if *metricsAddr != "" {
+		ms, merr := startMetricsServer(*metricsAddr, getVersion(), f.ops)
+		if merr != nil {
+			_ = f.Close()
+			fmt.Fprintf(os.Stderr, "Error: %v\n", merr)
+			os.Exit(2)
+		}
+		defer func() { _ = ms.Close() }()
+		log.Printf("serving /metrics, /healthz and /readyz on %v", ms.addr)
+	}
+
 	for waiting := true; waiting; {
 		select {
 		case <-stop:
@@ -748,6 +789,15 @@ EXAMPLES:
 			_ = reloadKeys(f, isServer, auth, logf)
 		}
 	}
-	log.Println("shutting down")
-	_ = f.Close()
+	log.Printf("shutting down: waiting up to %s for %d open connections (a second signal cuts them)", *drainTimeout, f.ops.active.Load())
+	drained := make(chan bool, 1)
+	go func() { drained <- f.Drain(*drainTimeout) }()
+	select {
+	case ok := <-drained:
+		if !ok {
+			log.Printf("drain timed out with %d connections still open; cutting them", f.ops.active.Load())
+		}
+	case <-stop:
+		log.Printf("second signal: cutting %d open connections", f.ops.active.Load())
+	}
 }
