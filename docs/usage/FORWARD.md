@@ -97,8 +97,22 @@ A key file is refused when its group can write it or when others can touch it. U
 - **Rotating keys:** write the new key file and send SIGHUP (`kill -HUP <pid>`) to each side. New connections use the new keys; open connections keep the keys they started with. A server reloads its PSKs only, so a change to `--server-key` needs a restart; a client reloads its PSK and pinned key. A file that fails to parse or has loose permissions keeps the current keys and logs the error. SIGHUP no longer ends the process, so run it under systemd, a container runtime or `nohup`, not a bare terminal.
 - **Rotating without refusing anyone:** a server holds one key per identity, so reloading the server and the clients at different moments leaves a gap in which not-yet-reloaded clients are refused. To avoid it, add the new key under a new identity in `--clients-file`, reload the server, point each client at the new key and `--identity`, reload them, then delete the old line and reload the server again.
 - **A compromised key:** reload does not erase the old key from memory, and connections that opened with it stay open. Restart both sides to cut them.
-- **Shutdown:** SIGINT and SIGTERM close the listener and cut open connections. There is no drain.
+- **Shutdown drains:** SIGINT and SIGTERM stop accepting, report not ready, and let open connections finish for `--drain-timeout` (default 30 seconds, 0 cuts at once), then cut what is left. A second signal cuts at once. A drain is bounded so a rollout cannot hang on a stuck connection.
 - **Not yet measured on real hosts.** No throughput or latency numbers are published for this mode, and none should be assumed from the library's. Measure with your own workload.
+
+## Running it unattended
+
+`--metrics-addr 127.0.0.1:9100` serves three endpoints and is off by default. It is one more open port, so it binds loopback: a bare `:9100` means `127.0.0.1:9100`, and a wildcard address such as `0.0.0.0:9100` is refused. To expose it, name one interface address and firewall it. The endpoints carry counts and durations only, never client addresses or identities.
+
+| Path | Meaning |
+|---|---|
+| `/healthz` | liveness: 200 while the process runs, including while it drains |
+| `/readyz` | readiness: 200 once the listener is up and the keys are loaded, 503 while draining |
+| `/metrics` | Prometheus text: handshake load, rate-limit and byte counters from the library, plus `quantum_tunnel_forward_*`; the library's session, packet and rekey series stay at zero in forward mode |
+
+The forwarder's own series: `connections_active`, `connections_total`, `handshakes_refused_total` (server side only: wrong key, rate limit or a peer that is not a tunnel client; a rate-limited peer is also in the library's rate-limit counter, so do not add the two), `dial_failures_total` (upstream on a server; on a client, a tunnel peer that refused or did not answer, which is where a client sees a rejected key), `key_reloads_total`, `key_reload_failures_total`, `last_key_reload_ok`, `ready` and `draining`.
+
+A failed key reload keeps the previous keys, so the forwarder stays ready; alert on `last_key_reload_ok == 0` or a rising `key_reload_failures_total`. A rising `handshakes_refused_total` means a wrong key, a rate limit or a scanner; the log line says which, throttled to one a second.
 
 ## Wire framing
 
@@ -119,4 +133,6 @@ Forward mode sends each tunnel record's plaintext as one frame: a one-byte type 
 | `--listen unix:/path`, `--upstream unix:/path` | client, server | use a Unix socket for the plain side instead of a TCP port; the listener binds it private (mode 0600) and refuses a directory that another user owns or that group or others can write |
 | `--socket-mode` | client | permission of a `unix:` listener, octal: `0600` owner only (default) or `0660` owner and group; other modes are refused, and so is the flag with a TCP address |
 | `--suite` | client | KEM suite to offer first: `chkem-v1` (default) or `x-wing`; the server follows |
+| `--metrics-addr` | both | serve `/metrics`, `/healthz`, `/readyz` on a loopback address (off by default) |
+| `--drain-timeout` | both | how long a shutdown lets open connections finish before cutting them (default 30s, 0 cuts at once) |
 | `--insecure-no-auth`, `--verbose` | both | development only; log every connection |
