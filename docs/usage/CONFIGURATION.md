@@ -27,7 +27,7 @@ config.WriteTimeout = 30 * time.Second
 
 ### Endpoint Authentication (v0.0.12+)
 
-All authentication is opt-in; unconfigured, the handshake is encryption-only and unchanged. Generate static keys with `quantum-tunnel keygen` (see the [CLI reference](CLI.md)). See [SECURITY.md](../../SECURITY.md#authentication-modes) for the threat properties.
+Authentication is required since v0.0.29. Set a PSK, a static or pinned key, or `AllowUnauthenticated` (on both sides, for tests and demos); without one, `Dial`, `Accept`, `NewDatagramEndpoint` and `NewPool` return `ErrAuthenticationRequired`. Generate static keys with `quantum-tunnel keygen` (see the [CLI reference](CLI.md)). See [SECURITY.md](../../SECURITY.md#authentication-modes) for the threat properties.
 
 ```go
 // Static-key server pinning: the server proves possession of a long-term key,

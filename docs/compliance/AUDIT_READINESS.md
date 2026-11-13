@@ -81,8 +81,8 @@ binaries inside the archives reproduce; the archives do not, because tar and gzi
 
 ## 6. Known limitations (honest)
 
-- The handshake is unauthenticated by default; endpoint authentication (static-key pinning, PSK mutual) is
-  opt-in. An unconfigured tunnel provides encryption and forward secrecy but not peer identity.
+- Authentication is required since v0.0.29: a PSK, a pinned or static key, or an explicit `AllowUnauthenticated`
+  on both sides. A tunnel that opts out provides encryption and forward secrecy but not peer identity.
 - Sequence-based nonces assume a session's keys are used only through the session; `Send` and `SendBatch`
   are serialized per session, so concurrent senders are safe.
 - KEM-suite negotiation and HelloRetryRequest are covered by the transcript-agreement proof and by tests,

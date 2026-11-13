@@ -243,7 +243,7 @@ Risk Score: 1-25
 | V12 | Session hijacking | High | Mitigated (encryption) |
 | V13 | Spoofed-source amplification and reassembler exhaustion (UDP) | Medium | Partly mitigated: a load-gated stateless cookie engages under pressure and the RETRY never exceeds the datagram that triggered it. Below the pressure threshold an endpoint answers unverified sources, and a deeper amplification budget is future work (see [datagram-dos.md](../datagram-dos.md)) |
 | V14 | Role confusion and reflection | Medium | Mitigated (role bound into the CH-KEM transcript; X-Wing's combiner is spec-fixed, so the handshake transcript and Finished carry it) |
-| V15 | Unauthenticated peer | High | Open by default; opt-in static-key pinning and PSK close it |
+| V15 | Unauthenticated peer | High | Closed by default since v0.0.29: an endpoint needs a PSK or a static or pinned key, or an explicit `AllowUnauthenticated`; only an explicit opt-out leaves it open |
 | V16 | Wire fingerprinting | Low | Open (only opt-in handshake padding exists) |
 
 ---
@@ -340,7 +340,7 @@ if session.NeedsRekey() {
 
 | Threat | Mitigation | Effectiveness |
 |--------|------------|---------------|
-| T6 (MitM) | Transcript binding; optional static-key pinning and PSK for peer identity | High with pinning or PSK, none against an unauthenticated active attacker by default |
+| T6 (MitM) | Transcript binding; optional static-key pinning and PSK for peer identity | High with pinning or PSK, none against an active attacker when both sides opt out of authentication |
 | T7 (Replay) | Derived per-direction nonce prefix and a 1024-bit sliding window; the datagram window is never reset across a rekey | High |
 | T8 (DoS) | Per-IP and handshake rate limits, handshake timeout, `MaxPendingHandshakes`; on UDP a load-gated stateless cookie and a de-amplifying RETRY | Medium to High under load; Medium otherwise |
 | T9 (Downgrade) | Offered suites bound into the Finished transcript; HelloRetryRequest synthetic transcript hash; offer list enforced on both sides, including the FIPS filter | High, tested; not separately modeled |

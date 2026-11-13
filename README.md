@@ -16,22 +16,23 @@
 
 **Post-quantum encryption for your Go network code. Keyed in one round trip. Familiar `Dial` and `Listen`.**
 
-Traffic an attacker records today can be decrypted later by a quantum computer. Quantum-Go closes that gap now: a **hybrid ML-KEM-1024 + X25519** handshake, so an attacker has to break both algorithms to read a session. You keep your protocol and your sockets; the library encrypts and authenticates the bytes.
+Traffic an attacker records today can be decrypted later by a quantum computer. Quantum-Go reduces that exposure for traffic its tunnel protects: a **hybrid ML-KEM-1024 + X25519** handshake, so an attacker has to break both algorithms to read a session. You keep your protocol and your sockets; the library encrypts and authenticates the bytes.
 
 ## What you get
 
 - **Speed to first byte.** The client sends data after **1 round trip** on both transports: 21 ms on a 20 ms link, 101 ms on a 100 ms link. The handshake costs 340 to 610 µs of CPU for both sides.
 - **Throughput.** Between two cloud hosts, one tunnel flow reaches **10 to 14 Gbps** and four or more flows fill a 20 Gbps link at plain-TCP speed (Google Cloud; AWS reaches its 12.4 Gbps instance limit the same way). Locally, about **2.5 GB/s** on a single stream tunnel with 60 KB records on a laptop and 1.4 to 1.6 GB/s on Linux CI runners (loopback); the record size changes it a lot, see [PERFORMANCE.md](docs/PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp). `Tunnel.SendBatch` writes a burst of small stream records together, 2 to 3x faster for 256 B records on macOS, Windows and x86-64 Linux ([numbers](docs/PERFORMANCE.md#batching-small-stream-records)). On Linux, batched datagram sends with UDP offload reach **701 MB/s** (x86-64) and **528 MB/s** (arm64) per flow, up to 3.6 times a plain send.
-- **Top-tier post-quantum security.** ML-KEM-1024 is NIST security level 5. Prefer smaller handshakes? Set `KEMSuite` to the X-Wing suite (ML-KEM-768 + X25519), or register your own suite.
+- **High-assurance key establishment.** ML-KEM-1024 is NIST security level 5, hybridized with X25519. Prefer smaller handshakes? Set `KEMSuite` to the X-Wing suite (ML-KEM-768 + X25519), or register your own suite.
 - **Two transports, one API.** TCP, and a connectionless UDP transport with retransmission, reliable rekey, anti-DoS cookies and roaming across IP changes.
-- **Authentication you control.** Pin your server's key, or issue each client its own pre-shared key. A client with no key looks the same as one with a wrong key.
+- **Authentication by default.** Unauthenticated use needs an explicit opt-out. Pin your server's key, or issue each client its own pre-shared key. A client with no key looks the same as one with a wrong key.
 - **Proof, not promises.** Machine-checked ProVerif models, published conformance vectors, fuzzed parsers, a written wire specification, and releases signed with cosign and attested.
-- **A licence you can ship.** Apache-2.0 with an express patent grant, a licence scan on every release, and full third-party notices.
+- **A license you can ship.** Apache-2.0 with an express patent grant, a licence scan on every release, and full third-party notices.
 
 How it stacks up against WireGuard, Rosenpass, IKEv2 and hybrid TLS, including where it loses: [docs/COMPARISON.md](docs/COMPARISON.md).
 
 ## Who it is for
 
+- You run a TCP service you cannot change (a database, a broker, an HTTP or gRPC service) and want it behind a post-quantum tunnel: `quantum-tunnel forward`, no code changes. Try it in about 10 minutes with the [Docker Compose demo](examples/forward-demo/README.md).
 - You build a Go service, agent, relay or edge component and want quantum-resistant transport **without running a VPN daemon, a kernel module or root**.
 - You need an auditable protocol: a spec, proofs and test vectors you can hand to a reviewer.
 
@@ -47,6 +48,8 @@ Quantum-Go is **pre-1.0 and research-grade**, and it has **not had a third-party
 The core (chkem, crypto, protocol, tunnel, internal) is about 8,900 lines of Go outside tests, blank lines and comments (`scripts/loc.sh`, checked in CI), small enough for one reviewer to read end to end.
 
 ## Quick start
+
+No Go code? Run [`quantum-tunnel forward`](docs/usage/FORWARD.md) next to the service and next to its users ([demo](examples/forward-demo/README.md)). For Go code:
 
 ```bash
 go get github.com/sara-star-quant/quantum-go
@@ -115,7 +118,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 | Post-quantum security | ML-KEM-1024 (NIST Category 5) |
 | Classical security | X25519 (128-bit) |
 | Hybrid guarantee | Secure if either algorithm is secure |
-| Endpoint authentication | Opt-in: static-key server pinning, require-auth, per-client PSK mutual auth |
+| Endpoint authentication | Required: PSK, static-key server pinning or require-auth; explicit opt-out for tests |
 | Forward secrecy | Ephemeral keys per session and per rekey |
 | Session resumption | Removed in v0.0.26: it gave no speedup, so every connection does a full handshake |
 | FIPS 140-3 | Build mode with POST and CST self-tests ([docs](docs/FIPS.md)); not a validated module |

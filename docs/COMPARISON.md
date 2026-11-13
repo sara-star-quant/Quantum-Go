@@ -19,7 +19,7 @@ Quantum-Go is a **library**: you embed it in a Go program to encrypt a `net.Conn
 - **Hybrid security.** ML-KEM-1024 (NIST security level 5) combined with X25519, so an attacker has to break both. Traffic recorded today stays protected against a future quantum computer.
 - **Two transports from one API.** Stream (TCP) and a connectionless datagram (UDP) transport with a fragmented handshake, retransmission, reliable rekey, anti-DoS cookies and roaming across IP or port changes.
 - **Throughput that scales with your kernel.** About 2.5 GB/s on one stream tunnel with 60 KB records on a laptop, and about 1.2 GB/s with 8 KB records, which depends on the record size ([PERFORMANCE.md](PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp)). On datagrams, `SendBatch` with UDP offload reached 701 MB/s on a Linux x86-64 CI runner and 528 MB/s on arm64, against 196 and 304 MB/s for one send per datagram.
-- **Authentication you opt into.** Pin a server's static key, require it on the server, or give each client its own pre-shared key. An unknown client is indistinguishable from one with a wrong key.
+- **Authentication by default.** Unauthenticated use needs an explicit opt-out. Pin a server's static key, require it on the server, or give each client its own pre-shared key. An unknown client is indistinguishable from one with a wrong key.
 - **Evidence, not adjectives.** Machine-checked ProVerif models of secrecy, hybrid security, forward secrecy and authentication (including PSK), published conformance vectors, fuzz targets on every parser that sees unauthenticated bytes, a wire specification, and releases signed with cosign and attested.
 - **A licence you can ship.** Apache-2.0, with an express patent grant, a licence scan on every release and full third-party notices.
 
@@ -31,7 +31,7 @@ Quantum-Go is a **library**: you embed it in a Go program to encrypt a `net.Conn
 | Post-quantum | Yes, hybrid ML-KEM-1024 + X25519 (X-Wing as an option) | No | Yes, via Classic McEliece and Kyber into the WireGuard PSK | Yes, ML-KEM into the WireGuard PSK (see notes) | Yes, additional key exchange including ML-KEM | Yes, hybrid |
 | Round trips until the client can send | 1 | 1 | Extra exchange alongside WireGuard's | Provider dependent | Several (IKE_SA_INIT, intermediate exchanges, IKE_AUTH) | 1 after TCP |
 | Handshake size | about 1.7 KB client flight plus a matching server flight (ML-KEM-1024) | 148 B and 92 B | Large (McEliece keys) | Provider dependent | Grows with each added exchange | adds about 1,176 B client and 1,088 B server |
-| Authentication | Opt-in static pin or per-client PSK | Static public keys | Static keys, McEliece for authenticity | Account and keys managed by the provider | Certificates or PSK | Certificates |
+| Authentication | Required: static pin or per-client PSK (explicit opt-out) | Static public keys | Static keys, McEliece for authenticity | Account and keys managed by the provider | Certificates or PSK | Certificates |
 | Formal analysis | ProVerif models in-repo, run in CI | Noise-based design, published analyses | ProVerif symbolic analysis | Not published by the provider that I found | Not assessed here | Not assessed here |
 
 ## Notes and sources behind the table
