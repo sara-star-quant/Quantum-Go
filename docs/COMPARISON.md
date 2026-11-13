@@ -48,7 +48,7 @@ Quantum-Go is a **library**: you embed it in a Go program to encrypt a `net.Conn
 
 **OpenVPN** is not assessed on this page: I did not find a source I trust for its current post-quantum status.
 
-**Quantum key distribution (QKD)** is a different answer to the same threat: it needs dedicated optical hardware and a point-to-point link, and it protects the key exchange only. Post-quantum cryptography such as ML-KEM runs on today's networks and CPUs, which is the layer Quantum-Go works at. IBM's [Quantum Learning](https://quantum.cloud.ibm.com/learning/en) has a classroom module on QKD for background.
+**Quantum key distribution (QKD)** is a different answer to the same threat: it needs dedicated optical hardware and a point-to-point link, and it protects the key exchange only. Post-quantum cryptography such as ML-KEM runs on today's networks and CPUs, which is the layer Quantum-Go works at. IBM's [Quantum Learning](https://quantum.cloud.ibm.com/learning/en) has a classroom module on QKD for background. For how the protocol itself compares with published PQ-WireGuard, combiner and ML-KEM attack work, see [RELATED_WORK](technical/RELATED_WORK.md).
 
 ## Where Quantum-Go is behind
 

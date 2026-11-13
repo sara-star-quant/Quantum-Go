@@ -6,7 +6,7 @@ This is a self-authored threat model, informed by the NIST SP 800-30 risk method
 
 Revised for the datagram transport, endpoint authentication, KEM suite negotiation with HelloRetryRequest, the public suite registry and the one-round-trip handshake. T9 to T11 are new; T6 to T8 and the protocol vulnerabilities in 5.3 were updated. The scores for T1 to T5 are unchanged from the January assessment, and the grids in 6.1 and 6.2 predate this revision (T9 to T11 are in 6.3).
 
-**Background reading, linked and not copied:** why a future quantum computer matters (Shor's algorithm breaks the elliptic-curve and finite-field key exchange used today, and Grover's algorithm halves the strength of symmetric keys, which is why AES-256 stays fine) is taught in IBM's [Quantum Learning](https://quantum.cloud.ibm.com/learning/en) courses. The standard this library implements is [NIST FIPS 203](https://csrc.nist.gov/pubs/fips/203/final), the primary source for any claim about ML-KEM.
+**Background reading, linked and not copied:** why a future quantum computer matters (Shor's algorithm breaks the elliptic-curve and finite-field key exchange used today, and Grover's algorithm halves the strength of symmetric keys, which is why AES-256 stays fine) is taught in IBM's [Quantum Learning](https://quantum.cloud.ibm.com/learning/en) courses. How this protocol compares with published analyses is in [RELATED_WORK](RELATED_WORK.md). The standard this library implements is [NIST FIPS 203](https://csrc.nist.gov/pubs/fips/203/final), the primary source for any claim about ML-KEM.
 
 ---
 
