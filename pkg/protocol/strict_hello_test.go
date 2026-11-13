@@ -59,3 +59,16 @@ func TestClientHelloRejectsEmptySuiteList(t *testing.T) {
 		t.Fatalf("empty KEMSuites encoded: %v", err)
 	}
 }
+
+func TestClientHelloOtherMajorReportsTheVersion(t *testing.T) {
+	codec := protocol.NewCodec()
+	enc, err := codec.EncodeClientHello(validClientHello(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := resized(enc, 0, []byte("different layout"))
+	other[protocol.HeaderSize] = protocol.Current.Major + 1
+	if _, err := codec.DecodeClientHello(other); !errors.Is(err, qerrors.ErrUnsupportedVersion) {
+		t.Fatalf("got %v, want ErrUnsupportedVersion", err)
+	}
+}

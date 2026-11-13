@@ -9,11 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **BREAKING: authentication is required.** `Dial`, `Accept`, `NewDatagramEndpoint` and `NewPool` return `ErrAuthenticationRequired` unless the endpoint carries a PSK or PSK lookup, a static key (server) or a pinned server key (client), or sets `AllowUnauthenticated` (`WithAllowUnauthenticated()` for datagrams). Both sides must opt in to run without authentication, which leaves the tunnel open to an active man in the middle. `tunnel.Dial` is now `tunnel.DialInsecure`, and `tunnel.ListenInsecure` is the matching listener for tests, demos and benchmarks. Migration: set `PSK` and `PSKIdentity` on `TransportConfig` and use `DialWithConfig`, or switch to the `Insecure` helpers to keep today's behavior.
-
 - **BREAKING (wire parser): ClientHello parses strictly.** A hello with a missing flag, an empty `kem_suites` list, a flag other than 0 or 1, or trailing bytes at the implemented minor version fails with the generic alert. A higher minor may append fields, which a receiver skips; the rule is in `docs/PROTOCOL.md` section 5.1. Every protocol 6.x release already sent both flags, so released clients keep working.
 - **`forward` warns at startup** when a `--upstream unix:/path` socket does not exist yet, instead of failing every connection silently.
-
-### Changed
 - **Protocol specification, second pass**: the HelloRetryRequest transcript formula, the static-key role byte, the key and pin file formats, the alert layout and codes, the Finished key direction, the optional flag bytes of the ClientHello and the X-Wing encapsulation seed order are now written down, each checked against the code and a client written from the spec.
 
 ## [0.0.28][] - 2026-11-12

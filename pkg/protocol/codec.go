@@ -206,6 +206,10 @@ func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 	// Version
 	m.Version = Version{Major: data[offset], Minor: data[offset+1]}
 	offset += 2
+	// A different major version has a different layout, so report the version, not the layout.
+	if !m.Version.IsCompatible(Current) {
+		return nil, qerrors.ErrUnsupportedVersion
+	}
 
 	// Random
 	m.Random = make([]byte, 32)
