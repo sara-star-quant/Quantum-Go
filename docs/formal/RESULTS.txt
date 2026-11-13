@@ -6,6 +6,10 @@ Protocol version verified: 6.0
 RESULT inj-event(ClientAccept(sp,t)) ==> inj-event(ServerRunning(sp,t)) is true.
 RESULT not event(AuthDone) is false.
 
+=== chkem_cookie.pv ===
+RESULT event(Alloc(addrA,ck_2)) ==> event(IssuedToOwner(addrA,ck_2)) is true.
+RESULT not event(OwnerAllocated) is false.
+
 === chkem_fs.pv ===
 RESULT not attacker_p1(secretMsg[]) is true.
 RESULT not event(Done) is false.
@@ -42,6 +46,12 @@ RESULT not event(Done) is false.
 === negative/auth_broken.pv ===
 RESULT inj-event(ClientAccept(sp,t)) ==> inj-event(ServerRunning(sp,t)) is false.
 RESULT (even event(ClientAccept(sp,t)) ==> event(ServerRunning(sp,t)) is false.)
+
+=== negative/cookie_mac_not_verified_broken.pv ===
+RESULT event(Alloc(addrA,ck_2)) ==> event(IssuedToOwner(addrA,ck_2)) is false.
+
+=== negative/cookie_no_address_binding_broken.pv ===
+RESULT event(Alloc(addrA,ck_2)) ==> event(IssuedToOwner(addrA,ck_2)) is false.
 
 === negative/fs_broken.pv ===
 RESULT not attacker_p1(secretMsg[]) is false.

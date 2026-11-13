@@ -15,6 +15,7 @@ committed proof log is [`RESULTS.txt`](RESULTS.txt).
 | Suite negotiation: agreement on the offered list, no downgrade to the weak suite, no acceptance after a forged HelloRetryRequest | `chkem_negotiation.pv` | `inj-event(ClientAccept(sp,o,t)) ==> inj-event(ServerRunning(sp,o,t))`, `event(AcceptedWeak)` and `event(AcceptedAfterRetry)` unreachable | proven |
 | Rekey forward secrecy and passive post-compromise secrecy (an attacker who watches but does not alter messages): epoch-0 data stays secret after the epoch-1 master leaks, and epoch-2 data stays secret because the rekey mixes a fresh KEM secret. Not secure against an active attacker who already holds the current master (see the limitation below) | `chkem_rekey.pv` | `attacker(secretE0)` and `attacker(secretE2)` unreachable | proven |
 | Rekey agreement against an active attacker with no key material: every accepted rekey was offered with that key share and sequence number (agreement, not "accepted exactly once": replay is not excluded here), and the next epoch's data stays secret | `chkem_rekey_auth.pv` | `event(RekeyAccepted) ==> event(RekeyOffered)`, `attacker(secretE1)` unreachable | proven |
+| Datagram cookie authenticity against an off-path spoofer: the server allocates handshake state for an address only if it issued the cookie to that address's owner (not injective: a cookie the owner sent in the clear can be replayed until it expires) | `chkem_cookie.pv` | `event(Alloc(addrA, ck)) ==> event(IssuedToOwner(addrA, ck))` | proven |
 
 The hybrid result machine-checks the headline guarantee: the session key stays secret as long
 as the structured-lattice (ML-KEM) OR the classical (X25519) leg holds. Server authentication
@@ -37,6 +38,10 @@ over all sessions - an exhaustive symbolic search, not a single trace.
 - **Per-direction keys.** The request and the response are sealed under different keys (`kdfDir`), as in the record layer. With one shared key ProVerif replays a response as a request, a reflection the real protocol does not allow.
 - **Sequence numbers are modelled as unguessable fresh values**, not the small predictable counters of the real record layer. Agreement does not depend on guessing them, since every sealed message needs the epoch key, but the model does not capture an attacker predicting or choosing numbers.
 - **Abstracted:** the activation sequence (`current_send_seq + 16`), trial decryption at the boundary, epoch counters on datagrams, and AEAD associated data. The symbolic encryption `senc` is authenticated by construction.
+
+## Datagram cookie: scope
+
+`chkem_cookie.pv` proves the claim the code makes in `pkg/tunnel/dgram_cookie.go`: a host that only spoofs a victim's address never receives the cookie, so it cannot make the server allocate state for that address. The attacker owns his own address, sees what the victim sends and controls the network, but cannot see what the server sends to the victim: **off-path**. An on-path attacker who can read packets addressed to the victim defeats return routability by design, and the model does not claim otherwise. The query is **not injective**: the owner's second packet carries the cookie in the clear and the attacker is allowed to see it, so replaying it with a spoofed source makes the server allocate again, as in the code until the 10 second lifetime ends it. The cookie binds the address and the timestamp, not the hello, as in the code. Abstracted: the timestamp is an unguessable fresh value here, where the code uses a guessable clock reading and checks its age (an attack that predicts the timestamp or depends on expiry is outside the model), the secret's rotation at restart, and the CPU cost of verifying a cookie. Twins: a cookie MAC that does not bind the address (`cookie_no_address_binding_broken.pv`) and a server that accepts any cookie without verifying its MAC (`cookie_mac_not_verified_broken.pv`) both fail the query.
 
 ## Non-vacuity (the proofs have teeth)
 
@@ -96,9 +101,9 @@ Proven now: session-key secrecy, hybrid security, forward secrecy, injective ser
 Protocol 6.0 merged ServerHello and ServerFinished into one flight. The server-authentication
 model already abstracts the handshake to one server MAC over the transcript, so it covers the
 merged flight unchanged: a client accepts only after verifying a ServerFinished that only the
-holder of the pinned static key can produce. Suite negotiation and the HelloRetryRequest downgrade check are modeled in `chkem_negotiation.pv` for the authenticated modes (with no server or PSK authentication an active attacker is a full man in the middle, so downgrade is moot there). Not modeled: the stream and datagram framing, the datagram cookie and the replay window (the rekey ratchet is modeled, see the rekey section above). Those are covered by the Go tests.
+holder of the pinned static key can produce. Suite negotiation and the HelloRetryRequest downgrade check are modeled in `chkem_negotiation.pv` for the authenticated modes (with no server or PSK authentication an active attacker is a full man in the middle, so downgrade is moot there). Not modeled: the stream and datagram framing and the replay window (the rekey ratchet and the datagram cookie are modeled, see the sections above and below). Those are covered by the Go tests.
 
-Planned (extends the suite as drop-in `*.pv` files): the datagram cookie; a stateful model of the replay
-window in a stateful prover; client device-key mutual authentication including key-compromise impersonation
+Planned (extends the suite as drop-in `*.pv` files): a stateful model of the replay window in a
+stateful prover; client device-key mutual authentication including key-compromise impersonation
 (with the device-key design); per-suite models (X-Wing, a future CH-KEM-v2); and a computational
 proof (CryptoVerif/EasyCrypt).

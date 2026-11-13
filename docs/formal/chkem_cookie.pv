@@ -1,0 +1,72 @@
+(*
+  Datagram return-routability cookie (symbolic). Load: -lib prelude.
+
+  Before the server allocates handshake state for an unverified source it demands a cookie: the MAC
+  of the source address and an issue timestamp under a secret only the server holds (pkg/tunnel/
+  dgram_cookie.go, docs/datagram-dos.md). The cookie travels in a RETRY sent to the claimed source
+  address, so a host that merely spoofs a victim's address never receives it.
+
+  Model: the victim address addrA is honest. What the server sends to addrA reaches only addrA
+  (a private channel). The attacker controls the network, may put any source address in any packet,
+  receives whatever the server sends to any other address (evil stands for such an address), and
+  sees everything addrA sends. He cannot see what the server sends to addrA: an off-path attacker,
+  as in the code comments. An on-path attacker who can read packets addressed to the victim defeats
+  return routability by design.
+
+  Proven:
+    - authenticity: the server allocates state for a (source, cookie) pair only if it issued that
+      cookie to that address's owner, so a spoofer cannot make it allocate state for addrA;
+    - the honest run completes (reachability: OwnerAllocated), so the result is not vacuous.
+
+  Read the result at its strength. The query is not injective. The owner's second packet, with the
+  cookie, is sent in the clear and the attacker sees it, so he can replay that cookie with a
+  spoofed source and the server allocates again, as it does in the code until the cookie expires
+  after 10 seconds. The cookie is bound to the address and the timestamp only, not to the hello,
+  as in the code.
+
+  Abstracted: the timestamp is an unguessable fresh value here, where the code uses a guessable
+  clock reading and checks its age against the lifetime, so an attack that depends on predicting
+  the timestamp or on expiry is outside the model; the secret's rotation at restart; the CPU cost
+  of verifying a cookie.
+*)
+
+const addrA: bitstring.   (* the victim's address *)
+const evil: bitstring.    (* an address the attacker owns *)
+const noCookie: bitstring.
+const hello1: bitstring.
+free toA: channel [private].   (* what the server sends to addrA *)
+
+event IssuedToOwner(bitstring, bitstring).
+event Alloc(bitstring, bitstring).
+event OwnerAllocated.        (* the honest owner of addrA gets state allocated: the run is reachable *)
+
+query ck: bitstring; event(Alloc(addrA, ck)) ==> event(IssuedToOwner(addrA, ck)).
+query event(OwnerAllocated).
+
+let server(secretK: bitstring) =
+  in(net, (src: bitstring, h: bitstring, ck: bitstring));
+  if ck = noCookie then
+  (
+    new ts: bitstring;
+    let cookie = (ts, macf(secretK, (src, ts))) in
+    if src = addrA then ( event IssuedToOwner(src, cookie); out(toA, cookie) )
+    else out(net, cookie)
+  )
+  else
+  (
+    let (ts2: bitstring, m: bitstring) = ck in
+    if m = macf(secretK, (src, ts2)) then
+    (
+      event Alloc(src, ck);
+      if src = addrA then event OwnerAllocated
+    )
+  ).
+
+let owner() =
+  out(net, (addrA, hello1, noCookie));
+  in(toA, ck: bitstring);
+  out(net, (addrA, hello1, ck)).
+
+process
+  new secretK: bitstring;
+  ( (! server(secretK)) | owner() )

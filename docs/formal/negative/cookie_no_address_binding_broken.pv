@@ -1,0 +1,43 @@
+(*
+  PLANTED FLAW: the cookie MAC does not bind the source address. The attacker requests a cookie from
+  a source address he can receive at (any address other than addrA: the server answers those on the
+  public channel), then presents that cookie with addrA as the source, and the server allocates
+  state for addrA that its owner never asked for. The authenticity query must FAIL.
+  Twin of chkem_cookie.pv.
+*)
+
+const addrA: bitstring.   (* the victim's address *)
+const evil: bitstring.    (* an address the attacker owns *)
+const noCookie: bitstring.
+const hello1: bitstring.
+free toA: channel [private].   (* what the server sends to addrA *)
+
+event IssuedToOwner(bitstring, bitstring).
+event Alloc(bitstring, bitstring).
+
+query ck: bitstring; event(Alloc(addrA, ck)) ==> event(IssuedToOwner(addrA, ck)).
+
+let server(secretK: bitstring) =
+  in(net, (src: bitstring, h: bitstring, ck: bitstring));
+  if ck = noCookie then
+  (
+    new ts: bitstring;
+    let cookie = (ts, macf(secretK, ts)) in
+    if src = addrA then ( event IssuedToOwner(src, cookie); out(toA, cookie) )
+    else out(net, cookie)
+  )
+  else
+  (
+    let (ts2: bitstring, m: bitstring) = ck in
+    if m = macf(secretK, ts2) then
+    event Alloc(src, ck)
+  ).
+
+let owner() =
+  out(net, (addrA, hello1, noCookie));
+  in(toA, ck: bitstring);
+  out(net, (addrA, hello1, ck)).
+
+process
+  new secretK: bitstring;
+  ( (! server(secretK)) | owner() )

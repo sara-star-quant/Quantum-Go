@@ -1,0 +1,40 @@
+(*
+  PLANTED FLAW: the server accepts any cookie without verifying its MAC. The attacker sends a spoofed
+  source addrA with an invented cookie and the server allocates state for addrA that was never
+  issued to its owner. The authenticity query must FAIL. Twin of chkem_cookie.pv.
+*)
+
+const addrA: bitstring.   (* the victim's address *)
+const evil: bitstring.    (* an address the attacker owns *)
+const noCookie: bitstring.
+const hello1: bitstring.
+free toA: channel [private].   (* what the server sends to addrA *)
+
+event IssuedToOwner(bitstring, bitstring).
+event Alloc(bitstring, bitstring).
+
+query ck: bitstring; event(Alloc(addrA, ck)) ==> event(IssuedToOwner(addrA, ck)).
+
+let server(secretK: bitstring) =
+  in(net, (src: bitstring, h: bitstring, ck: bitstring));
+  if ck = noCookie then
+  (
+    new ts: bitstring;
+    let cookie = (ts, macf(secretK, (src, ts))) in
+    if src = addrA then ( event IssuedToOwner(src, cookie); out(toA, cookie) )
+    else out(net, cookie)
+  )
+  else
+  (
+    let (ts2: bitstring, m: bitstring) = ck in
+    event Alloc(src, ck)                       (* the flaw: the MAC is never checked *)
+  ).
+
+let owner() =
+  out(net, (addrA, hello1, noCookie));
+  in(toA, ck: bitstring);
+  out(net, (addrA, hello1, ck)).
+
+process
+  new secretK: bitstring;
+  ( (! server(secretK)) | owner() )
