@@ -100,7 +100,7 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 
 Since v0.0.29 the library requires authentication: an endpoint needs a PSK or a PSK lookup, a static key (server) or a pinned server key (client), or an explicit `AllowUnauthenticated` (`DialInsecure` and `ListenInsecure` for tests and demos). With the opt-out on both sides, the handshake provides encryption and forward secrecy but does not prove peer identity, so an active attacker can sit in the middle.
 
-**Static-key server authentication** (opt-in, since v0.0.12) lets a client cryptographically pin a server's long-term identity, stopping an active relaying machine-in-the-middle for the pinned-server case.
+**Static-key server authentication** (one way to satisfy the authentication requirement, since v0.0.12) lets a client cryptographically pin a server's long-term identity, stopping an active relaying machine-in-the-middle for the pinned-server case.
 
 1. Generate a long-term server identity:
 
@@ -179,7 +179,7 @@ The client advertises the identity label so the server selects the matching key,
 #### Protocol-level (planned for future releases)
 
 1. **Partial endpoint authentication** (static-key server pinning and PSK mutual auth; per-client asymmetric identity still external):
-   - Opt-in static-key pinning authenticates the **server** to a pinning client; opt-in PSK authenticates **both** peers under a shared secret (see [Authentication modes](#authentication-modes)). With the explicit opt-out on both sides, the protocol provides encryption only.
+   - Static-key pinning authenticates the **server** to a pinning client; a PSK authenticates **both** peers under a shared secret (see [Authentication modes](#authentication-modes)). With the explicit opt-out on both sides, the protocol provides encryption only.
    - There is **no certificate- or token-based client identity**: PSK proves shared-secret possession, not a per-client asymmetric credential.
    - For per-client asymmetric identity today, layer it externally (mTLS-style certificates).
 

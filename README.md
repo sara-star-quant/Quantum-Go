@@ -26,7 +26,7 @@ Traffic an attacker records today can be decrypted later by a quantum computer. 
 - **Two transports, one API.** TCP, and a connectionless UDP transport with retransmission, reliable rekey, anti-DoS cookies and roaming across IP changes.
 - **Authentication by default.** Unauthenticated use needs an explicit opt-out. Pin your server's key, or issue each client its own pre-shared key. A client with no key looks the same as one with a wrong key.
 - **Proof, not promises.** Machine-checked ProVerif models, published conformance vectors, fuzzed parsers, a written wire specification, and releases signed with cosign and attested.
-- **A license you can ship.** Apache-2.0 with an express patent grant, a licence scan on every release, and full third-party notices.
+- **A license you can ship.** Apache-2.0 with an express patent grant, a license scan on every release, and full third-party notices.
 
 How it stacks up against WireGuard, Rosenpass, IKEv2 and hybrid TLS, including where it loses: [docs/COMPARISON.md](docs/COMPARISON.md).
 

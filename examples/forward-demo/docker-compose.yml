@@ -8,7 +8,7 @@
 #       docker compose down -v
 name: quantum-forward-demo
 
-x-alpine: &alpine alpine:latest@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+x-alpine: &alpine alpine@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 
 x-quantum: &quantum
   build:
@@ -18,7 +18,8 @@ x-quantum: &quantum
     - keys:/keys:ro
 
 services:
-  # Writes a random 32-byte PSK once, readable only by the forwarders (uid 1000).
+  # Writes a random 32-byte PSK once, readable only by the forwarders. uid 1000 is the user
+  # the repository Dockerfile runs as.
   psk-init:
     image: *alpine
     command:
@@ -65,8 +66,11 @@ services:
       - sh
       - -c
       - |
-        sleep 3
-        echo "through the tunnel: $$(wget -qO- -T 5 http://127.0.0.1:8080/)"
+        for i in $$(seq 1 20); do
+          out=$$(wget -qO- -T 3 http://127.0.0.1:8080/ 2>/dev/null) && break
+          sleep 1
+        done
+        echo "through the tunnel: $$out"
 
   # Plain HTTP straight at the tunnel port gets nothing: the server speaks only the
   # tunnel protocol and never reaches the upstream for an unauthenticated peer.
@@ -78,7 +82,10 @@ services:
       - sh
       - -c
       - |
-        sleep 3
+        # The port must accept TCP first, so a refusal below comes from the server and not from
+        # a server that is down.
+        for i in $$(seq 1 20); do nc -z -w 1 qt-server 9000 && break; sleep 1; done
+        nc -z -w 1 qt-server 9000 || { echo "qt-server is not listening"; exit 1; }
         if wget -qO- -T 3 http://qt-server:9000/ 2>/dev/null | grep -q plaintext; then
           echo "UNEXPECTED: plain HTTP reached the upstream"
           exit 1
