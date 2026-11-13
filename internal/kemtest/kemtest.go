@@ -38,3 +38,27 @@ func EncapsulateWithSeed(publicKey, seed []byte) (ciphertext, sharedSecret []byt
 	pk.EncapsulateTo(ct, ss, seed)
 	return ct, ss, nil
 }
+
+// DecapsulateFromSeed derives the private key from a 64-byte key-generation seed and
+// decapsulates ciphertext with circl. A ciphertext that fails the Fujisaki-Okamoto check
+// yields the implicit-rejection secret, never an error.
+func DecapsulateFromSeed(seed, ciphertext []byte) ([]byte, error) {
+	if len(ciphertext) != mlkem1024.CiphertextSize {
+		return nil, errors.New("kemtest: wrong ciphertext length")
+	}
+	_, sk, err := mlkem1024.GenerateKeyPair(bytes.NewReader(seed))
+	if err != nil {
+		return nil, err
+	}
+	ss := make([]byte, mlkem1024.SharedKeySize)
+	sk.DecapsulateTo(ss, ciphertext)
+	return ss, nil
+}
+
+// AcceptsPublicKey reports whether circl accepts publicKey as a well-formed encapsulation key.
+func AcceptsPublicKey(publicKey []byte) bool {
+	if len(publicKey) != mlkem1024.PublicKeySize {
+		return false
+	}
+	return new(mlkem1024.PublicKey).Unpack(publicKey) == nil
+}

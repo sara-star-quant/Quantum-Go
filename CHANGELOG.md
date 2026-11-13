@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased][]
 
 ### Added
+- **Differential fuzzing of ML-KEM-1024:** a fuzz target compares the standard library, circl and the library wrapper on fuzzed seeds and coins (same public key, same secret, same implicit rejection of a tampered ciphertext, same verdict on a mutated public key). A new weekly `Fuzz` workflow runs every fuzz target, with a short run on pull requests that change one; before this, CI ran only the seed corpora.
 - **Operations for `forward`:** `--metrics-addr` serves `/metrics`, `/healthz` and `/readyz` on loopback (a wildcard bind is refused), reporting counts and durations only. SIGTERM and Ctrl-C now drain: the forwarder stops accepting, reports not ready, and lets open connections finish for `--drain-timeout` (default 30 s) before cutting them; a second signal cuts at once. Before this a shutdown cut every connection.
 
 ### Changed
