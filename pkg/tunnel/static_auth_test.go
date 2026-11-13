@@ -22,6 +22,9 @@ func runStaticAuthHandshake(t *testing.T, serverCfg, clientCfg tunnel.TransportC
 	if err != nil {
 		t.Fatalf("Listen failed: %v", err)
 	}
+	if serverCfg.PSK == nil && serverCfg.PSKLookup == nil && serverCfg.StaticKeyPair == nil {
+		serverCfg.AllowUnauthenticated = true
+	}
 	listener.SetConfig(serverCfg)
 	defer func() { _ = listener.Close() }()
 	addr := listener.Addr().String()
@@ -37,9 +40,14 @@ func runStaticAuthHandshake(t *testing.T, serverCfg, clientCfg tunnel.TransportC
 		}
 	}()
 
+	// A client with no credentials opts in, so the server's refusal is what these tests observe.
+	if clientCfg.PSK == nil && clientCfg.PinnedServerKey == nil {
+		clientCfg.AllowUnauthenticated = true
+	}
 	time.Sleep(50 * time.Millisecond)
 	client, err := tunnel.DialWithConfig("tcp", addr, clientCfg)
 	if err != nil {
+		_ = listener.Close() // unblock Accept if the client never connected
 		wg.Wait()
 		return err, serverAccepted
 	}
@@ -188,6 +196,7 @@ func TestStaticAuthRequiredMisconfiguredRejected(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 	cfg := tunnel.DefaultTransportConfig()
 	cfg.RequireStaticAuth = true // no StaticKeyPair
+	cfg.AllowUnauthenticated = true
 	listener.SetConfig(cfg)
 
 	go func() {

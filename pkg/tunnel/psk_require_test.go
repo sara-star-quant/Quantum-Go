@@ -98,9 +98,14 @@ func TestRequirePSKMisconfiguredRejected(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 	cfg := tunnel.DefaultTransportConfig()
 	cfg.RequirePSK = true
+	cfg.AllowUnauthenticated = true // so the misconfiguration, not the auth check, is what fails
 	listener.SetConfig(cfg)
 
-	go func() { _, _ = tunnel.DialWithConfig("tcp", listener.Addr().String(), tunnel.DefaultTransportConfig()) }()
+	go func() {
+		c := tunnel.DefaultTransportConfig()
+		c.AllowUnauthenticated = true
+		_, _ = tunnel.DialWithConfig("tcp", listener.Addr().String(), c)
+	}()
 	if _, err := listener.Accept(); !errors.Is(err, qerrors.ErrPSKMisconfigured) {
 		t.Fatalf("got %v, want ErrPSKMisconfigured", err)
 	}
