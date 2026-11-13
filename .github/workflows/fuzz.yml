@@ -32,11 +32,27 @@ jobs:
           go-version: "1.26.x"
           cache: true
 
+      # The fuzzing engine keeps what it learned in the Go build cache; keep it between runs so a
+      # weekly run continues from the last one instead of starting from the seeds.
+      - name: Restore the fuzz corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build/fuzz
+          key: fuzz-corpus-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ runner.os }}-
+
       - name: Fuzz
         env:
           FUZZTIME: ${{ github.event_name == 'pull_request' && '20s' || inputs.fuzztime || '60s' }}
           FUZZ_FILTER: ${{ github.event_name == 'pull_request' && 'MLKEMDifferential' || '^Fuzz' }}
         run: scripts/fuzz.sh
+
+      - name: Save the fuzz corpus
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build/fuzz
+          key: fuzz-corpus-${{ runner.os }}-${{ github.run_id }}
 
       - name: Keep crashing inputs
         if: failure()
