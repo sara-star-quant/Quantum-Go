@@ -118,6 +118,7 @@ func TestHandshakeVersionMismatch(t *testing.T) {
 	h := NewHandshake(session)
 
 	clientHello := &protocol.ClientHello{
+		KEMSuites:      []uint16{0x0001},
 		Version:        protocol.Version{Major: 99, Minor: 99}, // Unsupported version
 		Random:         make([]byte, 32),
 		CHKEMPublicKey: make([]byte, constants.CHKEMPublicKeySize),
@@ -136,6 +137,7 @@ func TestHandshakeCipherSuiteMismatchInHello(t *testing.T) {
 	h := NewHandshake(session)
 
 	clientHello := &protocol.ClientHello{
+		KEMSuites:      []uint16{0x0001},
 		Version:        protocol.Current,
 		Random:         make([]byte, 32),
 		CHKEMPublicKey: make([]byte, constants.CHKEMPublicKeySize),

@@ -168,10 +168,14 @@ HelloRetryRequest:
 
 `version` is `major(1) || minor(1)`; protocol 6.0 is `06 00`. For CH-KEM-v1, `pk` is `x25519(32) ||
 mlkem1024(1568)` and `ct` is `x25519_ephemeral(32) || mlkem1024_ct(1568)`. The two flags are the last two
-fields of the payload, in the order shown. Older peers omit them, so a payload that ends before `static_flag`,
-or before `psk_flag`, counts that flag as 0, and a receiver ignores any bytes after the last field. A field placed
-anywhere else fails the handshake with a generic alert. Making the parser strict, with an explicit extension
-rule, is tracked in [#251](https://github.com/sara-star-quant/Quantum-Go/issues/251). The conformance vectors hold one
+fields of the payload, in the order shown, and both are required. Each flag is 0 or 1; any other value fails the
+handshake with a generic alert, as do a missing flag, an empty `kem_suites` list and a field placed anywhere else.
+
+Extension rule: a ClientHello at the minor version the receiver implements ends exactly after `psk_flag`, and any
+byte after it fails the handshake. A ClientHello with a higher minor version may append fields after `psk_flag`;
+the receiver reads the fields it knows and skips the rest. A new field therefore needs a minor version bump, and a
+sender must not rely on a peer at the old minor accepting it. Every protocol 6.x release before this rule sent both
+flags, so no released client changes behavior. The conformance vectors hold one
 encoded example of each message.
 
 ### 5.2 KEM-suite negotiation and HelloRetryRequest

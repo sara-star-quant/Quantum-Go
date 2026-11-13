@@ -272,6 +272,9 @@ func (m *ClientHello) Validate() error {
 	if len(m.SessionID) > maxSessionIDLen {
 		return qerrors.ErrInvalidMessage
 	}
+	if len(m.KEMSuites) == 0 {
+		return qerrors.ErrInvalidMessage
+	}
 	if len(m.CipherSuites) == 0 {
 		return qerrors.ErrInvalidMessage
 	}

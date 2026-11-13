@@ -90,6 +90,7 @@ func FuzzDecodeClientHello(f *testing.F) {
 	// Add valid ClientHello as seed
 	kp, _ := chkem.GenerateKeyPair()
 	validHello := &protocol.ClientHello{
+		KEMSuites:      []uint16{0x0001},
 		Version:        protocol.Current,
 		Random:         make([]byte, 32),
 		SessionID:      nil,

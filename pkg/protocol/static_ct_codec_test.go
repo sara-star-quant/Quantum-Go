@@ -19,6 +19,7 @@ func validClientHello(t *testing.T) *protocol.ClientHello {
 	random := make([]byte, 32)
 	_ = crypto.SecureRandom(random)
 	return &protocol.ClientHello{
+		KEMSuites:      []uint16{0x0001},
 		Version:        protocol.Current,
 		Random:         random,
 		CHKEMPublicKey: kp.PublicKey().Bytes(),
@@ -104,14 +105,10 @@ func TestClientHelloStaticCiphertextDecodeBounds(t *testing.T) {
 		t.Error("expected ErrInvalidMessage for present flag with truncated body")
 	}
 
-	// An unknown flag value (not 1) is treated as absent, not an error.
+	// An unknown flag value (neither 0 nor 1) is malformed.
 	tampered2 := append([]byte(nil), enc...)
 	tampered2[len(tampered2)-1] = 2
-	dec, err := codec.DecodeClientHello(tampered2)
-	if err != nil {
-		t.Fatalf("decode with flag=2 should succeed: %v", err)
-	}
-	if len(dec.CHKEMStaticCiphertext) != 0 {
-		t.Error("flag=2 should not populate the static ciphertext")
+	if _, err := codec.DecodeClientHello(tampered2); err == nil {
+		t.Error("flag=2 must be rejected")
 	}
 }

@@ -26,6 +26,7 @@ func TestEncodeDecodeClientHello(t *testing.T) {
 	_ = crypto.SecureRandom(random)
 
 	original := &protocol.ClientHello{
+		KEMSuites:      []uint16{0x0001},
 		Version:        protocol.Current,
 		Random:         random,
 		SessionID:      nil, // New session
@@ -83,6 +84,7 @@ func TestClientHelloWithSessionID(t *testing.T) {
 	_ = crypto.SecureRandom(sessionID)
 
 	original := &protocol.ClientHello{
+		KEMSuites:      []uint16{0x0001},
 		Version:        protocol.Current,
 		Random:         random,
 		SessionID:      sessionID,
@@ -113,6 +115,7 @@ func TestClientHelloSessionIDLimit(t *testing.T) {
 
 	hello := func(n int) *protocol.ClientHello {
 		return &protocol.ClientHello{
+			KEMSuites:      []uint16{0x0001},
 			Version:        protocol.Current,
 			Random:         make([]byte, 32),
 			SessionID:      bytes.Repeat([]byte{0xAB}, n),
@@ -534,6 +537,7 @@ func TestReadMessage(t *testing.T) {
 	_ = crypto.SecureRandom(random)
 
 	original := &protocol.ClientHello{
+		KEMSuites:      []uint16{0x0001},
 		Version:        protocol.Current,
 		Random:         random,
 		SessionID:      nil,
@@ -716,6 +720,7 @@ func TestClientHelloValidation(t *testing.T) {
 			_ = crypto.SecureRandom(random)
 
 			msg := &protocol.ClientHello{
+				KEMSuites:      []uint16{0x0001},
 				Version:        protocol.Current,
 				Random:         random,
 				SessionID:      nil,
@@ -843,6 +848,7 @@ func TestMultipleRoundtrips(t *testing.T) {
 	_ = crypto.SecureRandom(random)
 
 	original := &protocol.ClientHello{
+		KEMSuites:      []uint16{0x0001},
 		Version:        protocol.Current,
 		Random:         random,
 		SessionID:      nil,

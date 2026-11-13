@@ -260,37 +260,54 @@ func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 		offset += 2
 	}
 
-	// Static-key authentication ciphertext (presence-flagged). Older peers omit
-	// the flag entirely, so only read it if a byte remains within the payload.
-	if offset < payloadEnd {
-		present := data[offset]
-		offset++
-		if present == 1 {
-			ct, err := readLenPrefixed(data, &offset, payloadEnd)
-			if err != nil {
-				return nil, err
-			}
-			m.CHKEMStaticCiphertext = ct
+	// Static-key authentication ciphertext: a presence flag (0 or 1), then a
+	// length-prefixed ciphertext when 1. The flag is required.
+	if offset >= payloadEnd {
+		return nil, qerrors.ErrInvalidMessage
+	}
+	present := data[offset]
+	offset++
+	switch present {
+	case 0:
+	case 1:
+		ct, err := readLenPrefixed(data, &offset, payloadEnd)
+		if err != nil {
+			return nil, err
 		}
+		m.CHKEMStaticCiphertext = ct
+	default:
+		return nil, qerrors.ErrInvalidMessage
 	}
 
-	// PSK identity (presence-flagged, length-prefixed). Additive after the static
-	// field; older peers omit it, so only read it if a byte remains.
-	if offset < payloadEnd {
-		present := data[offset]
-		offset++
-		if present == 1 {
-			if offset+1 > payloadEnd {
-				return nil, qerrors.ErrInvalidMessage
-			}
-			idLen := int(data[offset])
-			offset++
-			if idLen == 0 || offset+idLen > payloadEnd {
-				return nil, qerrors.ErrInvalidMessage
-			}
-			m.PSKIdentity = make([]byte, idLen)
-			copy(m.PSKIdentity, data[offset:offset+idLen])
+	// PSK identity: a presence flag (0 or 1), then a 1-byte length and the label
+	// when 1. The flag is required.
+	if offset >= payloadEnd {
+		return nil, qerrors.ErrInvalidMessage
+	}
+	present = data[offset]
+	offset++
+	switch present {
+	case 0:
+	case 1:
+		if offset+1 > payloadEnd {
+			return nil, qerrors.ErrInvalidMessage
 		}
+		idLen := int(data[offset])
+		offset++
+		if idLen == 0 || offset+idLen > payloadEnd {
+			return nil, qerrors.ErrInvalidMessage
+		}
+		m.PSKIdentity = make([]byte, idLen)
+		copy(m.PSKIdentity, data[offset:offset+idLen])
+		offset += idLen
+	default:
+		return nil, qerrors.ErrInvalidMessage
+	}
+
+	// Extension rule: a hello at the minor version this build implements ends exactly
+	// here. A higher minor may append fields this build does not know; it skips them.
+	if offset != payloadEnd && m.Version.Minor <= Current.Minor {
+		return nil, qerrors.ErrInvalidMessage
 	}
 
 	if err := m.Validate(); err != nil {
