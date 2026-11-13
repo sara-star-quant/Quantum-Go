@@ -30,15 +30,16 @@ services:
     volumes:
       - keys:/keys
 
-  # A harmless plaintext HTTP service. It knows nothing about the tunnel.
+  # A harmless plaintext HTTP responder (one connection at a time). It knows nothing about the tunnel.
   upstream:
     image: *alpine
     command:
       - sh
       - -c
       - |
-        mkdir -p /www && echo 'hello from a plaintext service' > /www/index.html
-        exec httpd -f -p 8080 -h /www
+        while true; do
+          printf 'HTTP/1.1 200 OK\r\nContent-Length: 31\r\nConnection: close\r\n\r\nhello from a plaintext service\n' | nc -l -p 8080
+        done
 
   qt-server:
     <<: *quantum
