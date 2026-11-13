@@ -231,6 +231,24 @@ Sizes are exact. The timings come from `go test -bench Suites ./pkg/chkem` with 
 
 What the numbers say: X-Wing sends about a quarter fewer bytes. On the x86 runner it also costs about 24 percent less KEM CPU per handshake; on the M1 it costs about 4 percent more, because its decapsulation is 57 percent slower there (13 percent slower on x86). The likely cause, not profiled, is that an X-Wing private key is a 32-byte seed and the library expands it again on every decapsulation; [#239](https://github.com/sara-star-quant/Quantum-Go/issues/239) tracks reusing the expanded key. Either way the difference is a few tens of microseconds against a network round trip, so choose X-Wing for smaller packets and handshakes, for example on a constrained or high-latency link, and not for speed. A whole-handshake and cloud-link comparison is not measured yet.
 
+### KEM backend: circl and the standard library
+
+CH-KEM-v1's ML-KEM-1024 runs on cloudflare/circl in default builds and on Go's `crypto/mlkem` in builds with `-tags fips`, so the primitive sits inside Go's FIPS 140-3 module there. The wire bytes are identical. The default stays on circl because the standard library is slower on every platform measured.
+
+The numbers come from one GitHub runner per platform, with the default build and the FIPS builds compiled into separate test binaries and run interleaved 10 times on the same machine (`bench.yml`, `scripts/bench-ab.py`), plus the same comparison on a quiet laptop. "v1.0.0" and "v1.26.0" are the two frozen module snapshots the toolchain bundles (`GOFIPS140=v1.0.0`, `GOFIPS140=v1.26.0`); they are different code. Whole handshake, both sides, no network, median in microseconds (ratio against circl in brackets):
+
+| Platform | circl (default) | FIPS module v1.0.0 | FIPS module v1.26.0 |
+|---|---|---|---|
+| Linux x86-64 runner | 579 | 887 (1.53x) | 764 (1.32x) |
+| Linux arm64 runner (Neoverse N2) | 543 | 733 (1.35x) | 626 (1.15x) |
+| Windows x86-64 runner (noisy) | 319 | 538 (1.69x) | 472 (1.48x) |
+| macOS arm64 runner (virtual M1, noisy) | 533 | 858 (1.61x) | 592 (1.11x) |
+| Apple M1 Pro laptop, quiet machine | 404 | 599 (1.48x) | 463 (1.15x) |
+
+Per operation, the worst case is decapsulation on x86: 94 us with circl, 224 us in v1.0.0 and 179 us in v1.26.0 on the Linux runner. The spread (max over min) was 1.0 to 1.2x on Linux and about 2x on the Windows and macOS runners, so read those two loosely. A second, earlier run on the same runner types gave ratios within about 0.2 of these, while absolute times differed by up to 1.8x on one platform (shared runners are different machines on different days).
+
+Use `GOFIPS140=v1.26.0` for a FIPS build: it is the faster snapshot everywhere, and on a quiet laptop it matches the current standard library. A handshake costs 1.1 to 1.5x more CPU than circl there: roughly 0.05 to 0.25 ms more for both sides together. Throughput of an established tunnel does not change, and on a 20 ms link the extra CPU is about 1 percent of connect time. The cost shows in a server that takes many short connections, such as `forward`, and in handshake-flood headroom. An earlier comparison from separate runs suggested the standard library was faster on macOS; same-machine runs show that was runner noise.
+
 ## Tuning
 
 - **Batch your sends:** use `DatagramConn.SendBatch` with `WithDatagramOffload()` on Linux when you can hand over several packets at once.

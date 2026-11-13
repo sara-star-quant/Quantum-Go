@@ -25,6 +25,8 @@
 
 This document outlines the roadmap for achieving FIPS 140-3 compliance for the Quantum-Go cryptographic module. The module implements post-quantum cryptography using ML-KEM-1024 (FIPS 203) combined with classical X25519, positioned for federal government and high-security enterprise deployments.
 
+**Update (next release):** with `-tags fips`, the CH-KEM-v1 ML-KEM-1024 leg comes from Go's `crypto/mlkem`, which runs inside Go's FIPS 140-3 Go Cryptographic Module when you also build with `GOFIPS140`. Default builds keep cloudflare/circl because a handshake costs 1.1 to 1.5x more CPU in the FIPS module (see PERFORMANCE.md; build with `GOFIPS140=v1.26.0`, the faster snapshot). The X-Wing suite uses circl in every build. Using a validated module does not make Quantum-Go a validated module, and the module's current CMVP status needs checking at NIST before any public claim. ChaCha20-Poly1305 from `x/crypto` stays outside the FIPS boundary and stays disabled in FIPS mode.
+
 ### 1.1 Compliance Status
 
 | Component | Standard | Status |

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Changed
+- **BREAKING (API): `crypto.MLKEMEncapsulateWithSeed` is removed.** Nothing in the library called it outside tests; code that used it for known-answer tests needs its own seeded encapsulation (circl's `mlkem1024` has one).
+- **Builds with `-tags fips` take ML-KEM-1024 from Go's `crypto/mlkem`**, which runs inside Go's FIPS 140-3 module when built with `GOFIPS140`. Default builds keep cloudflare/circl: a whole handshake costs 1.1 to 1.5x more CPU in the FIPS module (`GOFIPS140=v1.26.0`, the faster of the two bundled snapshots) on every platform measured ([numbers](docs/PERFORMANCE.md#kem-backend-circl-and-the-standard-library)). No byte on the wire changes: the conformance vectors match on both backends, and a test cross-checks them. In FIPS builds encapsulation coins come from the standard library's DRBG instead of the library's entropy source. The self-test now compares a public-key digest for its fixed seed, and CI runs the Go FIPS module tests. X-Wing still uses circl.
+
 ## [0.0.29][] - 2026-11-13
 
 **Theme:** Two breaking changes before any freeze. Authentication is now required: an endpoint needs a PSK, a pinned or static key, or an explicit `AllowUnauthenticated`, so the open default is gone. The ClientHello parser is strict, and the spec says how a future field is added. Read the migration notes before you upgrade.

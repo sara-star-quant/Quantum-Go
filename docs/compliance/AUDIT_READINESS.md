@@ -36,7 +36,7 @@ adversary model, assets, and trust boundaries are in
 
 | Primitive | Standard | Implementation | Use |
 | --------- | -------- | -------------- | --- |
-| ML-KEM-1024 | FIPS 203 | cloudflare/circl v1.6.3 | CH-KEM-v1 PQ leg (ephemeral + static) |
+| ML-KEM-1024 | FIPS 203 | cloudflare/circl (default build), Go `crypto/mlkem` (`-tags fips`) | CH-KEM-v1 PQ leg (ephemeral + static) |
 | ML-KEM-768 | FIPS 203 | cloudflare/circl v1.6.3 | X-Wing PQ leg |
 | X25519 | RFC 7748 | Go stdlib `crypto/ecdh` | classical leg in both suites |
 | X-Wing | draft-connolly-cfrg-xwing-kem | cloudflare/circl `kem/xwing` | SuiteXWing (byte-exact) |
@@ -65,7 +65,7 @@ Each claim from [`../../SECURITY.md`](../../SECURITY.md) maps to concrete, repro
 
 ## 5. Supply chain
 
-Direct dependencies are few and reputable: `cloudflare/circl` (PQ primitives), `golang.org/x/crypto`,
+Direct dependencies are few and reputable: `cloudflare/circl` (PQ primitives; Go's `crypto/mlkem` replaces ML-KEM-1024 in FIPS builds), `golang.org/x/crypto`,
 `golang.org/x/net`, `golang.org/x/sys`, and OpenTelemetry for observability. Versions are pinned in
 `go.mod`/`go.sum`. `govulncheck` runs in CI (the `vuln` job) and currently reports no known
 vulnerabilities. License: Apache 2.0 (with a `NOTICE` file); dependencies are permissively licensed.

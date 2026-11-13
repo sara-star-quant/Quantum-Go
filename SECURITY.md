@@ -193,7 +193,7 @@ The client advertises the identity label so the server selects the matching key,
    - Nonce exhaustion triggers automatic rekey
 
 4. **Timing side-channels**:
-   - ML-KEM implementation (cloudflare/circl) uses constant-time operations
+   - ML-KEM-1024 comes from cloudflare/circl (Go's `crypto/mlkem` in `-tags fips` builds) and the X-Wing suite from circl; both use constant-time operations
    - X25519 from Go stdlib is constant-time
    - **AES-GCM requires hardware AES-NI** for constant-time (CPU flags checked)
    - ChaCha20-Poly1305 is software-constant-time
@@ -298,9 +298,9 @@ The client advertises the identity label so the server selects the matching key,
 
 | Dependency            | Version | Purpose                  | Audit Status                           |
 |-----------------------|---------|--------------------------|----------------------------------------|
-| cloudflare/circl      | v1.6.3+ | ML-KEM-1024             | Audited by Trail of Bits (2023)        |
+| cloudflare/circl      | v1.6.3+ | ML-KEM-1024 (default build), X-Wing | Audited by Trail of Bits (2023)        |
 | golang.org/x/crypto   | v0.49.0+| ChaCha20, SHAKE-256     | Go Security Team maintained            |
-| Go stdlib crypto      | 1.26+   | AES-GCM, X25519, crypto/rand, runtime/secret | Regular security audits |
+| Go stdlib crypto      | 1.26+   | ML-KEM-1024 (`-tags fips`), AES-GCM, X25519, crypto/rand, runtime/secret | Regular security audits |
 
 **Dependency update policy**:
 - Monitor security advisories

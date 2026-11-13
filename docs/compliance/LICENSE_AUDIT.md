@@ -16,7 +16,7 @@ Every module version referenced by `go.mod` in any tag or on main was checked (2
 
 | Module | License | Used for |
 |---|---|---|
-| github.com/cloudflare/circl | BSD-3-Clause | ML-KEM-1024 and X-Wing |
+| github.com/cloudflare/circl | BSD-3-Clause | ML-KEM-1024 (default build) and X-Wing |
 | golang.org/x/crypto, x/net, x/sys | BSD-3-Clause | ChaCha20-Poly1305, UDP batching, syscalls |
 | go.opentelemetry.io/otel (+ metric, trace, log, auto/sdk) | Apache-2.0 | optional `otel` build tag; `log` joined with the v1.47.0 bump on 2026-11-11 |
 | github.com/go-logr/logr, stdr | Apache-2.0 | OpenTelemetry dependency |
