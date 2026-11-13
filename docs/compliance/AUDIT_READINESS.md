@@ -55,10 +55,13 @@ Each claim from [`../../SECURITY.md`](../../SECURITY.md) maps to concrete, repro
 | ----- | -------- |
 | IND-CCA2 hybrid (secure if either leg holds) | computational argument in [`../math/MATHEMATICAL_FOUNDATION.md`](../math/MATHEMATICAL_FOUNDATION.md) 7.1; machine-checked symbolic proof `docs/formal/chkem_hybrid.pv` |
 | Session-key secrecy | `docs/formal/chkem_secrecy.pv` (ProVerif) |
-| Forward secrecy | `docs/formal/chkem_fs.pv`; rekey ratchet (PROTOCOL.md 8) |
+| Forward secrecy | `docs/formal/chkem_fs.pv`; rekey ratchet: `docs/formal/chkem_rekey.pv` (epoch-0 data stays secret after an epoch-1 master leaks; epoch-2 data stays secret against an observer) |
+| Rekey authentication | `docs/formal/chkem_rekey_auth.pv` (agreement against an active attacker with no key material); limitation recorded in `docs/formal/negative/rekey_active_after_compromise.pv` |
+| Datagram return-routability cookie | `docs/formal/chkem_cookie.pv` (off-path spoofer cannot make the server allocate state for a victim address; not injective, on-path attacker out of scope) |
 | Server authentication (static-key) | `docs/formal/chkem_auth.pv` (injective); `pkg/tunnel` static-auth tests |
 | Downgrade resistance | HRR synthetic-hash transcript (PROTOCOL.md 5.2); the transcript-agreement proof; `TestHRRClientHello1TamperBreaksFinished` |
-| Replay protection | 1024-bit sliding window; `pkg/tunnel` replay tests |
+| Replay protection | 1024-bit sliding window; `pkg/tunnel` replay tests, among them `TestRekeyReplayWindowRejectsBoundaryReplay`. Not proven symbolically (ProVerif cannot express an atomic once-only check); a stateful model is tracked in [#280](https://github.com/sara-star-quant/Quantum-Go/issues/280) |
+| Parser and primitive robustness | fuzzed parsers; a differential fuzz target comparing the standard library, circl and the wrapper for ML-KEM-1024; a weekly fuzz workflow with a persisted corpus |
 | Wire conformance / interop | `docs/PROTOCOL.md`; published known-answer vectors `testdata/conformance/` |
 | Standard primitives, correctly used | conformance vectors + X-Wing spec-vector KAT |
 | FIPS operational posture | [`../FIPS.md`](../FIPS.md); POST/CST self-tests; the FIPS build/test CI job |
@@ -85,14 +88,19 @@ binaries inside the archives reproduce; the archives do not, because tar and gzi
   on both sides. A tunnel that opts out provides encryption and forward secrecy but not peer identity.
 - Sequence-based nonces assume a session's keys are used only through the session; `Send` and `SendBatch`
   are serialized per session, so concurrent senders are safe.
-- KEM-suite negotiation and HelloRetryRequest are covered by the transcript-agreement proof and by tests,
-  not by a dedicated formal model.
+- KEM-suite negotiation and HelloRetryRequest have a dedicated formal model (`docs/formal/chkem_negotiation.pv`)
+  for the authenticated modes; with no authentication an active attacker is a full man in the middle.
 - A registered external KEM suite runs in-process with access to handshake secrets. The library validates and
   tests it but cannot contain it; the registering application owns its code.
 - The datagram header is a constant 14-byte layout and handshake sizes are distinctive; only opt-in padding
   reduces fingerprinting.
 - Side-channel and constant-time guarantees rely on the underlying libraries (Go stdlib, circl).
-- Key-compromise impersonation is not a design goal.
+- Key-compromise impersonation is not a design goal; queries for it on the current handshake are planned
+  ([#280](https://github.com/sara-star-quant/Quantum-Go/issues/280)).
+- A rekey authenticates only against an attacker who does not hold the current epoch key; recovery from a
+  compromised session needs a new handshake (`docs/formal/negative/rekey_active_after_compromise.pv`).
+- There is no computational proof of the default combiner, no analysis of chosen-ciphertext exposure of
+  long-lived decapsulation keys, and no third-party audit; see `docs/technical/RELATED_WORK.md`.
 - The formal proofs are symbolic (perfect-cryptography); they verify the protocol composition, not the Go
   implementation byte-for-byte (the conformance vectors pin that), and do not replace the computational
   argument. See `docs/formal/README.md`.
