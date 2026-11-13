@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: v0.0.28
+## Current Status: v0.0.29
 
 Pre-1.0 and unaudited. The goal now is a smaller, better evidenced core, not more features: reduce what a reviewer has to trust, then widen adoption. Every item below has a GitHub issue or is a documented decision; items without an issue yet are marked "to file".
 
@@ -27,7 +27,7 @@ Pre-1.0 and unaudited. The goal now is a smaller, better evidenced core, not mor
 
 ### Next: contract, strictness and operations
 
-1. A written contract: which API is settled, evolving or internal, the enforced bounds and what each error means ([STABILITY](STABILITY.md), done). Still open: shrinking the exported surface of `pkg/tunnel`, and the library's authentication default.
+1. A written contract: which API is settled, evolving or internal, the enforced bounds and what each error means ([STABILITY](STABILITY.md), done). Still open: shrinking the exported surface of `pkg/tunnel`. The authentication default and the strict ClientHello shipped in v0.0.29.
 2. Strict ClientHello parsing with an explicit extension rule, replacing today's silent acceptance of missing flags, trailing bytes and empty suite lists ([#251](https://github.com/sara-star-quant/Quantum-Go/issues/251)).
 3. Move production ML-KEM and X-Wing to Go's standard library, which sits inside Go's FIPS 140-3 module, and keep circl for tests only ([#250](https://github.com/sara-star-quant/Quantum-Go/issues/250)). This is the main certification step that is realistic now.
 4. Authorize hook and revocation pattern ([#233](https://github.com/sara-star-quant/Quantum-Go/issues/233)), revoke on reload and a session lifetime cap ([#234](https://github.com/sara-star-quant/Quantum-Go/issues/234)), key exporter ([#235](https://github.com/sara-star-quant/Quantum-Go/issues/235)).

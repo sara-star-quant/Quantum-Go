@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.29][] - 2026-11-13
+
+**Theme:** Two breaking changes before any freeze. Authentication is now required: an endpoint needs a PSK, a pinned or static key, or an explicit `AllowUnauthenticated`, so the open default is gone. The ClientHello parser is strict, and the spec says how a future field is added. Read the migration notes before you upgrade.
+
 ### Changed
 - **BREAKING: authentication is required.** `Dial`, `Accept`, `NewDatagramEndpoint` and `NewPool` return `ErrAuthenticationRequired` unless the endpoint carries a PSK or PSK lookup, a static key (server) or a pinned server key (client), or sets `AllowUnauthenticated` (`WithAllowUnauthenticated()` for datagrams). Both sides must opt in to run without authentication, which leaves the tunnel open to an active man in the middle. `tunnel.Dial` is now `tunnel.DialInsecure`, and `tunnel.ListenInsecure` is the matching listener for tests, demos and benchmarks. Migration: set `PSK` and `PSKIdentity` on `TransportConfig` and use `DialWithConfig`, or switch to the `Insecure` helpers to keep today's behavior.
 - **BREAKING (wire parser): ClientHello parses strictly.** A hello with a missing flag, an empty `kem_suites` list, a flag other than 0 or 1, or trailing bytes at the implemented minor version fails with the generic alert. A higher minor may append fields, which a receiver skips; the rule is in `docs/PROTOCOL.md` section 5.1. Every protocol 6.x release already sent both flags, so released clients keep working.
@@ -567,7 +571,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.28...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.29...HEAD
+[0.0.29]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.28...v0.0.29
 [0.0.28]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.27...v0.0.28
 [0.0.27]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.26...v0.0.27
 [0.0.26]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.25...v0.0.26
