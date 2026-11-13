@@ -21,20 +21,18 @@
 package crypto
 
 import (
-	"github.com/cloudflare/circl/kem/mlkem/mlkem1024"
-
 	"github.com/sara-star-quant/quantum-go/internal/constants"
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 )
 
 // MLKEMPublicKey wraps an ML-KEM-1024 public key
 type MLKEMPublicKey struct {
-	key *mlkem1024.PublicKey
+	key *mlkemEK
 }
 
 // MLKEMPrivateKey wraps an ML-KEM-1024 private key
 type MLKEMPrivateKey struct {
-	key *mlkem1024.PrivateKey
+	key *mlkemDK
 }
 
 // MLKEMKeyPair represents an ML-KEM-1024 key pair for post-quantum key encapsulation.
@@ -48,7 +46,8 @@ type MLKEMKeyPair struct {
 
 // GenerateMLKEMKeyPair generates a new ML-KEM-1024 key pair.
 //
-// The key generation process:
+// The key generation process (the 64-byte seed d || z comes from SecureRandom and is
+// wiped after the key is derived):
 // 1. Sample random seed d ← {0,1}^256
 // 2. Sample random seed z ← {0,1}^256
 // 3. Expand matrix A from seed using SHAKE-128
@@ -58,16 +57,18 @@ type MLKEMKeyPair struct {
 //
 // Returns error if the system's CSPRNG fails.
 func GenerateMLKEMKeyPair() (*MLKEMKeyPair, error) {
-	pk, sk, err := mlkem1024.GenerateKeyPair(Reader)
-	if err != nil {
-		return nil, qerrors.NewCryptoError("MLKEMKeyPair.Generate", err)
+	// Draw the 64-byte seed (d || z) from our entropy source, then derive the key: the same
+	// FIPS 203 KeyGen as GenerateKey1024, with the entropy source injectable and testable.
+	seed := make([]byte, mlkemSeedSize)
+	defer Zeroize(seed) // wipes this buffer; the key object keeps its own copy until it is collected
+	if err := SecureRandom(seed); err != nil {
+		return nil, err
 	}
-
-	return &MLKEMKeyPair{
-		EncapsulationKey: &MLKEMPublicKey{key: pk},
-		DecapsulationKey: &MLKEMPrivateKey{key: sk},
-	}, nil
+	return NewMLKEMKeyPairFromSeed(seed)
 }
+
+// mlkemSeedSize is the FIPS 203 key-generation seed, d || z.
+const mlkemSeedSize = 64
 
 // NewMLKEMKeyPairFromSeed generates an ML-KEM-1024 key pair from a 64-byte seed.
 // This is deterministic: the same seed will always produce the same key pair.
@@ -75,32 +76,17 @@ func GenerateMLKEMKeyPair() (*MLKEMKeyPair, error) {
 // The seed should be generated from a cryptographically secure source.
 // This function is useful for key derivation from a master secret.
 func NewMLKEMKeyPairFromSeed(seed []byte) (*MLKEMKeyPair, error) {
-	if len(seed) != 64 {
+	if len(seed) != mlkemSeedSize {
 		return nil, qerrors.ErrInvalidKeySize
 	}
-
-	// Use the seed as deterministic randomness source
-	pk, sk, err := mlkem1024.GenerateKeyPair(&deterministicReader{data: seed})
+	ek, dk, err := mlkemKeyFromSeed(seed)
 	if err != nil {
 		return nil, qerrors.NewCryptoError("MLKEMKeyPair.FromSeed", err)
 	}
-
 	return &MLKEMKeyPair{
-		EncapsulationKey: &MLKEMPublicKey{key: pk},
-		DecapsulationKey: &MLKEMPrivateKey{key: sk},
+		EncapsulationKey: &MLKEMPublicKey{key: ek},
+		DecapsulationKey: &MLKEMPrivateKey{key: dk},
 	}, nil
-}
-
-// deterministicReader provides deterministic "randomness" from a seed
-type deterministicReader struct {
-	data   []byte
-	offset int
-}
-
-func (r *deterministicReader) Read(p []byte) (n int, err error) {
-	n = copy(p, r.data[r.offset:])
-	r.offset += n
-	return n, nil
 }
 
 // MLKEMEncapsulate performs key encapsulation using ML-KEM-1024.
@@ -119,31 +105,14 @@ func (r *deterministicReader) Read(p []byte) (n int, err error) {
 //   - sharedSecret: The shared secret (32 bytes)
 //   - error: Non-nil if encapsulation fails
 func MLKEMEncapsulate(ek *MLKEMPublicKey) (ciphertext, sharedSecret []byte, err error) {
-	// Sample the encapsulation coins from the CSPRNG, then run the deterministic core.
-	seed := make([]byte, mlkem1024.EncapsulationSeedSize)
-	if err := SecureRandom(seed); err != nil {
-		return nil, nil, qerrors.NewCryptoError("MLKEMEncapsulate", err)
-	}
-	return MLKEMEncapsulateWithSeed(ek, seed)
-}
-
-// MLKEMEncapsulateWithSeed is MLKEMEncapsulate with caller-supplied encapsulation
-// coins (FIPS 203 EncapsulationSeedSize bytes). It is deterministic in (ek, seed),
-// which conformance known-answer vectors and deterministic self-tests rely on.
-// Production code calls MLKEMEncapsulate, which samples the coins from the CSPRNG.
-func MLKEMEncapsulateWithSeed(ek *MLKEMPublicKey, seed []byte) (ciphertext, sharedSecret []byte, err error) {
 	if ek == nil || ek.key == nil {
 		return nil, nil, qerrors.ErrInvalidPublicKey
 	}
-	if len(seed) != mlkem1024.EncapsulationSeedSize {
-		return nil, nil, qerrors.ErrInvalidKeySize
+	ciphertext, sharedSecret, err = mlkemEncapsulate(ek.key)
+	if err != nil {
+		return nil, nil, qerrors.NewCryptoError("MLKEMEncapsulate", err)
 	}
-
-	ct := make([]byte, mlkem1024.CiphertextSize)
-	ss := make([]byte, mlkem1024.SharedKeySize)
-	ek.key.EncapsulateTo(ct, ss, seed)
-
-	return ct, ss, nil
+	return ciphertext, sharedSecret, nil
 }
 
 // MLKEMDecapsulate performs key decapsulation using ML-KEM-1024.
@@ -174,9 +143,10 @@ func MLKEMDecapsulate(dk *MLKEMPrivateKey, ciphertext []byte) ([]byte, error) {
 		return nil, qerrors.ErrInvalidCiphertext
 	}
 
-	ss := make([]byte, mlkem1024.SharedKeySize)
-	dk.key.DecapsulateTo(ss, ciphertext)
-
+	ss, err := mlkemDecapsulate(dk.key, ciphertext)
+	if err != nil {
+		return nil, qerrors.ErrInvalidCiphertext
+	}
 	return ss, nil
 }
 
@@ -185,9 +155,7 @@ func (pk *MLKEMPublicKey) Bytes() []byte {
 	if pk == nil || pk.key == nil {
 		return nil
 	}
-	buf := make([]byte, mlkem1024.PublicKeySize)
-	pk.key.Pack(buf)
-	return buf
+	return mlkemPublicKeyBytes(pk.key)
 }
 
 // PublicKeyBytes returns the encoded bytes of the encapsulation key.
@@ -201,8 +169,8 @@ func ParseMLKEMPublicKey(data []byte) (*MLKEMPublicKey, error) {
 		return nil, qerrors.ErrInvalidPublicKey
 	}
 
-	pk := new(mlkem1024.PublicKey)
-	if err := pk.Unpack(data); err != nil {
+	pk, err := mlkemParsePublicKey(data)
+	if err != nil {
 		return nil, qerrors.NewCryptoError("ParseMLKEMPublicKey", err)
 	}
 
@@ -213,9 +181,10 @@ func ParseMLKEMPublicKey(data []byte) (*MLKEMPublicKey, error) {
 // This should be called when the key pair is no longer needed.
 func (kp *MLKEMKeyPair) Zeroize() {
 	if kp.DecapsulationKey != nil {
-		// Note: CIRCL doesn't expose direct zeroization,
-		// so we clear our reference. In production, consider OS-level
-		// memory protection.
+		// Note: neither backend exposes direct zeroization of its key, so we only clear
+		// our reference. GenerateMLKEMKeyPair wipes its own seed buffer, but the key object
+		// keeps a copy until it is collected. In production, consider OS-level memory
+		// protection.
 		kp.DecapsulationKey = nil
 	}
 	kp.EncapsulationKey = nil

@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/internal/kemtest"
 	"github.com/sara-star-quant/quantum-go/pkg/chkem"
 	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
@@ -150,7 +151,7 @@ func chkemV1Vector(t *testing.T) KEMVector {
 	if err != nil {
 		t.Fatalf("X25519 DH: %v", err)
 	}
-	ctMLKEM, km, err := crypto.MLKEMEncapsulateWithSeed(pub.MLKEMPublicKey(), mlkemCoins)
+	ctMLKEM, km, err := kemtest.EncapsulateWithSeed(pub.MLKEMPublicKey().Bytes(), mlkemCoins)
 	if err != nil {
 		t.Fatalf("ML-KEM encapsulate: %v", err)
 	}

@@ -181,6 +181,9 @@ jobs:
       - name: FIPS tests (race)
         run: go test -tags fips ./... -race
 
+      - name: Go FIPS 140-3 module tests
+        run: GOFIPS140=v1.26.0 GODEBUG=fips140=on go test -tags fips ./pkg/crypto ./pkg/chkem ./test/conformance
+
   fips-coverage:
     name: FIPS Coverage
     runs-on: ubuntu-latest

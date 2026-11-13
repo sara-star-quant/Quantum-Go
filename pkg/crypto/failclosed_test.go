@@ -81,8 +81,15 @@ func TestEncapsulationFailsWithoutEntropy(t *testing.T) {
 		t.Fatal(err)
 	}
 	withEntropy(t, failingReader{})
-	if ct, ss, err := MLKEMEncapsulate(kp.EncapsulationKey); err == nil || ct != nil || ss != nil {
-		t.Fatalf("MLKEMEncapsulate produced output without entropy: %v %v %v", ct, ss, err)
+	// The FIPS backend draws encapsulation coins from the standard library's DRBG, which cannot
+	// be made to fail; the default backend draws them from our entropy source.
+	if mlkemEncapsulationUsesLibraryEntropy {
+		if ct, ss, err := MLKEMEncapsulate(kp.EncapsulationKey); err == nil || ct != nil || ss != nil {
+			t.Fatalf("MLKEMEncapsulate produced output without entropy: %v %v %v", ct, ss, err)
+		}
+	}
+	if k, err := GenerateMLKEMKeyPair(); err == nil || k != nil {
+		t.Fatalf("GenerateMLKEMKeyPair produced a key without entropy: %v %v", k, err)
 	}
 	if ct, ss, err := XWingEncapsulate(xw.publicKey); err == nil || ct != nil || ss != nil {
 		t.Fatalf("XWingEncapsulate produced output without entropy: %v %v %v", ct, ss, err)

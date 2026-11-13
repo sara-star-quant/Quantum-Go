@@ -29,8 +29,12 @@ import (
 	"sync"
 )
 
+// postKATMLKEMPublicKeySHA256 is SHA-256 of the ML-KEM-1024 public key derived from postKATMLKEMSeed.
+const postKATMLKEMPublicKeySHA256 = "166c32a6b2571313937e681e5d1f662f17dfe7f3f274dcbd345963c350e98667"
+
 // POST KAT (Known Answer Test) values
 // These are pre-computed expected outputs for known inputs
+
 var (
 	// SHAKE-256 KDF KAT
 	// Input: domain="POST-KAT-TEST", input=0x0123456789abcdef... (32 bytes)
@@ -184,6 +188,10 @@ func runMLKEMKAT() error {
 	pkBytes := kp.PublicKeyBytes()
 	if len(pkBytes) != 1568 {
 		return fmt.Errorf("public key size mismatch: got %d, want 1568", len(pkBytes))
+	}
+	// Known answer: the key derived from the fixed seed must hash to a fixed digest.
+	if sum := sha256.Sum256(pkBytes); hex.EncodeToString(sum[:]) != postKATMLKEMPublicKeySHA256 {
+		return fmt.Errorf("ML-KEM public key digest mismatch for the fixed seed")
 	}
 
 	// Perform encapsulation

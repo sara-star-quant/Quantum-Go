@@ -199,15 +199,12 @@ func TestKeyParsersRejectBadLengths(t *testing.T) {
 }
 
 func TestMLKEMMisuseAndImplicitRejection(t *testing.T) {
-	if _, _, err := MLKEMEncapsulateWithSeed(nil, make([]byte, 32)); !errors.Is(err, qerrors.ErrInvalidPublicKey) {
+	if _, _, err := MLKEMEncapsulate(nil); !errors.Is(err, qerrors.ErrInvalidPublicKey) {
 		t.Errorf("nil key: %v", err)
 	}
 	kp, err := GenerateMLKEMKeyPair()
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, _, err := MLKEMEncapsulateWithSeed(kp.EncapsulationKey, make([]byte, 31)); !errors.Is(err, qerrors.ErrInvalidKeySize) {
-		t.Errorf("short seed: %v", err)
 	}
 	ct, ss, err := MLKEMEncapsulate(kp.EncapsulationKey)
 	if err != nil {
