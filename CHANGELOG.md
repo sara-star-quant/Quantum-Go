@@ -7,16 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
-### Added
-- **Formal model of the datagram cookie:** ProVerif proves that an off-path attacker who spoofs a victim's address cannot make the server allocate handshake state for it, because the cookie reaches only the address's owner. Two planted-flaw twins (a cookie that does not bind the address, a server that never verifies the MAC) fail as they should. The result is not injective (a cookie the owner sent in the clear can be replayed until it expires), an on-path attacker is out of scope by design, and the timestamp and lifetime are not modelled.
-- **Formal models of the rekey ratchet:** ProVerif proves that, against an observer who does not alter messages, epoch-0 data stays secret after an epoch-1 master leaks and epoch-2 data stays secret because a rekey mixes a fresh KEM secret, and that against an active attacker with no key material an accepted rekey was offered by the peer (agreement, not exactly-once). Three planted-flaw twins fail as they should. A fourth model records a real limitation: an attacker who already holds the current epoch master can hijack the next rekey, so recovering from a compromise needs a new handshake. The replay window is not proven symbolically (ProVerif cannot express an atomic once-only check); the README says so.
-- **Differential fuzzing of ML-KEM-1024:** a fuzz target compares the standard library, circl and the library wrapper on fuzzed seeds and coins (same public key, same secret, same implicit rejection of a tampered ciphertext, same verdict on a mutated public key). A new weekly `Fuzz` workflow runs every fuzz target, with a short run on pull requests that change one; before this, CI ran only the seed corpora.
-- **Operations for `forward`:** `--metrics-addr` serves `/metrics`, `/healthz` and `/readyz` on loopback (a wildcard bind is refused), reporting counts and durations only. SIGTERM and Ctrl-C now drain: the forwarder stops accepting, reports not ready, and lets open connections finish for `--drain-timeout` (default 30 s) before cutting them; a second signal cuts at once. Before this a shutdown cut every connection.
+## [0.0.30][] - 2026-11-13
 
-### Changed
+**Theme:** Operations and evidence. `quantum-tunnel forward` now serves loopback metrics and health endpoints and drains open connections on shutdown, which a pilot needs to run it unattended. The evidence behind the protocol grows: ProVerif models for the rekey ratchet and the datagram cookie, differential and weekly fuzzing for ML-KEM-1024, and a related-work review that lists what is still unproven. Builds with `-tags fips` can run ML-KEM-1024 inside Go's FIPS 140-3 module at 1.1 to 1.5x the handshake CPU. One API removal, below.
+
+### Upgrade notes
+- **`crypto.MLKEMEncapsulateWithSeed` is removed.** Affects code that imported it. Nothing in the library called it outside tests; code that used it for known-answer tests needs its own seeded encapsulation (circl's `mlkem1024` has one).
+
+### Operations
+- **Operations for `forward`:** `--metrics-addr` serves `/metrics`, `/healthz` and `/readyz` on loopback (a wildcard bind is refused), reporting counts and durations only. SIGTERM and Ctrl-C now drain: the forwarder stops accepting, reports not ready, and lets open connections finish for `--drain-timeout` (default 30 s) before cutting them; a second signal cuts at once. Before this a shutdown cut every connection.
+- **Docker Compose demo of forward mode** (`examples/forward-demo`): a post-quantum tunnel in front of a plain HTTP service in one command, with a probe that shows plain HTTP at the tunnel port is refused. CI runs it end to end.
+
+### Security
 - **Datagram handshake padding is random** instead of zero bytes (`WithHandshakePadding`, off by default), so the padded tail does not show as a run of zeros next to the key-shaped payload. The padding is still unauthenticated, outside the transcript and ignored by the receiver; the docs now say so.
-- **BREAKING (API): `crypto.MLKEMEncapsulateWithSeed` is removed.** Nothing in the library called it outside tests; code that used it for known-answer tests needs its own seeded encapsulation (circl's `mlkem1024` has one).
+
+### FIPS and performance
 - **Builds with `-tags fips` take ML-KEM-1024 from Go's `crypto/mlkem`**, which runs inside Go's FIPS 140-3 module when built with `GOFIPS140`. Default builds keep cloudflare/circl: a whole handshake costs 1.1 to 1.5x more CPU in the FIPS module (`GOFIPS140=v1.26.0`, the faster of the two bundled snapshots) on every platform measured ([numbers](docs/PERFORMANCE.md#kem-backend-circl-and-the-standard-library)). No byte on the wire changes: the conformance vectors match on both backends, and a test cross-checks them. In FIPS builds encapsulation coins come from the standard library's DRBG instead of the library's entropy source. The self-test now compares a public-key digest for its fixed seed, and CI runs the Go FIPS module tests. X-Wing still uses circl.
+
+### Assurance
+- **Formal models of the rekey ratchet:** ProVerif proves that, against an observer who does not alter messages, epoch-0 data stays secret after an epoch-1 master leaks and epoch-2 data stays secret because a rekey mixes a fresh KEM secret, and that against an active attacker with no key material an accepted rekey was offered by the peer (agreement, not exactly-once). Three planted-flaw twins fail as they should. A fourth model records a real limitation: an attacker who already holds the current epoch master can hijack the next rekey, so recovering from a compromise needs a new handshake. The replay window is not proven symbolically (ProVerif cannot express an atomic once-only check); the README says so.
+- **Formal model of the datagram cookie:** ProVerif proves that an off-path attacker who spoofs a victim's address cannot make the server allocate handshake state for it, because the cookie reaches only the address's owner. Two planted-flaw twins (a cookie that does not bind the address, a server that never verifies the MAC) fail as they should. The result is not injective (a cookie the owner sent in the clear can be replayed until it expires), an on-path attacker is out of scope by design, and the timestamp and lifetime are not modelled.
+- **Differential fuzzing of ML-KEM-1024:** a fuzz target compares the standard library, circl and the library wrapper on fuzzed seeds and coins (same public key, same secret, same implicit rejection of a tampered ciphertext, same verdict on a mutated public key). A new weekly `Fuzz` workflow runs every fuzz target, with a short run on pull requests that change one; before this, CI ran only the seed corpora.
+- **Related-work review** (`docs/technical/RELATED_WORK.md`): compares the protocol with the closest published analyses (PQ-WireGuard and its hybrid, X-Wing, KEM binding, KEMTLS, RFC 10024, a 2026 ML-KEM side-channel attack), says how much of each paper was read, and lists what is still unproven: no computational proof of the default combiner, an unchecked binding analysis, and the chosen-ciphertext exposure of long-lived decapsulation keys.
 
 ## [0.0.29][] - 2026-11-13
 
@@ -582,7 +594,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.29...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.30...HEAD
+[0.0.30]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.29...v0.0.30
 [0.0.29]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.28...v0.0.29
 [0.0.28]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.27...v0.0.28
 [0.0.27]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.26...v0.0.27

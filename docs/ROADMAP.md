@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: v0.0.29
+## Current Status: v0.0.30
 
 Pre-1.0 and unaudited. The goal now is a smaller, better evidenced core, not more features: reduce what a reviewer has to trust, then widen adoption. Every item below has a GitHub issue or is a documented decision; items without an issue yet are marked "to file".
 
@@ -18,20 +18,20 @@ Pre-1.0 and unaudited. The goal now is a smaller, better evidenced core, not mor
 
 ### Now: assurance and security evidence
 
-1. Peer identity on the server session ([#232](https://github.com/sara-star-quant/Quantum-Go/issues/232), in review).
+1. Peer identity on the server session: shipped in v0.0.28 ([#232](https://github.com/sara-star-quant/Quantum-Go/issues/232)).
 2. Test hardening for the forwarder and close paths: rekey during one-way transfers, chaos, race, SIGHUP end to end, fuzzing ([#238](https://github.com/sara-star-quant/Quantum-Go/issues/238)).
 3. A second implementation checked against the vectors: two spec-only passes are done and fixed spec and vector defects and two server bugs; a real outside implementer stays wanted ([#145](https://github.com/sara-star-quant/Quantum-Go/issues/145)).
-4. Formal models for the rekey ratchet, the datagram cookie and the replay window ([#252](https://github.com/sara-star-quant/Quantum-Go/issues/252)); negotiation and downgrade are proven.
-5. Continuous fuzzing through OSS-Fuzz and a fuzz target for every state transition ([#253](https://github.com/sara-star-quant/Quantum-Go/issues/253)).
+4. Formal models: negotiation, downgrade, the rekey ratchet and the datagram cookie are proven or modelled (v0.0.30, [#252](https://github.com/sara-star-quant/Quantum-Go/issues/252)). The replay window stays an abstraction in ProVerif; its stateful model, the KEM binding check and a second verifier are tracked in [#280](https://github.com/sara-star-quant/Quantum-Go/issues/280).
+5. Continuous fuzzing: a weekly fuzz workflow with a persisted corpus and a differential ML-KEM target shipped in v0.0.30. OSS-Fuzz needs a significant user base, so it waits for pilots; a fuzz target for every state transition remains ([#253](https://github.com/sara-star-quant/Quantum-Go/issues/253)).
 6. Two pilots to learn what blocks adoption ([#240](https://github.com/sara-star-quant/Quantum-Go/issues/240)).
 
 ### Next: contract, strictness and operations
 
 1. A written contract: which API is settled, evolving or internal, the enforced bounds and what each error means ([STABILITY](STABILITY.md), done). Still open: shrinking the exported surface of `pkg/tunnel`. The authentication default and the strict ClientHello shipped in v0.0.29.
-2. Strict ClientHello parsing with an explicit extension rule, replacing today's silent acceptance of missing flags, trailing bytes and empty suite lists ([#251](https://github.com/sara-star-quant/Quantum-Go/issues/251)).
-3. Move production ML-KEM and X-Wing to Go's standard library, which sits inside Go's FIPS 140-3 module, and keep circl for tests only ([#250](https://github.com/sara-star-quant/Quantum-Go/issues/250)). This is the main certification step that is realistic now.
+2. Strict ClientHello parsing with an explicit extension rule: shipped in v0.0.29 ([#251](https://github.com/sara-star-quant/Quantum-Go/issues/251)).
+3. ML-KEM-1024 runs on Go's standard library, inside its FIPS 140-3 module, in `-tags fips` builds (v0.0.30); default builds keep circl because the module costs 1.1 to 1.5x the handshake CPU. X-Wing still uses circl ([#250](https://github.com/sara-star-quant/Quantum-Go/issues/250)). This is the main certification step that is realistic now.
 4. Authorize hook and revocation pattern ([#233](https://github.com/sara-star-quant/Quantum-Go/issues/233)), revoke on reload and a session lifetime cap ([#234](https://github.com/sara-star-quant/Quantum-Go/issues/234)), key exporter ([#235](https://github.com/sara-star-quant/Quantum-Go/issues/235)).
-5. Forward operations: a loopback metrics and health endpoint, graceful drain, a tested container image and sidecar example, a runbook ([#254](https://github.com/sara-star-quant/Quantum-Go/issues/254) for the endpoint and drain, [#205](https://github.com/sara-star-quant/Quantum-Go/issues/205) for the image).
+5. Forward operations: the loopback metrics and health endpoint and the graceful drain shipped in v0.0.30 ([#254](https://github.com/sara-star-quant/Quantum-Go/issues/254)), with a Docker Compose demo. Still open: a tested container image and sidecar example, a runbook ([#205](https://github.com/sara-star-quant/Quantum-Go/issues/205)).
 6. Evidence for operators: datagram loss visibility ([#195](https://github.com/sara-star-quant/Quantum-Go/issues/195)), handshake latency across cloud zones ([#189](https://github.com/sara-star-quant/Quantum-Go/issues/189)), service levels ([#203](https://github.com/sara-star-quant/Quantum-Go/issues/203)), soak and kernel settings on real clouds ([#204](https://github.com/sara-star-quant/Quantum-Go/issues/204)), path-MTU discovery ([#144](https://github.com/sara-star-quant/Quantum-Go/issues/144)), and shrinking duplicated code ([#192](https://github.com/sara-star-quant/Quantum-Go/issues/192)).
 7. Supply chain: shipped in v0.0.28 (signed SBOM per release, reproducible binaries checked in CI, an automatic rerun when a macOS runner is lost). Still open: a second machine confirming a reproduction, and a hermetic toolchain pin.
 8. Adoption layers that live outside the audited core (each small, none changes the protocol): a `net.Conn` adapter in its own package so Go services can run HTTP, gRPC and database drivers over a tunnel ([#219](https://github.com/sara-star-quant/Quantum-Go/issues/219), designed around real `net.Conn` semantics: partial reads, deadlines, half-close, concurrency); the Unix-socket listener for the plain side of the forwarder and the `quantum-tunnel inventory` command shipped in v0.0.28.
