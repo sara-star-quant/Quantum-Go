@@ -343,6 +343,17 @@ jobs:
           tags: local/app:ci
           load: true
 
+      - name: Run the forward demo
+        working-directory: examples/forward-demo
+        run: |
+          docker compose up -d --build qt-client
+          docker compose run --rm app | tee app.log
+          docker compose run --rm probe | tee probe.log
+          grep -q "through the tunnel: hello from a plaintext service" app.log
+          grep -q "without the tunnel: refused" probe.log
+          docker compose logs qt-server qt-client
+          docker compose down -v
+
       - name: Generate SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:

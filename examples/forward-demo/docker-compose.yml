@@ -1,0 +1,88 @@
+# Post-quantum tunnel in front of a plain TCP service, with no change to the service.
+#
+#   app -> qt-client (127.0.0.1:8080) ==tunnel==> qt-server (:9000) -> upstream (:8080)
+#
+# Run:  docker compose up -d --build qt-client
+#       docker compose run --rm app
+#       docker compose run --rm probe
+#       docker compose down -v
+name: quantum-forward-demo
+
+x-alpine: &alpine alpine:latest@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+
+x-quantum: &quantum
+  build:
+    context: ../..
+  image: quantum-tunnel-demo
+  volumes:
+    - keys:/keys:ro
+
+services:
+  # Writes a random 32-byte PSK once, readable only by the forwarders (uid 1000).
+  psk-init:
+    image: *alpine
+    command:
+      - sh
+      - -c
+      - |
+        test -s /keys/psk.hex || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /keys/psk.hex
+        chown 1000:1000 /keys/psk.hex && chmod 600 /keys/psk.hex
+    volumes:
+      - keys:/keys
+
+  # A harmless plaintext HTTP service. It knows nothing about the tunnel.
+  upstream:
+    image: *alpine
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /www && echo 'hello from a plaintext service' > /www/index.html
+        exec httpd -f -p 8080 -h /www
+
+  qt-server:
+    <<: *quantum
+    command: ["forward", "--serve", "0.0.0.0:9000", "--upstream", "upstream:8080", "--psk-file", "/keys/psk.hex"]
+    depends_on:
+      psk-init:
+        condition: service_completed_successfully
+      upstream:
+        condition: service_started
+
+  qt-client:
+    <<: *quantum
+    command: ["forward", "--listen", "127.0.0.1:8080", "--connect", "qt-server:9000", "--psk-file", "/keys/psk.hex"]
+    depends_on:
+      - qt-server
+
+  # The application. It shares the client forwarder's network namespace and talks plain
+  # HTTP to 127.0.0.1:8080; the bytes cross the network inside the tunnel.
+  app:
+    image: *alpine
+    network_mode: "service:qt-client"
+    command:
+      - sh
+      - -c
+      - |
+        sleep 3
+        echo "through the tunnel: $$(wget -qO- -T 5 http://127.0.0.1:8080/)"
+
+  # Plain HTTP straight at the tunnel port gets nothing: the server speaks only the
+  # tunnel protocol and never reaches the upstream for an unauthenticated peer.
+  probe:
+    image: *alpine
+    depends_on:
+      - qt-server
+    command:
+      - sh
+      - -c
+      - |
+        sleep 3
+        if wget -qO- -T 3 http://qt-server:9000/ 2>/dev/null | grep -q plaintext; then
+          echo "UNEXPECTED: plain HTTP reached the upstream"
+          exit 1
+        fi
+        echo "without the tunnel: refused, the upstream is not reachable"
+
+volumes:
+  keys:
