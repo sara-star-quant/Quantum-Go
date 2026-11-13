@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/internal/randsrc"
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
@@ -169,5 +170,89 @@ func TestDgramHandshakePaddingE2E(t *testing.T) {
 				t.Fatalf("handshake datagram %d is %d bytes, want padded MTU %d", i, sz, constants.DatagramMTU)
 			}
 		}
+	}
+}
+
+// Padding is random, unauthenticated and ignored: two padded flights differ in their tails,
+// no tail is a run of zeros, and overwriting every padding byte changes nothing the receiver
+// reassembles.
+func TestFragmentHandshake_PaddingIsRandomAndIgnored(t *testing.T) {
+	msg := make([]byte, 1644)
+	for i := range msg {
+		msg[i] = byte(i)
+	}
+	base := protocol.DatagramHandshakeHeader{
+		DatagramHeader: protocol.DatagramHeader{RecvIndex: 7, Seq: 100},
+		SenderIndex:    42,
+		MsgType:        protocol.MessageTypeClientHello,
+	}
+	plain, err := fragmentHandshake(base, msg, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := fragmentHandshake(base, msg, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := fragmentHandshake(base, msg, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	padded := false
+	for i := range a {
+		start := len(plain[i]) // the unpadded frame ends where the padding begins
+		if !bytes.Equal(a[i][:start], plain[i]) {
+			t.Fatalf("frame %d: padding changed the bytes before it", i)
+		}
+		if start == len(a[i]) {
+			continue
+		}
+		padded = true
+		if bytes.Equal(a[i][start:], make([]byte, len(a[i])-start)) {
+			t.Fatalf("frame %d padding is all zeros", i)
+		}
+		if bytes.Equal(a[i][start:], b[i][start:]) {
+			t.Fatalf("frame %d: two padded flights have the same padding, so it is not random", i)
+		}
+	}
+	if !padded {
+		t.Fatal("no frame carried padding; the test would pass vacuously")
+	}
+
+	// Overwrite every padding byte: the flight reassembles to the same message.
+	r := NewReassembler(4, 8192, time.Second)
+	var out []byte
+	var done bool
+	for i, f := range a {
+		g := append([]byte(nil), f...)
+		for j := len(plain[i]); j < len(g); j++ {
+			g[j] ^= 0xFF
+		}
+		h, frag, perr := protocol.ParseDatagramHandshake(g)
+		if perr != nil {
+			t.Fatalf("a flipped padding byte broke parsing: %v", perr)
+		}
+		out, done, err = r.Add("peer", h, frag)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !done || !bytes.Equal(out, msg) {
+		t.Fatal("altering the padding changed the reassembled message")
+	}
+}
+
+func TestFragmentHandshake_PaddingFailsClosedWithoutEntropy(t *testing.T) {
+	defer randsrc.Set(deadEntropy{})()
+	base := protocol.DatagramHandshakeHeader{
+		DatagramHeader: protocol.DatagramHeader{RecvIndex: 7, Seq: 100},
+		SenderIndex:    42,
+		MsgType:        protocol.MessageTypeClientHello,
+	}
+	if frames, err := fragmentHandshake(base, []byte("short message"), true); err == nil || frames != nil {
+		t.Fatalf("a padded flight was produced without entropy: %v, %v", frames, err)
+	}
+	if _, err := fragmentHandshake(base, []byte("short message"), false); err != nil {
+		t.Fatalf("an unpadded flight needs no entropy: %v", err)
 	}
 }

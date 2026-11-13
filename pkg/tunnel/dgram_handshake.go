@@ -11,6 +11,7 @@ package tunnel
 import (
 	"github.com/sara-star-quant/quantum-go/internal/constants"
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
+	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
 
@@ -30,11 +31,13 @@ func maxHandshakeFragmentPayload(cookieLen int) int {
 // sequence number starting at base.Seq. The frames reassemble in any order on
 // the peer.
 //
-// When pad is set, each frame is zero-extended to exactly DatagramMTU. The
-// padding sits after the fragment payload and is excluded from FragLength, so the
+// When pad is set, each frame is extended with random bytes to exactly DatagramMTU.
+// The padding sits after the fragment payload and is excluded from FragLength, so the
 // receiver's parser slices it off before reassembly - it never enters the message
-// or the handshake transcript. This makes every handshake datagram uniform-size
-// (anti-fingerprinting); it does not equalize the number of datagrams per flight.
+// or the handshake transcript, and nothing authenticates it. Random bytes keep the
+// tail from showing as a run of zeros next to the key-shaped payload. This makes every
+// handshake datagram uniform-size (anti-fingerprinting); it does not equalize the
+// number of datagrams per flight.
 func fragmentHandshake(base protocol.DatagramHandshakeHeader, msg []byte, pad bool) ([][]byte, error) {
 	total := len(msg)
 	if total == 0 || total > constants.DatagramMaxHandshakeMessageSize {
@@ -62,7 +65,11 @@ func fragmentHandshake(base protocol.DatagramHandshakeHeader, msg []byte, pad bo
 			return nil, err
 		}
 		if pad && len(frame) < constants.DatagramMTU {
-			frame = append(frame, make([]byte, constants.DatagramMTU-len(frame))...)
+			used := len(frame)
+			frame = append(frame, make([]byte, constants.DatagramMTU-used)...)
+			if err := crypto.SecureRandom(frame[used:]); err != nil {
+				return nil, err
+			}
 		}
 		frames = append(frames, frame)
 		seq++

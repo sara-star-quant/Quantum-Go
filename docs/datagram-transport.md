@@ -125,13 +125,14 @@ roaming peer only on an authenticated, replay-fresh frame; see
 
 ### Optional handshake padding (anti-fingerprinting)
 
-`WithHandshakePadding()` zero-pads every handshake and rekey datagram to the MTU,
+`WithHandshakePadding()` pads every handshake and rekey datagram to the MTU with random bytes,
 so ClientHello, ServerHello, and the rekey sub-handshake are size-indistinguishable
 on the wire, defeating passive size-based traffic analysis of "a CH-KEM handshake is
 happening here." It is off by default (it costs bandwidth) and never pads the data
 plane. The padding rides after the fragment payload and outside the declared
 fragment length, so the receiver slices it off before reassembly: it never enters
-the reassembled message or the handshake transcript, cannot smuggle bytes into the
+the reassembled message or the handshake transcript, is not authenticated, ignores
+its content (random so the tail does not show as a run of zeros), cannot smuggle bytes into the
 authenticated handshake, and does not change per-source reassembly memory (sized by
 the declared total length, not the datagram size). It also cannot weaken the
 anti-amplification bound, since a RETRY is only ever sent when it is no larger than

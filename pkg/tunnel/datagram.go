@@ -513,7 +513,7 @@ type DatagramEndpoint struct {
 	// tears it down; defaulted from constants, overridable for fast tests.
 	idleTimeout time.Duration
 
-	// padHandshake, when set, zero-pads every outbound handshake and rekey datagram
+	// padHandshake, when set, pads every outbound handshake and rekey datagram with random bytes
 	// to DatagramMTU so the flight is uniform-size on the wire (anti-fingerprinting).
 	// Off by default (it costs bandwidth); set via WithHandshakePadding. The receiver
 	// always tolerates padding regardless of this flag, so a padding peer interops
