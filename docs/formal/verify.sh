@@ -3,6 +3,8 @@
 # queries, every negative (planted-flaw) model must FAIL its security query. Writes
 # the proof log to RESULTS.txt. The same script runs locally and in CI.
 set -u
+# A fixed locale keeps the glob order, and so RESULTS.txt, identical on every machine and in CI.
+export LC_ALL=C
 DIR="$(cd "$(dirname "$0")" && pwd)"
 IMG="${PROVERIF_IMAGE:-qgo-proverif}"
 RESULTS="$DIR/RESULTS.txt"

@@ -21,3 +21,13 @@ const clientTag: bitstring.
 const serverTag: bitstring.
 free net: channel.
 fun authMaster(bitstring, bitstring): bitstring.              (* static_ss, transcript -> master *)
+
+(* Rekey (PROTOCOL.md section 8). The rekey KEM carries its public key as a plain bitstring so it
+   can travel inside senc. *)
+fun pkb(skey): bitstring.
+fun kemenc(bitstring, bitstring): bitstring.
+reduc forall sk: skey, m: bitstring; kemdec(kemenc(pkb(sk), m), sk) = m.
+fun rekeyKdf(bitstring, bitstring): bitstring.             (* old master, fresh KEM secret -> new master *)
+fun kdfDir(bitstring, bitstring): bitstring.   (* per-direction record key (PROTOCOL.md section 7) *)
+const dirI2R: bitstring.
+const dirR2I: bitstring.

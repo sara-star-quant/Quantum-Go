@@ -25,6 +25,16 @@ RESULT not event(NegDone) is false.
 RESULT inj-event(ServerAccept(t)) ==> inj-event(ClientRan(t)) is true.
 RESULT not event(PskDone) is false.
 
+=== chkem_rekey.pv ===
+RESULT not attacker(secretE0[]) is true.
+RESULT not attacker(secretE2[]) is true.
+RESULT not event(Epoch2Reached) is false.
+
+=== chkem_rekey_auth.pv ===
+RESULT event(RekeyAccepted(pkn,sq_2)) ==> event(RekeyOffered(pkn,sq_2)) is true.
+RESULT not attacker(secretE1[]) is true.
+RESULT not event(Epoch1Reached) is false.
+
 === chkem_secrecy.pv ===
 RESULT not attacker(secretMsg[]) is true.
 RESULT not event(Done) is false.
@@ -50,6 +60,18 @@ RESULT not event(NegDone) is false.
 RESULT inj-event(ServerAccept(t)) ==> inj-event(ClientRan(t)) is false.
 RESULT (even event(ServerAccept(t)) ==> event(ClientRan(t)) is false.)
 RESULT not event(PskDone) is false.
+
+=== negative/rekey_active_after_compromise.pv ===
+RESULT not attacker(secretE1[]) is false.
+
+=== negative/rekey_no_fresh_secret_broken.pv ===
+RESULT not attacker(secretE2[]) is false.
+
+=== negative/rekey_no_ratchet_broken.pv ===
+RESULT not attacker(secretE0[]) is false.
+
+=== negative/rekey_unsealed_request_broken.pv ===
+RESULT event(RekeyAccepted(pkn,sq_2)) ==> event(RekeyOffered(pkn,sq_2)) is false.
 
 === negative/secrecy_broken.pv ===
 RESULT not attacker(secretMsg[]) is false.

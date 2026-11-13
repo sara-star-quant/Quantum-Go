@@ -13,6 +13,8 @@ committed proof log is [`RESULTS.txt`](RESULTS.txt).
 | Forward secrecy | `chkem_fs.pv` | secrecy holds after the long-term key leaks (phase 1) | proven |
 | Server authentication (injective) + transcript agreement | `chkem_auth.pv` | `inj-event(ClientAccept) ==> inj-event(ServerRunning)` | proven |
 | Suite negotiation: agreement on the offered list, no downgrade to the weak suite, no acceptance after a forged HelloRetryRequest | `chkem_negotiation.pv` | `inj-event(ClientAccept(sp,o,t)) ==> inj-event(ServerRunning(sp,o,t))`, `event(AcceptedWeak)` and `event(AcceptedAfterRetry)` unreachable | proven |
+| Rekey forward secrecy and passive post-compromise secrecy (an attacker who watches but does not alter messages): epoch-0 data stays secret after the epoch-1 master leaks, and epoch-2 data stays secret because the rekey mixes a fresh KEM secret. Not secure against an active attacker who already holds the current master (see the limitation below) | `chkem_rekey.pv` | `attacker(secretE0)` and `attacker(secretE2)` unreachable | proven |
+| Rekey agreement against an active attacker with no key material: every accepted rekey was offered with that key share and sequence number (agreement, not "accepted exactly once": replay is not excluded here), and the next epoch's data stays secret | `chkem_rekey_auth.pv` | `event(RekeyAccepted) ==> event(RekeyOffered)`, `attacker(secretE1)` unreachable | proven |
 
 The hybrid result machine-checks the headline guarantee: the session key stays secret as long
 as the structured-lattice (ML-KEM) OR the classical (X25519) leg holds. Server authentication
@@ -27,6 +29,15 @@ hybrid and forward-secrecy models additionally hand the attacker a compromised s
 key; the long-term static key). A query asks whether ANY attacker strategy violates the property,
 over all sessions - an exhaustive symbolic search, not a single trace.
 
+## Rekey: what the models leave out, and the limitation they record
+
+- **Passive and active are separate models on purpose.** `chkem_rekey.pv` hands the attacker the epoch-1 master and lets him watch every rekey message but not alter them, which is the case where a fresh KEM secret protects the next epoch. `chkem_rekey_auth.pv` gives him the whole network but no key material.
+- **Documented limitation (`negative/rekey_active_after_compromise.pv`, expected to fail).** A rekey is sealed only under the current epoch keys, so an attacker who already holds the current epoch master can open and forge rekey records, swap in his own key share and read the next epoch. A rekey protects against an attacker who does not hold the current key; recovering from a compromise needs a new authenticated handshake, that is a new connection. The model records this so the guarantee is not overstated.
+- **Replay window: not proven symbolically.** ProVerif has no atomic test-and-set on state, so "accept each sequence number once" cannot be expressed without a race between parallel receivers: an injective query fails for a reason about the tool, not the protocol. Replay protection is covered by tests in `pkg/tunnel`, among them `TestRekeyReplayWindowRejectsBoundaryReplay` (a replay across a rekey boundary) and `TestDatagramRekeyReplayedFramesIgnored`. A stateful prover is the right tool and the work is queued ([#280](https://github.com/sara-star-quant/Quantum-Go/issues/280)). The models carry the sequence number inside the sealed message and nothing more.
+- **Per-direction keys.** The request and the response are sealed under different keys (`kdfDir`), as in the record layer. With one shared key ProVerif replays a response as a request, a reflection the real protocol does not allow.
+- **Sequence numbers are modelled as unguessable fresh values**, not the small predictable counters of the real record layer. Agreement does not depend on guessing them, since every sealed message needs the epoch key, but the model does not capture an attacker predicting or choosing numbers.
+- **Abstracted:** the activation sequence (`current_send_seq + 16`), trial decryption at the boundary, epoch counters on datagrams, and AEAD associated data. The symbolic encryption `senc` is authenticated by construction.
+
 ## Non-vacuity (the proofs have teeth)
 
 Two safeguards, both enforced by `verify.sh`:
@@ -34,7 +45,7 @@ Two safeguards, both enforced by `verify.sh`:
 - **Reachability.** Each model proves an honest run completes (an `event` is reachable), so a
   secrecy result is not vacuously true on a dead protocol.
 - **Negative tests.** `negative/` holds a planted-flaw twin of each model (the combiner forgets a
-  secret; the Finished is not key-bound). Each MUST fail its query. A suite that cannot detect a
+  secret; the Finished is not key-bound). Each MUST fail its query. One twin (`rekey_active_after_compromise.pv`) is not a planted flaw but a real limitation, explained below. A suite that cannot detect a
   planted flaw is not assurance; these show it does.
 
 ## Scope and model fidelity (read this before citing the proofs)
@@ -85,9 +96,9 @@ Proven now: session-key secrecy, hybrid security, forward secrecy, injective ser
 Protocol 6.0 merged ServerHello and ServerFinished into one flight. The server-authentication
 model already abstracts the handshake to one server MAC over the transcript, so it covers the
 merged flight unchanged: a client accepts only after verifying a ServerFinished that only the
-holder of the pinned static key can produce. Suite negotiation and the HelloRetryRequest downgrade check are modeled in `chkem_negotiation.pv` for the authenticated modes (with no server or PSK authentication an active attacker is a full man in the middle, so downgrade is moot there). Not modeled: the stream and datagram framing, the rekey ratchet, the datagram cookie and the replay window. Those are covered by the Go tests.
+holder of the pinned static key can produce. Suite negotiation and the HelloRetryRequest downgrade check are modeled in `chkem_negotiation.pv` for the authenticated modes (with no server or PSK authentication an active attacker is a full man in the middle, so downgrade is moot there). Not modeled: the stream and datagram framing, the datagram cookie and the replay window (the rekey ratchet is modeled, see the rekey section above). Those are covered by the Go tests.
 
-Planned (extends the suite as drop-in `*.pv` files): the rekey-ratchet forward secrecy; the datagram cookie
-and replay window; client device-key mutual authentication including key-compromise impersonation
+Planned (extends the suite as drop-in `*.pv` files): the datagram cookie; a stateful model of the replay
+window in a stateful prover; client device-key mutual authentication including key-compromise impersonation
 (with the device-key design); per-suite models (X-Wing, a future CH-KEM-v2); and a computational
 proof (CryptoVerif/EasyCrypt).

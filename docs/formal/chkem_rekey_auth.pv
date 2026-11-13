@@ -1,0 +1,63 @@
+(*
+  CH-KEM rekey authentication against an active attacker (symbolic). Load: -lib prelude.
+
+  The rekey request and response are sealed under the current epoch's keys, one per direction
+  (PROTOCOL.md sections 7 and 8), and carry a record sequence number. Per-direction keys matter:
+  with one shared key the model lets the attacker replay a response as a request (a reflection),
+  which the real record layer prevents. The attacker controls the network and starts with no key
+  material.
+
+  Proven:
+    - agreement: every rekey the responder accepts was offered by an initiator with that key share
+      and sequence number, so the attacker cannot substitute his own key share;
+    - the epoch-1 data stays secret against the active attacker;
+    - the honest run completes (reachability), so the results are not vacuous.
+
+  The sequence number sq is modelled as an unguessable fresh value. Real numbers are small and
+  predictable; the agreement result does not depend on guessing sq, because every sealed message
+  needs the epoch key, but the model does not capture an attacker choosing or predicting numbers.
+
+  NOT proven here, on purpose: that a record or rekey request is accepted at most once (the replay
+  window). ProVerif has no atomic test-and-set on state, so "check, then record" races between
+  parallel receivers and an injective query fails for a reason that is about the tool, not the
+  protocol. The window is a stateful property, covered by the replay tests in pkg/tunnel and
+  queued for a stateful prover (Tamarin). Not claimed either: authentication when the attacker
+  already holds the current epoch key (negative/rekey_active_after_compromise.pv).
+*)
+
+free secretE1: bitstring [private].
+
+event RekeyOffered(bitstring, bitstring).
+event RekeyAccepted(bitstring, bitstring).
+event Epoch1Reached.
+
+query pkn: bitstring, sq: bitstring; event(RekeyAccepted(pkn, sq)) ==> event(RekeyOffered(pkn, sq)).
+query attacker(secretE1).
+query event(Epoch1Reached).
+
+let initiator(master0: bitstring) =
+  new fsk: skey;
+  new sq: bitstring;
+  let kReq = kdfDir(master0, dirI2R) in
+  let kResp = kdfDir(master0, dirR2I) in
+  event RekeyOffered(pkb(fsk), sq);
+  out(net, senc((pkb(fsk), sq), kReq));
+  in(net, resp: bitstring);
+  let (ct: bitstring, sq2: bitstring) = sdec(resp, kResp) in
+  if sq2 = sq then
+  let ssI = kemdec(ct, fsk) in
+  event Epoch1Reached;
+  out(net, senc(secretE1, kdfTraffic(rekeyKdf(master0, ssI)))).
+
+let responder(master0: bitstring) =
+  in(net, req: bitstring);
+  let kReq = kdfDir(master0, dirI2R) in
+  let kResp = kdfDir(master0, dirR2I) in
+  let (pkNew: bitstring, sq: bitstring) = sdec(req, kReq) in
+  event RekeyAccepted(pkNew, sq);
+  new ss: bitstring;
+  out(net, senc((kemenc(pkNew, ss), sq), kResp)).
+
+process
+  new master0: bitstring;
+  ( (! initiator(master0)) | (! responder(master0)) )

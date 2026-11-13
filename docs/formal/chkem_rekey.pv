@@ -1,0 +1,61 @@
+(*
+  CH-KEM rekey ratchet: forward secrecy and post-compromise secrecy against an observer
+  (symbolic). Load: -lib prelude.
+
+  A rekey (PROTOCOL.md section 8) mixes a fresh KEM secret into the current master:
+      new_master = KDF("CH-KEM-Tunnel-Rekey", [ old_master, fresh_kem_secret ])
+  The initiator sends its fresh KEM public key sealed under the current epoch key; the
+  responder returns the KEM ciphertext sealed under the same key.
+
+  The attacker here is handed the epoch-1 master (a compromise of one epoch) and sees every
+  rekey message, but the rekey messages are delivered honestly on a private channel. That
+  is the passive case on purpose: an attacker who knows the current epoch key can also
+  forge a rekey record, which is the limitation recorded in
+  negative/rekey_active_after_compromise.pv. Authentication of the rekey while the epoch
+  key is secret is proven in chkem_rekey_auth.pv.
+
+  Proven:
+    - backward: epoch-0 data stays secret after the epoch-1 master leaks (the ratchet is one way);
+    - forward: epoch-2 data stays secret after the epoch-1 master leaks, because the rekey mixes
+      a fresh KEM secret the observer cannot decapsulate.
+*)
+
+free secretE0: bitstring [private].
+free secretE2: bitstring [private].
+free c1, c2: channel [private].   (* hands the new master to the next epoch *)
+
+query attacker(secretE0).
+query attacker(secretE2).
+
+event Epoch2Reached.
+query event(Epoch2Reached).
+
+(* One rekey from masterIn: both sides, honest delivery, everything observable. *)
+let rekeyStep(masterIn: bitstring, out_ch: channel) =
+  new fsk: skey;
+  let kReq = kdfDir(masterIn, dirI2R) in
+  let kResp = kdfDir(masterIn, dirR2I) in
+  (* initiator: fresh KEM public key, sealed under the current epoch key *)
+  let rekeyInit = senc(pkb(fsk), kReq) in
+  out(net, rekeyInit);
+  (* responder: opens it, encapsulates a fresh secret, seals the ciphertext *)
+  let pkNew = sdec(rekeyInit, kReq) in
+  new ss: bitstring;
+  let rekeyResp = senc(kemenc(pkNew, ss), kResp) in
+  out(net, rekeyResp);
+  (* initiator: opens the response and decapsulates *)
+  let ct = sdec(rekeyResp, kResp) in
+  let ssI = kemdec(ct, fsk) in
+  out(out_ch, rekeyKdf(masterIn, ssI)).
+
+process
+  new master0: bitstring;
+  ( out(net, senc(secretE0, kdfTraffic(master0)))
+  | rekeyStep(master0, c1)
+  | ( in(c1, master1: bitstring);
+      out(net, master1);                 (* epoch-1 master compromised *)
+      out(net, kdfTraffic(master1));
+      rekeyStep(master1, c2) )
+  | ( in(c2, master2: bitstring);
+      event Epoch2Reached;
+      out(net, senc(secretE2, kdfTraffic(master2))) ) )

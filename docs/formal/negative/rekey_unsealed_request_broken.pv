@@ -1,0 +1,38 @@
+(*
+  PLANTED FLAW: the rekey request is sent in the clear instead of sealed under the epoch key, so
+  the attacker swaps in his own key share. Agreement must FAIL (the responder accepts a key share no
+  initiator offered). Twin of chkem_rekey_auth.pv.
+*)
+
+free secretE1: bitstring [private].
+
+event RekeyOffered(bitstring, bitstring).
+event RekeyAccepted(bitstring, bitstring).
+event Epoch1Reached.
+
+query pkn: bitstring, sq: bitstring; event(RekeyAccepted(pkn, sq)) ==> event(RekeyOffered(pkn, sq)).
+
+let initiator(master0: bitstring) =
+  new fsk: skey;
+  new sq: bitstring;
+  let kResp = kdfDir(master0, dirR2I) in
+  event RekeyOffered(pkb(fsk), sq);
+  out(net, (pkb(fsk), sq));   (* the flaw: not sealed *)
+  in(net, resp: bitstring);
+  let (ct: bitstring, sq2: bitstring) = sdec(resp, kResp) in
+  if sq2 = sq then
+  let ssI = kemdec(ct, fsk) in
+  event Epoch1Reached;
+  out(net, senc(secretE1, kdfTraffic(rekeyKdf(master0, ssI)))).
+
+let responder(master0: bitstring) =
+  in(net, req: bitstring);
+  let kResp = kdfDir(master0, dirR2I) in
+  let (pkNew: bitstring, sq: bitstring) = req in
+  event RekeyAccepted(pkNew, sq);
+  new ss: bitstring;
+  out(net, senc((kemenc(pkNew, ss), sq), kResp)).
+
+process
+  new master0: bitstring;
+  ( (! initiator(master0)) | (! responder(master0)) )

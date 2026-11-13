@@ -1,0 +1,34 @@
+(*
+  PLANTED FLAW: the rekey does not ratchet. The new epoch keeps the old master, so the
+  epoch-1 master is also the epoch-0 master and the epoch-0 data falls with it. Must FAIL
+  the epoch-0 secrecy query. Twin of chkem_rekey.pv.
+*)
+
+free secretE0: bitstring [private].
+free c1: channel [private].
+
+query attacker(secretE0).
+
+let rekeyStep(masterIn: bitstring, out_ch: channel) =
+  new fsk: skey;
+  let kReq = kdfDir(masterIn, dirI2R) in
+  let kResp = kdfDir(masterIn, dirR2I) in
+  (* initiator: fresh KEM public key, sealed under the current epoch key *)
+  let rekeyInit = senc(pkb(fsk), kReq) in
+  out(net, rekeyInit);
+  (* responder: opens it, encapsulates a fresh secret, seals the ciphertext *)
+  let pkNew = sdec(rekeyInit, kReq) in
+  new ss: bitstring;
+  let rekeyResp = senc(kemenc(pkNew, ss), kResp) in
+  out(net, rekeyResp);
+  (* initiator: opens the response and decapsulates *)
+  let ct = sdec(rekeyResp, kResp) in
+  let ssI = kemdec(ct, fsk) in
+  out(out_ch, masterIn).                         (* the flaw: no new master *)
+
+process
+  new master0: bitstring;
+  ( out(net, senc(secretE0, kdfTraffic(master0)))
+  | rekeyStep(master0, c1)
+  | ( in(c1, master1: bitstring);
+      out(net, master1) ) )

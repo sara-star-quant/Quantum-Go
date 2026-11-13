@@ -1,0 +1,43 @@
+(*
+  DOCUMENTED LIMITATION, not a planted flaw: an attacker who already holds the current epoch master
+  can open and forge rekey records, because they are sealed only under that key. He substitutes his
+  own key share, learns the new master, and reads the next epoch. This model hands him the epoch-0
+  master and the epoch-1 secrecy query FAILS. A rekey authenticates only against an attacker who
+  does not hold the current epoch key; recovering from a compromise needs a fresh authenticated
+  handshake (a new connection). Companion of chkem_rekey_auth.pv.
+*)
+
+free secretE1: bitstring [private].
+
+event RekeyOffered(bitstring, bitstring).
+event RekeyAccepted(bitstring, bitstring).
+event Epoch1Reached.
+
+query attacker(secretE1).
+
+let initiator(master0: bitstring) =
+  new fsk: skey;
+  new sq: bitstring;
+  let kReq = kdfDir(master0, dirI2R) in
+  let kResp = kdfDir(master0, dirR2I) in
+  event RekeyOffered(pkb(fsk), sq);
+  out(net, senc((pkb(fsk), sq), kReq));
+  in(net, resp: bitstring);
+  let (ct: bitstring, sq2: bitstring) = sdec(resp, kResp) in
+  if sq2 = sq then
+  let ssI = kemdec(ct, fsk) in
+  event Epoch1Reached;
+  out(net, senc(secretE1, kdfTraffic(rekeyKdf(master0, ssI)))).
+
+let responder(master0: bitstring) =
+  in(net, req: bitstring);
+  let kReq = kdfDir(master0, dirI2R) in
+  let kResp = kdfDir(master0, dirR2I) in
+  let (pkNew: bitstring, sq: bitstring) = sdec(req, kReq) in
+  event RekeyAccepted(pkNew, sq);
+  new ss: bitstring;
+  out(net, senc((kemenc(pkNew, ss), sq), kResp)).
+
+process
+  new master0: bitstring;
+  ( out(net, master0) | (! initiator(master0)) | (! responder(master0)) )
