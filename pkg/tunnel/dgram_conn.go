@@ -60,6 +60,9 @@ func (c *DatagramConn) Send(p []byte) error {
 	}
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
+	if c.isClosed() {
+		return qerrors.ErrTunnelClosed
+	}
 	s := c.ds.getSession()
 	seq := s.nextDatagramSeq()
 	// Build header || ciphertext || tag in the reusable buffer: the header is both
@@ -114,6 +117,9 @@ func (c *DatagramConn) SendBatch(payloads [][]byte) error {
 	}
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
+	if c.isClosed() {
+		return qerrors.ErrTunnelClosed
+	}
 	s := c.ds.getSession()
 	dst := c.ds.currentPeerAddr()
 
@@ -179,6 +185,16 @@ func (c *DatagramConn) SendBatch(payloads [][]byte) error {
 		go func() { _ = c.Rekey() }()
 	}
 	return nil
+}
+
+// isClosed reports whether this side or the peer has closed the session.
+func (c *DatagramConn) isClosed() bool {
+	select {
+	case <-c.ds.closed:
+		return true
+	default:
+		return false
+	}
 }
 
 // Recv returns the next decrypted application payload, blocking until one arrives
