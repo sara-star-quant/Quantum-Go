@@ -423,7 +423,18 @@ func TestDatagramHandshakeThroughTamperingProxy(t *testing.T) {
 					if client.err != nil {
 						return // failed closed
 					}
-					server := within(t, "responder session", func() *DatagramConn { return <-acc })
+					var server *DatagramConn
+					select {
+					case server = <-acc:
+					case <-time.After(30 * time.Second):
+						mu.Lock()
+						flows := seen
+						mu.Unlock()
+						// Name what the proxy forwarded and what each endpoint holds, so a failure on
+						// a loaded runner says whether the datagrams or the responder went missing.
+						t.Fatalf("the client established but the responder surfaced no session in 30 s: datagrams seen client->server %d, server->client %d; responder sessions %d, half-open %d; client sessions %d",
+							flows[0], flows[1], srvEP.registry.count(), srvEP.registry.halfOpenLoad(), cliEP.registry.count())
+					}
 					if server == nil {
 						t.Fatal("client established but the responder did not")
 					}
