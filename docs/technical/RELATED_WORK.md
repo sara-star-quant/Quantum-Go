@@ -1,8 +1,8 @@
 # Related work
 
-How this protocol compares with the closest published work, and what that work says we have not covered. Written 2026-11-13.
+This document compares the protocol with the closest published work and lists what that work shows the protocol has not covered. Written 2026-11-13.
 
-**How to read it.** For each paper the "Read" line says how much of it was read. Most entries are abstract and metadata pages, not full papers, so every statement about what a paper proves or how it differs from us is "per its abstract" and may be loose. Do not quote a comparison here without checking the paper. Statements about this library come from the code and [PROTOCOL.md](../PROTOCOL.md). Anything marked **Inference** is our reading, not the authors' claim. Gaps link to issues.
+**Method and limits.** Each entry states how much of its source was read. Most entries rest on the abstract and metadata page alone, so a statement about a paper's results is limited to what the abstract says and may be imprecise. Statements about this library come from the code and [PROTOCOL.md](../PROTOCOL.md). Statements marked **Inference** are the maintainers' reading, not the authors' claim. Each gap links to its tracking issue. No comparison here should be quoted before it is checked against the full paper.
 
 ## PQ-WireGuard and its hybrids
 
@@ -11,7 +11,7 @@ How this protocol compares with the closest published work, and what that work s
 [ePrint 2025/1758](https://eprint.iacr.org/2025/1758). Read: abstract page.
 
 - Redesigns the post-quantum WireGuard handshake and proves it secure in a new computational model that captures features the first analysis (Hulsing et al.) did not model. The motivation includes the server memory cost of large Classic McEliece public keys and KEM binding issues (it cites Cremers et al., CCS 2024).
-- Its building block is a "reinforced KEM" (Rebar). This library does not use it: our ephemeral exchange uses ML-KEM, so the McEliece size problem it addresses does not arise, and we have not assessed the construction's intellectual-property position, so we do not depend on it.
+- Its building block is a "reinforced KEM" (Rebar). This library does not use it. The ephemeral exchange uses ML-KEM, so the Classic McEliece key-size problem that motivates the construction does not arise here.
 - **Same:** a handshake built from KEMs instead of Diffie-Hellman, with a binding concern addressed in the design.
 - **Different (per its abstract):** the authors give a computational proof; we give symbolic ProVerif models only. The original PQ-WireGuard design aimed to fit the handshake in one UDP packet (the abstract says so). Our datagram handshake is fragmented, because ML-KEM-1024 key shares do not fit, and uses a cookie against floods; our stream transport is plain TCP.
 - **Gap:** no computational proof of our handshake. [#277](https://github.com/sara-star-quant/Quantum-Go/issues/277) scopes one (a plan and dossier); the proof itself is not started.
@@ -33,7 +33,7 @@ How this protocol compares with the closest published work, and what that work s
 
 - A hybrid KEM from X25519 and ML-KEM-768 with SHA3-256. IND-CCA secure if the strong Diffie-Hellman assumption holds in the X25519 group (random oracle model), or if ML-KEM-768 is IND-CCA secure and SHA3-256 is a secure PRF (standard model). The authors say the efficiency gain depends on the concrete components and may not carry to other pairs.
 - **Same:** the X-Wing suite in this library is X-Wing, byte for byte, from circl, gated by the specification's vectors.
-- **Different, and a real limit:** CH-KEM-v1, the default suite, is our own combiner (X25519 and ML-KEM-1024 through a SHAKE-256 KDF). The X-Wing proof does not cover it. Its security rests on our symbolic models and on the combiner design (below), not on a published computational proof.
+- **Different:** CH-KEM-v1, the default suite, is our own combiner (X25519 and ML-KEM-1024 through a SHAKE-256 KDF). The X-Wing proof does not cover it. Its security rests on our symbolic models and on the combiner design (below), not on a published computational proof.
 - **Gap:** a computational argument for the CH-KEM-v1 combiner. [#277](https://github.com/sara-star-quant/Quantum-Go/issues/277) scopes it (a plan and dossier); the proof itself is not started.
 
 ### Keeping Up with the KEMs (Cremers, Dax, Medinger)
@@ -78,7 +78,7 @@ How this protocol compares with the closest published work, and what that work s
 - A pre-registered study of dudect-style fixed-versus-random timing tests on nine ML-KEM decapsulation implementations. Invalid ciphertexts showed no difference in 18 of 18 campaigns; fresh valid ciphertexts flagged all nine implementations by 4 to 15 cycles; a matched control removed the difference for seven; an A/A test with identical inputs still gave a huge statistic for one. The authors conclude a harness can create the "leak", and recommend matched controls, A/A tests and per-trial correctness checks (they found 220 wrong shared secrets in 49,830 trials of one build).
 - **Applies to us as method:** the constant-time work ([#276](https://github.com/sara-star-quant/Quantum-Go/issues/276)) runs an A/A control and a matched control first, and checks correctness per trial.
 
-## What no paper read here covers
+## Coverage of the literature search
 
 A search of arXiv, ePrint and general web results on 2026-11-13 found no paper that formally verifies a hybrid ML-KEM plus X25519 tunnel handshake with a datagram transport, a stateless cookie and static-key pinning. That is a statement about that search, not a survey of the field, and not a claim of novelty.
 
