@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Operations
+- **Release gate and verifier:** `docs/RELEASING.md` writes down the checks a tag needs, and `scripts/release-verify.sh vX.Y.Z` downloads a published release and checks every asset against the checksums, the attestation identity per archive, the SBOM, the Go proxy answer and the binary's own report of the tag and commit.
+
 ## [0.0.31][] - 2026-11-14
 
 **Theme:** Failure paths and evidence. A datagram session no longer sends after `Close`: before, `Send` and `SendBatch` on a closed session sealed and transmitted a frame and returned nil. The rest is evidence a reviewer or a pilot can check: fuzzing of the stream receive loop, framing and key parsers, and failure tests for `forward` (resets, an upstream that closes early, a slow reader, SIGHUP through the built binary). No upgrade action is needed; code that ignored the error from `Send` after `Close` now gets `ErrTunnelClosed`.

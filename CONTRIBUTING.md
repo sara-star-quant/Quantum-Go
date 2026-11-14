@@ -229,6 +229,10 @@ If you discover a security vulnerability:
 
 See [SECURITY.md](SECURITY.md) for our security policy (if available).
 
+## Releases
+
+Maintainers cut releases with the gate and the verification script in [docs/RELEASING.md](docs/RELEASING.md). Run `golangci-lint run ./...`, `go vet ./...` and `gofmt -l .` before every push; CI runs the same checks.
+
 ## Types of Contributions
 
 We welcome various types of contributions:
