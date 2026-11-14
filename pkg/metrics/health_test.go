@@ -114,7 +114,7 @@ func TestHealthCheckHandler(t *testing.T) {
 	h := NewHealthCheck(c, "1.0.0")
 
 	handler := h.Handler()
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
@@ -142,7 +142,7 @@ func TestHealthCheckHandlerUnhealthy(t *testing.T) {
 	})
 
 	handler := h.Handler()
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
@@ -163,7 +163,7 @@ func TestLivenessHandler(t *testing.T) {
 	})
 
 	handler := h.LivenessHandler()
-	req := httptest.NewRequest("GET", "/healthz", nil)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
@@ -180,7 +180,7 @@ func TestReadinessHandler(t *testing.T) {
 
 	// Healthy case
 	handler := h.ReadinessHandler()
-	req := httptest.NewRequest("GET", "/readyz", nil)
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
@@ -241,7 +241,7 @@ func TestServerHandler(t *testing.T) {
 	})
 
 	// Test metrics endpoint
-	req := httptest.NewRequest("GET", "/metrics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	w := httptest.NewRecorder()
 	server.Handler().ServeHTTP(w, req)
 
@@ -250,7 +250,7 @@ func TestServerHandler(t *testing.T) {
 	}
 
 	// Test health endpoint
-	req = httptest.NewRequest("GET", "/health", nil)
+	req = httptest.NewRequest(http.MethodGet, "/health", nil)
 	w = httptest.NewRecorder()
 	server.Handler().ServeHTTP(w, req)
 
@@ -259,7 +259,7 @@ func TestServerHandler(t *testing.T) {
 	}
 
 	// Test healthz endpoint
-	req = httptest.NewRequest("GET", "/healthz", nil)
+	req = httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w = httptest.NewRecorder()
 	server.Handler().ServeHTTP(w, req)
 
@@ -268,7 +268,7 @@ func TestServerHandler(t *testing.T) {
 	}
 
 	// Test readyz endpoint
-	req = httptest.NewRequest("GET", "/readyz", nil)
+	req = httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	w = httptest.NewRecorder()
 	server.Handler().ServeHTTP(w, req)
 
@@ -286,7 +286,7 @@ func TestServerAddHealthCheck(t *testing.T) {
 		return errors.New("fail")
 	})
 
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 	server.Handler().ServeHTTP(w, req)
 

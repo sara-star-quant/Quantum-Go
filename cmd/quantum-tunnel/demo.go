@@ -138,7 +138,7 @@ func handleConnection(conn *tunnel.Tunnel, connNum int, verbose bool) {
 
 		data, err := conn.Receive()
 		if err != nil {
-			if err == io.EOF || strings.Contains(err.Error(), "closed") {
+			if errors.Is(err, io.EOF) || strings.Contains(err.Error(), "closed") {
 				fmt.Printf("[%s] [Conn #%d] Client disconnected\n", time.Now().Format("15:04:05"), connNum)
 			} else {
 				fmt.Printf("[%s] [Conn #%d] Receive error: %v\n", time.Now().Format("15:04:05"), connNum, err)

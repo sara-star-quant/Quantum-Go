@@ -99,7 +99,7 @@ func TestDgramHandshakeDriverBackoff(t *testing.T) {
 		t.Fatalf("first wake = %v, want %v", d.nextWake(), want)
 	}
 
-	wantRTOs := []time.Duration{1000, 2000, 4000, 8000, 8000, 8000, 8000, 8000}
+	wantRTOs := []time.Duration{1000 * time.Millisecond, 2000 * time.Millisecond, 4000 * time.Millisecond, 8000 * time.Millisecond, 8000 * time.Millisecond, 8000 * time.Millisecond, 8000 * time.Millisecond, 8000 * time.Millisecond}
 	var resends int
 	for i := range constants.DatagramHandshakeMaxRetries {
 		clk.set(d.nextWake())
@@ -109,8 +109,8 @@ func TestDgramHandshakeDriverBackoff(t *testing.T) {
 		}
 		resends++
 		gotRTO := d.nextWake().Sub(clk.now())
-		if gotRTO != wantRTOs[i]*time.Millisecond {
-			t.Fatalf("after retransmit %d, RTO = %v, want %v", i, gotRTO, wantRTOs[i]*time.Millisecond)
+		if gotRTO != wantRTOs[i] {
+			t.Fatalf("after retransmit %d, RTO = %v, want %v", i, gotRTO, wantRTOs[i])
 		}
 	}
 	if resends != constants.DatagramHandshakeMaxRetries {

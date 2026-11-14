@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Changed
+- **Stricter linting and a pull request template:** `golangci-lint` now also runs `errorlint`, `nilerr`, `durationcheck`, `bodyclose`, `unconvert`, `misspell` and `usestdlibvars` (`.golangci.yml`). Error comparisons in the transport now use `errors.Is`; behaviour is unchanged. Pull requests get a checklist for tests, sign-off and changelog.
+
 ### Fixed
 - **Datagram `Send` and `SendBatch` after `Close`:** they sealed and transmitted a datagram on a closed session and returned nil. They now return `ErrTunnelClosed`. New tests pin the close race on both transports and the forwarder's rekey after the peer's EOF.
 
@@ -52,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Theme:** A security patch for connection pools. A `Pool` now applies its pinned server key, PSK and KEM suite allowlist; before, it connected without them. Upgrade if you use a `Pool` with a pin or a PSK. The release also adds a KEM suite allowlist, Unix sockets for `forward`, an `inventory` command, peer identity on the server session, reproducible binaries and a signed SBOM.
 
 ### Fixed
-- **Pool ignored its security settings** (v0.0.12 and later): a `Pool` built its connections without the PSK, pinned server key or KEM suite allowlist in its transport config, so a pool that pinned a server key did not verify it, and a pool with a PSK could not reach a server that required one. Pools now authenticate exactly like `Dial` and bound the handshake with `HandshakeTimeout`. A GitHub security advisory covers it.
+- **Pool ignored its security settings** (v0.0.12 and later): a `Pool` built its connections without the PSK, pinned server key or KEM suite allowlist in its transport config, so a pool that pinned a server key did not verify it, and a pool with a PSK could not reach a server that required one. Pools now authenticate exactly like `Dial` and bound the handshake with `HandshakeTimeout`. Advisory: GHSA-rcr6-xvv7-46fh.
 - **Release binaries recorded `vcs.modified=true`**: the release job added untracked files, which Go stamps as a dirty tree. Builds now leave VCS state out and carry the commit through the build flags.
 - **Library version string**: `pkg/version.String()` returned the stale constant `v0.0.14` for every build, and `make build` without `VERSION` stamped `0.0.4`. The library now reads the version the Go toolchain recorded, `make` defaults to the nearest git tag, and the CLI always reports a leading `v`. The `Major`, `Minor` and `Patch` constants are deprecated.
 - **`forward --server-key` and `--pin` now load the files `keygen` writes** (v0.0.26 and v0.0.27): the forwarder read them as raw bytes while `keygen` writes base64, so every real key file was refused and server pinning through forward mode did not work. Both flags share keygen's loaders now, and a test pins with real keygen output for both suites.
@@ -72,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Theme:** A security patch for the `forward` server in v0.0.26. Upgrade if you run it. It also corrects gaps in the protocol specification and adds a formal model of suite negotiation.
 
 ### Fixed
-- **`forward` server availability** (v0.0.26 only): the server could stop accepting connections after repeated failed handshakes. Fixed in v0.0.27. A GitHub security advisory covers it.
+- **`forward` server availability** (v0.0.26 only): the server could stop accepting connections after repeated failed handshakes. Fixed in v0.0.27. Advisory: GHSA-h8r6-xr2r-x997.
 
 ### Added
 - **ProVerif model of suite negotiation** (`chkem_negotiation.pv`) with a planted-flaw twin: agreement on the offered list, no downgrade to the weak suite and no acceptance after a forged HelloRetryRequest.
@@ -96,7 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`DialWithConfig` honors `HandshakeTimeout`**: the initiator now bounds the TCP connect and the handshake with it (30 seconds by default), where it used to wait without limit on a peer that never answered.
 
 ### Fixed
-- **Close after the peer closed**: when a peer closed gracefully, the receiving side marked its tunnel closed on the peer's close notice, and a later `Close` returned early. The socket then stayed open until garbage collection, the session keys stayed un-zeroized, and a `MaxConnectionsPerIP` slot never freed, so an address could eventually lock itself out. `Close` now always releases the connection.
+- **Close after the peer closed**: when a peer closed gracefully, the receiving side marked its tunnel closed on the peer's close notice, and a later `Close` returned early. The socket then stayed open until garbage collection, the session keys stayed un-zeroized, and a `MaxConnectionsPerIP` slot never freed, so an address could eventually lock itself out. `Close` now always releases the connection. Advisory: GHSA-9r43-mjfv-v586.
 
 ### Removed
 - **Session resumption API** (breaking, experimental): `TicketManager`, `NewTicketManager`, `SessionTicket`, `Session.ExportTicket`, `Session.Resume`, `Handshake.SetTicket`, `Handshake.SetTicketManager`, `InitiatorResumptionHandshake`, `ResponderResumptionHandshake`, `crypto.DeriveResumptionSecret` and `ErrInvalidTicket` / `ErrExpiredTicket`. Nothing in `Dial`, `Listen` or the datagram transport used them, a resumed handshake still did a full key exchange, and tickets were not bound to the issuing server. The wire format is unchanged: the ClientHello `SessionID` field stays and goes out empty, and the ServerHello keeps carrying the server's session id. Closes [#146](https://github.com/sara-star-quant/Quantum-Go/issues/146).

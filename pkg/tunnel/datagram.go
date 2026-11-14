@@ -989,7 +989,7 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 		}
 		pt, oerr := sess.DatagramOpen(hdr.Epoch, hdr.Seq, body, protocol.DatagramAAD(data))
 		if oerr != nil {
-			return nil // authentication failed: drop
+			return nil //nolint:nilerr // a datagram that fails authentication is dropped, not an error
 		}
 		if !sess.dgramReplay.Check(hdr.Seq) {
 			return nil // duplicate that slipped past the peek: drop
@@ -1026,7 +1026,7 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 			return nil
 		}
 		if _, oerr := ds.getSession().DatagramOpen(hdr.Epoch, hdr.Seq, body, protocol.DatagramAAD(data)); oerr != nil {
-			return nil
+			return nil //nolint:nilerr // a datagram that fails authentication is dropped, not an error
 		}
 		if !ds.getSession().dgramReplay.Check(hdr.Seq) {
 			return nil

@@ -12,6 +12,7 @@ package tunnel
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -352,7 +353,7 @@ func (t *Transport) sealAndWriteBatch(payloads [][]byte) error {
 		frame, _, err := t.session.encryptFrameTo(*bp, p, frameNonce(bp))
 		if err != nil {
 			putFrame(bp)
-			if err == qerrors.ErrMessageTooLarge {
+			if errors.Is(err, qerrors.ErrMessageTooLarge) {
 				t.recordProtocolError(err)
 			}
 			sealErr = err
@@ -409,7 +410,7 @@ func (t *Transport) sealAndWriteLocked(data []byte) error {
 	defer putFrame(bp)
 	frame, _, err := t.session.encryptFrameTo(*bp, data, frameNonce(bp))
 	if err != nil {
-		if err == qerrors.ErrMessageTooLarge {
+		if errors.Is(err, qerrors.ErrMessageTooLarge) {
 			t.recordProtocolError(err)
 		}
 		return err
@@ -508,7 +509,7 @@ func (t *Transport) readMessage() ([]byte, protocol.MessageType, error) {
 	}
 	msg, err := t.codec.ReadMessageInto(t.conn, t.readBuf)
 	if err != nil {
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil, 0, qerrors.ErrTunnelClosed
 		}
 		t.recordProtocolError(err)

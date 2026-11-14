@@ -3,6 +3,7 @@ package protocol_test
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"testing"
 
@@ -600,7 +601,7 @@ func TestReadMessageMultiple(t *testing.T) {
 
 	// Should get EOF now
 	_, err = codec.ReadMessage(&buf)
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Errorf("expected EOF, got %v", err)
 	}
 }

@@ -22,7 +22,7 @@ func TestCryptoError(t *testing.T) {
 
 	// Test Unwrap() method
 	unwrapped := cerr.Unwrap()
-	if unwrapped != baseErr {
+	if unwrapped != baseErr { //nolint:errorlint // Unwrap must return the exact wrapped error
 		t.Errorf("Unwrap() returned %v, want %v", unwrapped, baseErr)
 	}
 
@@ -30,7 +30,7 @@ func TestCryptoError(t *testing.T) {
 	if cerr.Op != "ml-kem-encapsulate" {
 		t.Errorf("Op = %q, want %q", cerr.Op, "ml-kem-encapsulate")
 	}
-	if cerr.Err != baseErr {
+	if cerr.Err != baseErr { //nolint:errorlint // the field must hold the exact wrapped error
 		t.Errorf("Err = %v, want %v", cerr.Err, baseErr)
 	}
 }
@@ -51,7 +51,7 @@ func TestProtocolError(t *testing.T) {
 
 	// Test Unwrap() method
 	unwrapped := perr.Unwrap()
-	if unwrapped != baseErr {
+	if unwrapped != baseErr { //nolint:errorlint // Unwrap must return the exact wrapped error
 		t.Errorf("Unwrap() returned %v, want %v", unwrapped, baseErr)
 	}
 
@@ -59,7 +59,7 @@ func TestProtocolError(t *testing.T) {
 	if perr.Phase != "handshake" {
 		t.Errorf("Phase = %q, want %q", perr.Phase, "handshake")
 	}
-	if perr.Err != baseErr {
+	if perr.Err != baseErr { //nolint:errorlint // the field must hold the exact wrapped error
 		t.Errorf("Err = %v, want %v", perr.Err, baseErr)
 	}
 }

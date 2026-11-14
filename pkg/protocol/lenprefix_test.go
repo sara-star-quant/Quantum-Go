@@ -45,8 +45,8 @@ func TestClientHelloLengthPrefixOverRead(t *testing.T) {
 	m := &protocol.ClientHello{
 		Version:        protocol.Current,
 		Random:         make([]byte, 32),
-		KEMSuite:       uint16(chkemv1ID()),
-		KEMSuites:      []uint16{uint16(chkemv1ID())},
+		KEMSuite:       chkemv1ID(),
+		KEMSuites:      []uint16{chkemv1ID()},
 		CHKEMPublicKey: make([]byte, constants.CHKEMPublicKeySize),
 		CipherSuites:   []constants.CipherSuite{constants.CipherSuiteAES256GCM},
 	}

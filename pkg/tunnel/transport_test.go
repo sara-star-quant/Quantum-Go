@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"bytes"
+	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -187,7 +188,8 @@ func TestTransportTimeouts(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error, got nil")
 	}
-	if nerr, ok := err.(net.Error); !ok || !nerr.Timeout() {
+	var nerr net.Error
+	if !errors.As(err, &nerr) || !nerr.Timeout() {
 		t.Errorf("expected net timeout error, got %v", err)
 	}
 }

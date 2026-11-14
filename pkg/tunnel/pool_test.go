@@ -2,6 +2,7 @@ package tunnel_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -920,7 +921,7 @@ func TestPoolContextCancellation(t *testing.T) {
 
 	<-done
 
-	if acquireErr != context.Canceled {
+	if !errors.Is(acquireErr, context.Canceled) {
 		t.Errorf("Expected context.Canceled, got %v", acquireErr)
 	}
 

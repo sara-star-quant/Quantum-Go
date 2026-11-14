@@ -64,7 +64,7 @@ func TestSimpleTracerWithError(t *testing.T) {
 		t.Fatalf("expected 1 span, got %d", len(spans))
 	}
 
-	if spans[0].Error != expectedErr {
+	if !errors.Is(spans[0].Error, expectedErr) {
 		t.Errorf("expected error %v, got %v", expectedErr, spans[0].Error)
 	}
 }

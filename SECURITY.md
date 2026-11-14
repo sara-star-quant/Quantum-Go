@@ -8,7 +8,7 @@ The Quantum-Go project takes security seriously. If you discover a security vuln
 
 ### How to report
 
-1. **Email the maintainers directly** at: `pzverkov@protonmail.com` (or security contact in profile)
+1. **Report privately** through [GitHub private vulnerability reporting](https://github.com/sara-star-quant/Quantum-Go/security/advisories/new), or **email the maintainers directly** at: `pzverkov@protonmail.com` (or security contact in profile)
 
 2. **Include the following information**:
    - Type of vulnerability (e.g., timing side-channel, authentication bypass, key compromise)

@@ -101,7 +101,7 @@ func serveFlows(addr string, plain bool, duration time.Duration, flows int, read
 				a.err = errNoMoreFlows
 			}
 		}
-		if a.err == errNoMoreFlows {
+		if errors.Is(a.err, errNoMoreFlows) {
 			break
 		}
 		if a.err != nil {

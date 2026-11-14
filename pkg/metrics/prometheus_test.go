@@ -59,7 +59,7 @@ func TestPrometheusExporterHandler(t *testing.T) {
 	exp := NewPrometheusExporter(c, "test")
 	handler := exp.Handler()
 
-	req := httptest.NewRequest("GET", "/metrics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
