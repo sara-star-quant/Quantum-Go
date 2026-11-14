@@ -124,6 +124,7 @@ CI gates all of the above (test, lint, govulncheck, FIPS, and the path-filtered 
 | Surface | Targets |
 | ------- | ------- |
 | Stream framing | `FuzzReadMessage` (both readers must agree) |
+| Stream receive loop after the handshake (every message type) | `FuzzTransportReceive` |
 | Hello, HelloRetryRequest, Finished, data, alert, rekey decoders | `FuzzDecodeClientHello`, `FuzzDecodeServerHello`, `FuzzDecodeHelloRetryRequest`, `FuzzDecodeFinished`, `FuzzDecodeData`, `FuzzDecodeAlert`, `FuzzDecodeRekey` |
 | Datagram header, handshake, retry | `FuzzParseDatagramHeader`, `FuzzParseDatagramHandshake`, `FuzzParseDatagramRetry` |
 | Datagram reassembly, routing, handshake state machine | `FuzzReassembler`, `FuzzRouteDatagram`, `FuzzDgramHandshakeFSM` |

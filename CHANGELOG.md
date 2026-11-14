@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased][]
 
 ### Evidence
+- **Receive-loop fuzzing:** `FuzzTransportReceive` feeds arbitrary bytes to an established stream transport, so every message handler (data, ping, pong, close, rekey, alert, unknown) is fuzzed after the handshake.
 - **Fuzz inventory:** two new targets cover the stream framing reader and the static key and pin parsers, and `docs/compliance/AUDIT_READINESS.md` lists every fuzzed surface and the three that are not.
 
 ## [0.0.30][] - 2026-11-13
