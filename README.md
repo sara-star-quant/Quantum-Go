@@ -7,6 +7,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sara-star-quant/Quantum-Go/badge)](https://scorecard.dev/viewer/?uri=github.com/sara-star-quant/Quantum-Go)
 [![Codecov](https://codecov.io/gh/sara-star-quant/Quantum-Go/branch/main/graph/badge.svg)](https://codecov.io/gh/sara-star-quant/Quantum-Go)
 [![Go Build](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml/badge.svg)](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml)
+[![Fuzz](https://github.com/sara-star-quant/quantum-go/actions/workflows/fuzz.yml/badge.svg)](https://github.com/sara-star-quant/quantum-go/actions/workflows/fuzz.yml)
 [![Security Level](https://img.shields.io/badge/Security-NIST%20Category%205-green)](https://csrc.nist.gov/projects/post-quantum-cryptography)
 [![FIPS build mode](https://img.shields.io/badge/FIPS%20build%20mode-not%20validated-orange)](docs/FIPS.md)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Evidence
+- **Fuzz inventory:** two new targets cover the stream framing reader and the static key and pin parsers, and `docs/compliance/AUDIT_READINESS.md` lists every fuzzed surface and the three that are not.
+
 ## [0.0.30][] - 2026-11-13
 
 **Theme:** Operations and evidence. `quantum-tunnel forward` now serves loopback metrics and health endpoints and drains open connections on shutdown, which a pilot needs to run it unattended. The evidence behind the protocol grows: ProVerif models for the rekey ratchet and the datagram cookie, differential and weekly fuzzing for ML-KEM-1024, and a related-work review that lists what is still unproven. Builds with `-tags fips` can run ML-KEM-1024 inside Go's FIPS 140-3 module at 1.1 to 1.5x the handshake CPU. One API removal, below.

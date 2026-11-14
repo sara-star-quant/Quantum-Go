@@ -117,6 +117,22 @@ go test ./test/conformance/         # known-answer vectors vs testdata/conforman
 
 CI gates all of the above (test, lint, govulncheck, FIPS, and the path-filtered formal-proof workflow).
 
+### Fuzz target inventory
+
+`scripts/fuzz.sh` runs every target below; the weekly Fuzz workflow does the same with a persisted corpus.
+
+| Surface | Targets |
+| ------- | ------- |
+| Stream framing | `FuzzReadMessage` (both readers must agree) |
+| Hello, HelloRetryRequest, Finished, data, alert, rekey decoders | `FuzzDecodeClientHello`, `FuzzDecodeServerHello`, `FuzzDecodeHelloRetryRequest`, `FuzzDecodeFinished`, `FuzzDecodeData`, `FuzzDecodeAlert`, `FuzzDecodeRekey` |
+| Datagram header, handshake, retry | `FuzzParseDatagramHeader`, `FuzzParseDatagramHandshake`, `FuzzParseDatagramRetry` |
+| Datagram reassembly, routing, handshake state machine | `FuzzReassembler`, `FuzzRouteDatagram`, `FuzzDgramHandshakeFSM` |
+| Public key, ciphertext, static key and pin parsers | `FuzzParsePublicKey`, `FuzzParseCiphertext`, `FuzzX25519ParsePublicKey`, `FuzzParseStaticKeys` |
+| AEAD and key derivation | `FuzzAEADOpen`, `FuzzAEADOpenChaCha20`, `FuzzDeriveKey`, `FuzzDecapsulate` |
+| ML-KEM | `FuzzMLKEMDecapsulate`, `FuzzMLKEMDifferential` |
+
+Not fuzzed: the stream handshake state machine (the datagram one is), the length-prefixed record reader in `pkg/tunnel`, and the operator file parsers in `cmd/quantum-tunnel` (PSK and clients files). Those parsers read local, permission-checked files, not network input. OSS-Fuzz needs a significant user base before it will accept the project, so the application waits for pilots ([#253](https://github.com/sara-star-quant/Quantum-Go/issues/253)).
+
 ## 8. Artifact index
 
 - Wire protocol specification: [`../PROTOCOL.md`](../PROTOCOL.md)
