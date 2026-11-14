@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Datagram `Send` and `SendBatch` after `Close`:** they sealed and transmitted a datagram on a closed session and returned nil. They now return `ErrTunnelClosed`. New tests pin the close race on both transports and the forwarder's rekey after the peer's EOF.
 
 ### Evidence
+- **Forwarder failure tests:** an upstream that closes during an upload, a client that resets mid-transfer, a slow reader and a SIGHUP key reload through the built binary now have tests, each followed by a goroutine-leak check that is itself tested.
 - **Receive-loop fuzzing:** `FuzzTransportReceive` feeds arbitrary bytes to an established stream transport, so every message handler (data, ping, pong, close, rekey, alert, unknown) is fuzzed after the handshake.
 - **Fuzz inventory:** two new targets cover the stream framing reader and the static key and pin parsers, and `docs/compliance/AUDIT_READINESS.md` lists every fuzzed surface and the three that are not.
 
