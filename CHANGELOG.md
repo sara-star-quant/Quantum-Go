@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.31][] - 2026-11-14
+
+**Theme:** Failure paths and evidence. A datagram session no longer sends after `Close`: before, `Send` and `SendBatch` on a closed session sealed and transmitted a frame and returned nil. The rest is evidence a reviewer or a pilot can check: fuzzing of the stream receive loop, framing and key parsers, and failure tests for `forward` (resets, an upstream that closes early, a slow reader, SIGHUP through the built binary). No upgrade action is needed; code that ignored the error from `Send` after `Close` now gets `ErrTunnelClosed`.
+
 ### Changed
 - **Stricter linting and a pull request template:** `golangci-lint` now also runs `errorlint`, `nilerr`, `durationcheck`, `bodyclose`, `unconvert`, `misspell` and `usestdlibvars` (`.golangci.yml`). Error comparisons in the transport now use `errors.Is`; behaviour is unchanged. Pull requests get a checklist for tests, sign-off and changelog.
 
@@ -14,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Datagram `Send` and `SendBatch` after `Close`:** they sealed and transmitted a datagram on a closed session and returned nil. They now return `ErrTunnelClosed`. New tests pin the close race on both transports and the forwarder's rekey after the peer's EOF.
 
 ### Evidence
+- **Disclosure and review hygiene:** `SECURITY.md` now offers GitHub private vulnerability reporting next to the email address, the entries for 0.0.26 to 0.0.28 name their advisories (GHSA-9r43-mjfv-v586, GHSA-h8r6-xr2r-x997, GHSA-rcr6-xvv7-46fh), and pull requests get a checklist.
 - **Forwarder failure tests:** an upstream that closes during an upload, a client that resets mid-transfer, a slow reader and a SIGHUP key reload through the built binary now have tests, each followed by a goroutine-leak check that is itself tested.
 - **Receive-loop fuzzing:** `FuzzTransportReceive` feeds arbitrary bytes to an established stream transport, so every message handler (data, ping, pong, close, rekey, alert, unknown) is fuzzed after the handshake.
 - **Fuzz inventory:** two new targets cover the stream framing reader and the static key and pin parsers, and `docs/compliance/AUDIT_READINESS.md` lists every fuzzed surface and the three that are not.
@@ -605,7 +610,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.30...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.31...HEAD
+[0.0.31]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.30...v0.0.31
 [0.0.30]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.29...v0.0.30
 [0.0.29]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.28...v0.0.29
 [0.0.28]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.27...v0.0.28

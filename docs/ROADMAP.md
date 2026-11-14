@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: v0.0.30
+## Current Status: v0.0.31
 
 Pre-1.0 and unaudited. The goal now is a smaller, better evidenced core, not more features: reduce what a reviewer has to trust, then widen adoption. Every item below has a GitHub issue or is a documented decision; items without an issue yet are marked "to file".
 
@@ -19,7 +19,7 @@ Pre-1.0 and unaudited. The goal now is a smaller, better evidenced core, not mor
 ### Now: assurance and security evidence
 
 1. Peer identity on the server session: shipped in v0.0.28 ([#232](https://github.com/sara-star-quant/Quantum-Go/issues/232)).
-2. Test hardening for the forwarder and close paths: rekey during one-way transfers, chaos, race, SIGHUP end to end, fuzzing ([#238](https://github.com/sara-star-quant/Quantum-Go/issues/238)).
+2. Test hardening for the forwarder and close paths: rekey after a peer's EOF, close races on both transports, resets, an early upstream close, a slow reader and SIGHUP end to end shipped in v0.0.31. The accept-loop backoff and a fuzz target for the forwarder's frame handler remain ([#238](https://github.com/sara-star-quant/Quantum-Go/issues/238)).
 3. A second implementation checked against the vectors: two spec-only passes are done and fixed spec and vector defects and two server bugs; a real outside implementer stays wanted ([#145](https://github.com/sara-star-quant/Quantum-Go/issues/145)).
 4. Formal models: negotiation, downgrade, the rekey ratchet and the datagram cookie are proven or modelled (v0.0.30, [#252](https://github.com/sara-star-quant/Quantum-Go/issues/252)). The replay window stays an abstraction in ProVerif; its stateful model, the KEM binding check and a second verifier are tracked in [#280](https://github.com/sara-star-quant/Quantum-Go/issues/280).
 5. Continuous fuzzing: a weekly fuzz workflow with a persisted corpus and a differential ML-KEM target shipped in v0.0.30. OSS-Fuzz needs a significant user base, so it waits for pilots; a fuzz target for every state transition remains ([#253](https://github.com/sara-star-quant/Quantum-Go/issues/253)).
