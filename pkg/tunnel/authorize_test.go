@@ -135,7 +135,7 @@ func TestAuthorizeHookCannotWedgeTheAcceptLoop(t *testing.T) {
 			<-release
 		}
 		return nil
-	}, func(c *TransportConfig) { c.HandshakeTimeout = 400 * time.Millisecond })
+	}, func(c *TransportConfig) { c.AuthorizeTimeout = 400 * time.Millisecond })
 
 	for _, id := range []struct {
 		name string

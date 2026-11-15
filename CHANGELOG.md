@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased][]
 
 ### Security
-- **`TransportConfig.Authorize`:** a stream listener can refuse an authenticated peer by policy before `Accept` returns the tunnel. A refusal sends the same handshake-failure alert as a failed handshake and surfaces as `ErrPeerNotAuthorized`; the hook is bounded in time and in concurrent calls, and a panic or timeout refuses the peer. It is not a revocation mechanism by itself: see `docs/usage/CONFIGURATION.md`. Datagram endpoints do not call it yet.
+- **`TransportConfig.Authorize`:** a stream listener can refuse an authenticated peer by policy before `Accept` returns the tunnel. A refusal sends the same handshake-failure alert as a failed handshake and surfaces as `ErrPeerNotAuthorized`; the hook is bounded in time (`AuthorizeTimeout`, 5 seconds by default) and in concurrent calls, and a panic or timeout refuses the peer. It is not a revocation mechanism by itself: see `docs/usage/CONFIGURATION.md`. Datagram endpoints do not call it yet.
 
 ### Operations
 - **Line-count check covers the roadmap:** `scripts/loc.sh --check` now fails when the core size quoted in `docs/ROADMAP.md` drifts more than 5 percent, as it already did for the README. Both now say about 9,000 lines; the roadmap had said 8,685 while the core measured 9,023.

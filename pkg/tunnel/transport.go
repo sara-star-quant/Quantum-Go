@@ -129,8 +129,8 @@ type TransportConfig struct {
 	// does hold a valid key can tell a refusal from a failed handshake: its Dial succeeds and
 	// its first read fails.
 	//
-	// The hook must return quickly. It is bounded by HandshakeTimeout (5 seconds when that is
-	// zero); on timeout, or when it panics, the peer is refused. At most MaxPendingHandshakes
+	// The hook must return quickly. It is bounded by AuthorizeTimeout (5 seconds when zero); on
+	// timeout, or when it panics, the peer is refused. At most MaxPendingHandshakes
 	// hook calls run at once, so a hook that never returns costs a bounded number of goroutines
 	// and further peers are refused, not queued. The hook cannot cut a tunnel that is already
 	// established and runs only for new connections: cut live sessions by closing the tunnels
@@ -139,6 +139,11 @@ type TransportConfig struct {
 	// itself: a session rekeys after 1 hour of activity, 64 GiB or 2^28 packets, and an idle
 	// session never rekeys.
 	Authorize func(PeerInfo) error
+
+	// AuthorizeTimeout bounds one Authorize call. Zero means 5 seconds. It is separate from
+	// HandshakeTimeout on purpose: the hook runs after the handshake has finished and its
+	// deadline is cleared, so a slow policy must not share a budget with the key exchange.
+	AuthorizeTimeout time.Duration
 
 	// AllowedKEMSuites, when set on either side, restricts the KEM suites this endpoint offers
 	// and accepts for the ephemeral key exchange. A server refuses a suite outside the list
@@ -1180,7 +1185,7 @@ func (l *Listener) acceptLoop() {
 	}
 }
 
-// defaultAuthorizeTimeout bounds an Authorize hook when HandshakeTimeout is zero.
+// defaultAuthorizeTimeout bounds an Authorize hook when AuthorizeTimeout is zero.
 const defaultAuthorizeTimeout = 5 * time.Second
 
 // authorize runs the configured Authorize hook for one peer. It returns nil when there is no
@@ -1196,7 +1201,7 @@ func (l *Listener) authorize(peer PeerInfo) error {
 	default:
 		return fmt.Errorf("%w: too many authorize calls still running", qerrors.ErrPeerNotAuthorized)
 	}
-	timeout := l.config.HandshakeTimeout
+	timeout := l.config.AuthorizeTimeout
 	if timeout <= 0 {
 		timeout = defaultAuthorizeTimeout
 	}

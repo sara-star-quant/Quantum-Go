@@ -68,7 +68,7 @@ The hook sees the identity the peer proved, the negotiated suite and its address
 What it does and does not do:
 
 - A peer without a valid key never reaches the hook, so the hook gives such a peer no way to probe it. A peer that holds a valid key can tell a refusal from a failed handshake: its `Dial` succeeds and its first read fails.
-- The hook must return quickly. It is bounded by `HandshakeTimeout` (5 seconds when that is zero). A hook that panics, times out or arrives when `MaxPendingHandshakes` hooks are already running refuses the peer, so a hook that never returns costs a bounded number of goroutines.
+- The hook must return quickly. It is bounded by `AuthorizeTimeout` (5 seconds when zero), which is separate from `HandshakeTimeout`. A hook that panics, times out or arrives when `MaxPendingHandshakes` hooks are already running refuses the peer, so a hook that never returns costs a bounded number of goroutines.
 - It runs for new connections only. To cut live sessions after a key leaks, close the tunnels your application holds: record each tunnel with its `Peer().Identity` when you accept it, and close the ones whose identity you revoke. The library keeps no session registry on purpose.
 - A rekey does not call it. A session rekeys after 1 hour of activity, 64 GiB or 2^28 packets, and an idle session never rekeys, so re-checking at rekey would delay a revocation by up to an hour or for ever.
 - It applies to stream listeners. Datagram endpoints do not call it yet.
