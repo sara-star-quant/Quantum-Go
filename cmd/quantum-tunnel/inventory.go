@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/fips140"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"runtime"
@@ -123,9 +124,22 @@ func buildInventory() inventory {
 }
 
 func inventoryCommand() {
+	fs := flag.NewFlagSet("inventory", flag.ExitOnError)
+	format := fs.String("format", "json", "Output format: json (the audit document) or cyclonedx (a CycloneDX 1.6 cryptography bill of materials)")
+	_ = fs.Parse(os.Args[2:])
+	var doc any
+	switch *format {
+	case "json":
+		doc = buildInventory()
+	case "cyclonedx":
+		doc = buildCycloneDX(buildInventory())
+	default:
+		fmt.Fprintf(os.Stderr, "Error: --format must be json or cyclonedx, got %q\n", *format)
+		os.Exit(2)
+	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(buildInventory()); err != nil {
+	if err := enc.Encode(doc); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
