@@ -136,6 +136,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 | [Stability](docs/STABILITY.md) | What you can rely on, what may change, the enforced bounds and what each error means |
 | [Performance](docs/PERFORMANCE.md) | Measured latency, handshake cost and throughput |
 | [Try it on AWS or Google Cloud](docs/usage/CLOUD_BENCH.md) | One script, two VMs, about ten minutes, torn down for you |
+| [Trying forward mode](docs/usage/PILOT.md) | A one-page guide to running it on a real link, what to expect and how to tell us how it went |
 | [Forward mode](docs/usage/FORWARD.md) | Protect any TCP service (HTTP, gRPC, a database) with the tunnel, without code changes |
 | [AI and cloud workloads](docs/usage/AI_AND_CLOUD.md) | Where post-quantum transport fits for model and data movement, and where TLS already covers you |
 | [Comparison](docs/COMPARISON.md) | Quantum-Go next to WireGuard, Rosenpass, IKEv2 and hybrid TLS |

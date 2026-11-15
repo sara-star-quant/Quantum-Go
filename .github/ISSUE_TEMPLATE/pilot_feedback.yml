@@ -1,0 +1,62 @@
+name: Pilot feedback
+description: Tell us how running forward mode went
+labels: [pilot]
+body:
+  - type: input
+    id: service
+    attributes:
+      label: What you protected
+      description: The protocol or service, for example a broker, a database link, a gateway to a device
+    validations:
+      required: true
+  - type: dropdown
+    id: first_byte
+    attributes:
+      label: Time from download to the first byte through the tunnel
+      options:
+        - Under 10 minutes
+        - 10 to 60 minutes
+        - A few hours
+        - A day or more
+        - I did not get there
+    validations:
+      required: true
+  - type: textarea
+    id: blockers
+    attributes:
+      label: What slowed you down or stopped you
+      description: Every blocker, however small
+  - type: textarea
+    id: before
+    attributes:
+      label: What you tried before, and why it did not fit
+      description: A VPN, IPsec, a TLS wrapper, or nothing
+  - type: textarea
+    id: missing
+    attributes:
+      label: What forward mode did not do that you needed
+  - type: dropdown
+    id: record
+    attributes:
+      label: Would a per-connection record of the suite and authentication go into an audit or compliance pack for you
+      options:
+        - Yes
+        - Maybe
+        - No
+        - Not applicable
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, how you deployed it (binary, container, sidecar), and the version
+    validations:
+      required: true
+  - type: dropdown
+    id: quote
+    attributes:
+      label: May we quote this feedback, without your name
+      options:
+        - Yes
+        - No
+    validations:
+      required: true
