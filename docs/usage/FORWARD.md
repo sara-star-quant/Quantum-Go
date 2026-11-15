@@ -112,6 +112,8 @@ A key file is refused when its group can write it or when others can touch it. U
 
 The forwarder's own series: `connections_active`, `connections_total`, `handshakes_refused_total` (server side only: wrong key, rate limit or a peer that is not a tunnel client; a rate-limited peer is also in the library's rate-limit counter, so do not add the two), `dial_failures_total` (upstream on a server; on a client, a tunnel peer that refused or did not answer, which is where a client sees a rejected key), `key_reloads_total`, `key_reload_failures_total`, `last_key_reload_ok`, `ready` and `draining`.
 
+`--assurance-log FILE` appends one JSON line per finished connection (file mode 0600): the time, the role (`client` or `server`), the KEM suite negotiated, how the peers authenticated (`psk`, `static-key`, both, or `none`), whether the build ran in FIPS build mode, the version and commit, and the duration. It records what this process negotiated and built and says nothing about the network between the peers. It carries no address, and no identity unless you add `--assurance-identity` (server side). Keep it for an audit or a migration inventory: it answers which links ran post-quantum, with which suite. `schema_version` changes when a field changes meaning. A write failure is logged once and never stops forwarding.
+
 A failed key reload keeps the previous keys, so the forwarder stays ready; alert on `last_key_reload_ok == 0` or a rising `key_reload_failures_total`. A rising `handshakes_refused_total` means a wrong key, a rate limit or a scanner; the log line says which, throttled to one a second.
 
 ## Wire framing
@@ -128,6 +130,8 @@ Forward mode sends each tunnel record's plaintext as one frame: a one-byte type 
 | `--clients-file` | server | one PSK per client |
 | `--server-key`, `--pin` | server, client | static key pinning from `keygen` |
 | `--max-conns`, `--idle-timeout` | both | connection and idle limits |
+| `--assurance-log`, `--assurance-identity` | both, server | one JSON record per finished connection; add the PSK identity on a server |
+| `--keep-sessions-on-reload`, `--max-session-lifetime` | server, both | keep open connections across a reload; close any connection after a fixed time |
 | `--max-conns-per-ip`, `--handshake-rate` | server | per-address connection cap and global handshakes per second (0 disables) |
 | `--allow-suite` | both | only these KEM suites, comma-separated (`chkem-v1`, `x-wing`); use `chkem-v1` to refuse the smaller suite |
 | `--listen unix:/path`, `--upstream unix:/path` | client, server | use a Unix socket for the plain side instead of a TCP port; the listener binds it private (mode 0600) and refuses a directory that another user owns or that group or others can write |

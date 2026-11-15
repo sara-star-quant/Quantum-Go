@@ -133,6 +133,12 @@ Prints one JSON document describing this build: version, commit, Go version, pla
 
 It holds no keys, addresses or configuration, and it describes Quantum-Go only, not the network around it. A FIPS build mode of `true` is not a validation claim; see [FIPS](../FIPS.md).
 
+```bash
+quantum-tunnel inventory --format cyclonedx
+```
+
+Prints the same build as a CycloneDX 1.6 cryptography bill of materials: one `cryptographic-asset` component per algorithm (ML-KEM-1024 and -768, X25519, SHAKE-256, SHA3-256, the two combiners, AES-256-GCM, ChaCha20-Poly1305) and one protocol component whose cipher suites pair each KEM suite with each AEAD this build offers. Every algorithm states `certificationLevel: none`, because a build mode or a validated module underneath does not validate Quantum-Go. A suite an application registered shows up with no algorithm detail. The output is deterministic (no timestamp, no serial number), so it diffs cleanly between releases. The 1.6 output was checked against the published CycloneDX 1.6 JSON schema by hand when it was written; CI checks its structure and enum values, not the schema file.
+
 ## Example Mode
 
 View standard implementation patterns directly in your terminal:
