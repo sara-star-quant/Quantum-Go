@@ -847,6 +847,11 @@ type PeerInfo struct {
 	// several names to the same key, a holder of that key can claim any of them, so give every
 	// identity its own key when the identity drives policy or audit.
 	Identity []byte
+	// KeyID is PSKFingerprint of the key behind Identity: the key the peer proved it holds in this
+	// session. A server compares it with the fingerprint of the key it holds for that identity now
+	// to find sessions whose key was removed or replaced. It is nil when Identity is. Keep it out
+	// of logs.
+	KeyID []byte
 	// Suite is the negotiated KEM suite. It is zero on a datagram connection that has not
 	// finished its handshake. The suite is set once during the handshake and never changes.
 	Suite chkem.SuiteID
@@ -856,7 +861,7 @@ type PeerInfo struct {
 
 // Peer describes the peer of this tunnel.
 func (t *Transport) Peer() PeerInfo {
-	return PeerInfo{Identity: t.session.PeerIdentity(), Suite: t.session.kemSuite.ID(), RemoteAddr: t.RemoteAddr()}
+	return PeerInfo{Identity: t.session.PeerIdentity(), KeyID: t.session.PeerKeyID(), Suite: t.session.kemSuite.ID(), RemoteAddr: t.RemoteAddr()}
 }
 
 // RemoteAddr returns the remote network address.

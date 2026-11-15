@@ -137,6 +137,8 @@ type Session struct {
 
 	// peerIdentity is the PSK identity the peer proved it holds (responder only); guarded by mu.
 	peerIdentity []byte
+	// peerKeyID is the fingerprint of the PSK that identity proved; guarded by mu.
+	peerKeyID []byte
 
 	// Master secret derived from CH-KEM
 	masterSecret []byte
@@ -691,14 +693,40 @@ type Stats struct {
 	FIPSMode     bool
 }
 
-// setPeerIdentity records the PSK identity the peer proved it holds.
-func (s *Session) setPeerIdentity(id []byte) {
+// setPeerIdentity records the PSK identity the peer proved it holds and the fingerprint of the
+// key it proved it with.
+func (s *Session) setPeerIdentity(id, key []byte) {
 	if len(id) == 0 {
 		return
 	}
 	s.mu.Lock()
 	s.peerIdentity = append([]byte(nil), id...)
+	s.peerKeyID = PSKFingerprint(key)
 	s.mu.Unlock()
+}
+
+// PSKFingerprint returns a short fingerprint of a pre-shared key: the first 8 bytes of a
+// domain-separated SHAKE-256 of it. It changes when the key changes, so a server can tell
+// whether the key behind an identity is still the one a live session proved (see
+// PeerInfo.KeyID). It is not a secret and not a key: 8 bytes cannot recover a random 32-byte
+// PSK, but keep it out of logs anyway. It returns nil if the key cannot be hashed.
+func PSKFingerprint(key []byte) []byte {
+	fp, err := crypto.DeriveKeyMultiple("CH-KEM-Tunnel-PSKFingerprint", [][]byte{key}, 8)
+	if err != nil {
+		return nil
+	}
+	return fp
+}
+
+// PeerKeyID returns the fingerprint of the PSK the peer proved it holds, or nil when it proved
+// none. Only a responder records one.
+func (s *Session) PeerKeyID() []byte {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.peerKeyID) == 0 {
+		return nil
+	}
+	return append([]byte(nil), s.peerKeyID...)
 }
 
 // PeerIdentity returns the PSK identity the peer proved it holds during the handshake, or nil

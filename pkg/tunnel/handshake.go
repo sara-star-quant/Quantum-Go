@@ -659,7 +659,7 @@ func (h *Handshake) ProcessClientFinished(data []byte) error {
 	}
 
 	// The client proved it holds the key, so the identity it named is now a fact.
-	h.session.setPeerIdentity(h.matchedPSKIdentity)
+	h.session.setPeerIdentity(h.matchedPSKIdentity, h.pskKey)
 
 	h.state = HandshakeStateComplete
 

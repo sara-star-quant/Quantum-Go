@@ -243,7 +243,7 @@ func (c *DatagramConn) Peer() PeerInfo {
 	if s == nil {
 		return PeerInfo{RemoteAddr: c.RemoteAddr()}
 	}
-	return PeerInfo{Identity: s.PeerIdentity(), Suite: s.kemSuite.ID(), RemoteAddr: c.RemoteAddr()}
+	return PeerInfo{Identity: s.PeerIdentity(), KeyID: s.PeerKeyID(), Suite: s.kemSuite.ID(), RemoteAddr: c.RemoteAddr()}
 }
 
 // Session exposes the underlying Session (statistics, state).
