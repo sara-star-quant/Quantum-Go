@@ -50,6 +50,29 @@ serverCfg.RequirePSK = true                  // needs PSK or PSKLookup set
 
 Datagram endpoints use options instead: `tunnel.WithStaticIdentity(kp)`, `tunnel.WithPinnedServerKey(pub)`, `tunnel.WithRequireStaticAuth()`, `tunnel.WithPSK(identity, key)`, `tunnel.WithPSKLookup(fn)`, and `tunnel.WithRequirePSK()`.
 
+### Refusing a peer by policy (v0.0.32+)
+
+A server can refuse a peer that authenticated, before `Accept` hands the tunnel to the application. Set `Authorize` on the listener's config:
+
+```go
+serverCfg.Authorize = func(p tunnel.PeerInfo) error {
+	if revoked[string(p.Identity)] {
+		return errors.New("identity revoked") // stays on the server
+	}
+	return nil
+}
+```
+
+The hook sees the identity the peer proved, the negotiated suite and its address. A refusal closes the connection with the plaintext handshake-failure alert a failed handshake sends; `Accept` returns an error that matches `tunnel.ErrPeerNotAuthorized` and wraps your hook's error, so `errors.Is` finds your own sentinel too. The reason never reaches the peer.
+
+What it does and does not do:
+
+- A peer without a valid key never reaches the hook, so the hook gives such a peer no way to probe it. A peer that holds a valid key can tell a refusal from a failed handshake: its `Dial` succeeds and its first read fails.
+- The hook must return quickly. It is bounded by `HandshakeTimeout` (5 seconds when that is zero). A hook that panics, times out or arrives when `MaxPendingHandshakes` hooks are already running refuses the peer, so a hook that never returns costs a bounded number of goroutines.
+- It runs for new connections only. To cut live sessions after a key leaks, close the tunnels your application holds: record each tunnel with its `Peer().Identity` when you accept it, and close the ones whose identity you revoke. The library keeps no session registry on purpose.
+- A rekey does not call it. A session rekeys after 1 hour of activity, 64 GiB or 2^28 packets, and an idle session never rekeys, so re-checking at rekey would delay a revocation by up to an hour or for ever.
+- It applies to stream listeners. Datagram endpoints do not call it yet.
+
 ### KEM Suites (v0.0.20+)
 
 A client offers CH-KEM-v1 (ML-KEM-1024 + X25519) first. Choose another registered suite as the first offer; X-Wing (ML-KEM-768 + X25519) has a smaller key share and ciphertext (1216 and 1120 bytes against 1600 and 1600).

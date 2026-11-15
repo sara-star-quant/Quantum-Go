@@ -117,6 +117,9 @@ var (
 	// ErrRekeyInProgress indicates a rekey operation is already in progress
 	ErrRekeyInProgress = errors.New("tunnel: rekey already in progress")
 
+	// ErrPeerNotAuthorized indicates a listener's Authorize hook refused an authenticated peer
+	ErrPeerNotAuthorized = errors.New("tunnel: peer not authorized")
+
 	// ErrTimeout indicates an operation timed out
 	ErrTimeout = errors.New("tunnel: operation timed out")
 )

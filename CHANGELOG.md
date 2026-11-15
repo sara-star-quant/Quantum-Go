@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Security
+- **`TransportConfig.Authorize`:** a stream listener can refuse an authenticated peer by policy before `Accept` returns the tunnel. A refusal sends the same handshake-failure alert as a failed handshake and surfaces as `ErrPeerNotAuthorized`; the hook is bounded in time and in concurrent calls, and a panic or timeout refuses the peer. It is not a revocation mechanism by itself: see `docs/usage/CONFIGURATION.md`. Datagram endpoints do not call it yet.
+
 ### Operations
 - **Release gate and verifier:** `docs/RELEASING.md` writes down the checks a tag needs, and `scripts/release-verify.sh vX.Y.Z` downloads a published release and checks every asset against the checksums, the attestation identity per archive, the SBOM, the Go proxy answer and the binary's own report of the tag and commit.
 

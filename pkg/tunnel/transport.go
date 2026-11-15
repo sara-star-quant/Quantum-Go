@@ -119,6 +119,27 @@ type TransportConfig struct {
 	// a PSK, a pin or both; use this for tests, demos and benchmarks.
 	AllowUnauthenticated bool
 
+	// Authorize, when set on a listener, decides whether a peer that completed the handshake may
+	// be served. It runs after the handshake and before Accept returns the tunnel, with the
+	// peer's PeerInfo (the PSK identity it proved, the negotiated suite, its address). Returning
+	// an error refuses the peer: the connection closes with the same plaintext handshake-failure
+	// alert a failed handshake sends, and Accept reports ErrPeerNotAuthorized wrapping the hook's
+	// reason (the reason stays on the server and never reaches the peer). A peer without a valid
+	// key never reaches the hook, so the hook gives such a peer no way to probe it. A peer that
+	// does hold a valid key can tell a refusal from a failed handshake: its Dial succeeds and
+	// its first read fails.
+	//
+	// The hook must return quickly. It is bounded by HandshakeTimeout (5 seconds when that is
+	// zero); on timeout, or when it panics, the peer is refused. At most MaxPendingHandshakes
+	// hook calls run at once, so a hook that never returns costs a bounded number of goroutines
+	// and further peers are refused, not queued. The hook cannot cut a tunnel that is already
+	// established and runs only for new connections: cut live sessions by closing the tunnels
+	// the application holds (see Peer). It is not called on a client, and a datagram endpoint
+	// does not use it. A rekey does not call it either, so it is not a revocation mechanism by
+	// itself: a session rekeys after 1 hour of activity, 64 GiB or 2^28 packets, and an idle
+	// session never rekeys.
+	Authorize func(PeerInfo) error
+
 	// AllowedKEMSuites, when set on either side, restricts the KEM suites this endpoint offers
 	// and accepts for the ephemeral key exchange. A server refuses a suite outside the list
 	// and steers the client to an allowed one; a client offers only allowed suites. Empty allows
@@ -1041,8 +1062,11 @@ type Listener struct {
 	closing   chan struct{} // closed by Close
 	closeOnce sync.Once
 	pending   chan struct{}
-	acceptErr error
-	startErr  error // a configuration error found on the first Accept
+	// authorizing bounds the Authorize calls in flight, so a hook that never returns cannot
+	// grow the goroutine count without limit.
+	authorizing chan struct{}
+	acceptErr   error
+	startErr    error // a configuration error found on the first Accept
 }
 
 // maxPendingHandshakes is the default for TransportConfig.MaxPendingHandshakes: the
@@ -1103,6 +1127,7 @@ func (l *Listener) startAcceptLoop() {
 		limit = maxPendingHandshakes
 	}
 	l.pending = make(chan struct{}, limit)
+	l.authorizing = make(chan struct{}, limit)
 	// The listener's own policy is checked once; the client-only KEMSuite is not its concern.
 	if err := kemPolicy(l.config.AllowedKEMSuites).validate(); err != nil {
 		l.startErr = err
@@ -1155,6 +1180,50 @@ func (l *Listener) acceptLoop() {
 	}
 }
 
+// defaultAuthorizeTimeout bounds an Authorize hook when HandshakeTimeout is zero.
+const defaultAuthorizeTimeout = 5 * time.Second
+
+// authorize runs the configured Authorize hook for one peer. It returns nil when there is no
+// hook or the hook allows the peer, and an error wrapping ErrPeerNotAuthorized otherwise: a
+// refusal, a panic, a timeout, or too many hooks already running.
+func (l *Listener) authorize(peer PeerInfo) error {
+	hook := l.config.Authorize
+	if hook == nil {
+		return nil
+	}
+	select {
+	case l.authorizing <- struct{}{}:
+	default:
+		return fmt.Errorf("%w: too many authorize calls still running", qerrors.ErrPeerNotAuthorized)
+	}
+	timeout := l.config.HandshakeTimeout
+	if timeout <= 0 {
+		timeout = defaultAuthorizeTimeout
+	}
+	res := make(chan error, 1)
+	go func() {
+		defer func() { <-l.authorizing }()
+		defer func() {
+			if r := recover(); r != nil {
+				res <- fmt.Errorf("%w: the hook panicked: %v", qerrors.ErrPeerNotAuthorized, r)
+			}
+		}()
+		if err := hook(peer); err != nil {
+			res <- fmt.Errorf("%w: %w", qerrors.ErrPeerNotAuthorized, err)
+			return
+		}
+		res <- nil
+	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case err := <-res:
+		return err
+	case <-timer.C:
+		return fmt.Errorf("%w: the hook did not return within %s", qerrors.ErrPeerNotAuthorized, timeout)
+	}
+}
+
 // deliver hands a result to Accept, or discards it if the listener is closing.
 func (l *Listener) deliver(r acceptResult) {
 	select {
@@ -1193,6 +1262,15 @@ func (l *Listener) handshakeConn(conn net.Conn) (*Tunnel, error) {
 	transport, err := NewTransport(session, conn, l.config)
 	if err != nil {
 		l.failSession(session, err)
+		_ = conn.Close()
+		return nil, err
+	}
+
+	if err := l.authorize(transport.Peer()); err != nil {
+		// Same bytes as any failed handshake, then close without a close notice.
+		sendHandshakeAlert(conn, transport.codec, protocol.AlertCodeHandshakeFailure, "handshake failed")
+		l.failSession(session, err)
+		session.Close()
 		_ = conn.Close()
 		return nil, err
 	}

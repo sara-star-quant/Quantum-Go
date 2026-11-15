@@ -31,7 +31,10 @@ var (
 	ErrTunnelClosed    = qerrors.ErrTunnelClosed
 	ErrRekeyRequired   = qerrors.ErrRekeyRequired
 	ErrRekeyInProgress = qerrors.ErrRekeyInProgress
-	ErrTimeout         = qerrors.ErrTimeout
+
+	// ErrPeerNotAuthorized is the reason Accept reports when a listener's Authorize hook refused a peer.
+	ErrPeerNotAuthorized = qerrors.ErrPeerNotAuthorized
+	ErrTimeout           = qerrors.ErrTimeout
 
 	// Connection pool.
 	ErrPoolClosed    = qerrors.ErrPoolClosed
