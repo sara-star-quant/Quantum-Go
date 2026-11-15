@@ -54,6 +54,8 @@ type forwardLimits struct {
 	handshakeRate float64
 	// maxLifetime closes a connection after this long, whatever it is doing; 0 is off.
 	maxLifetime time.Duration
+	// assurance, when set, receives one record per finished connection (--assurance-log).
+	assurance *assuranceLog
 }
 
 // isAcceptFailure reports whether err comes from the listening socket's accept call.
@@ -158,6 +160,8 @@ type forwarder struct {
 	live liveSessions
 	// keepSessions keeps open sessions across a reload (--keep-sessions-on-reload).
 	keepSessions atomic.Bool
+	// serverStatic is true when a server started with a static key (--server-key).
+	serverStatic bool
 }
 
 func (f *forwarder) Addr() net.Addr { return f.addr }
@@ -210,7 +214,7 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 	if err != nil {
 		return nil, err
 	}
-	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close, done: make(chan struct{}), ops: newForwardOps()}
+	f := &forwarder{addr: ln.Addr(), closeFn: ln.Close, done: make(chan struct{}), ops: newForwardOps(), serverStatic: cfg.StaticKeyPair != nil}
 	stored := cfg // the listener gets a copy whose lookup reads the live config
 	f.cfg.Store(&stored)
 	cfg.PSKLookup = func(identity []byte) []byte {
@@ -321,6 +325,9 @@ func serveOne(f *forwarder, t *tunnel.Tunnel, upstream string, lim forwardLimits
 	defer capLifetime(lim.maxLifetime, cut)()
 	sent, recv := pipe(up, t, lim.idleTimeout)
 	ops.bytes(recv, sent)
+	// A server proved a PSK when the session carries a key fingerprint; its static key is a fact
+	// of how it started (a reload does not carry it).
+	lim.assurance.record("server", t, start, len(peer.KeyID) > 0, f.serverStatic)
 	logf("closed %v (%s) after %s: %d bytes to upstream, %d back", t.RemoteAddr(), who, time.Since(start).Round(time.Millisecond), recv, sent)
 }
 
@@ -380,6 +387,8 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 				defer capLifetime(lim.maxLifetime, func() { _ = conn.Close(); _ = t.Close() })()
 				sent, recv := pipe(conn, t, lim.idleTimeout)
 				f.ops.bytes(sent, recv)
+				cc := f.cfg.Load()
+				lim.assurance.record("client", t, start, len(cc.PSK) > 0, cc.PinnedServerKey != nil)
 				logf("closed %s after %s: %d bytes sent, %d received", connLabel(conn), time.Since(start).Round(time.Millisecond), sent, recv)
 			}()
 		}
@@ -787,6 +796,8 @@ func forwardCommand() {
 	insecure := fs.Bool("insecure-no-auth", false, "Skip authentication. For tests and development only: anyone who can reach the server can reach the upstream")
 	verbose := fs.Bool("verbose", false, "Log every connection")
 	metricsAddr := fs.String("metrics-addr", "", "Serve /metrics, /healthz and /readyz on this address (off by default; a bare :port binds 127.0.0.1, a wildcard address is refused)")
+	assuranceLogPath := fs.String("assurance-log", "", "Append one JSON line per finished connection to this file: the KEM suite, how the peers authenticated, FIPS build mode and the build. No addresses; mode 0600")
+	assuranceIdentity := fs.Bool("assurance-identity", false, "Add the PSK identity to each --assurance-log record (server side)")
 	keepSessions := fs.Bool("keep-sessions-on-reload", false, "Server side: on SIGHUP keep open connections whose key was removed or changed (routine rotation); by default they are cut, so a revoked key stops working at once")
 	maxLifetime := fs.Duration("max-session-lifetime", 0, "Close any connection after this long, whatever it is doing, as a backstop for keys nobody removed (0 disables)")
 	drainTimeout := fs.Duration("drain-timeout", 30*time.Second, "On SIGTERM or Ctrl-C, stop accepting and let open connections finish for this long before cutting them (0 cuts at once); a second signal cuts at once")
@@ -860,6 +871,20 @@ EXAMPLES:
 		os.Exit(2)
 	}
 	lim := forwardLimits{socketMode: mode, maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second, maxPerIP: *maxPerIP, handshakeRate: *handshakeRate, maxLifetime: *maxLifetime}
+
+	if *assuranceIdentity && *assuranceLogPath == "" {
+		fmt.Fprintln(os.Stderr, "Error: --assurance-identity needs --assurance-log")
+		os.Exit(2)
+	}
+	if *assuranceLogPath != "" {
+		file, ferr := os.OpenFile(*assuranceLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304 -- operator-supplied CLI path
+		if ferr != nil {
+			fmt.Fprintf(os.Stderr, "Error: --assurance-log: %v\n", ferr)
+			os.Exit(2)
+		}
+		defer func() { _ = file.Close() }()
+		lim.assurance = newAssuranceLog(file, buildInventory(), *assuranceIdentity, logf)
+	}
 
 	// Register before the listeners start, so a signal in the startup gap is not lost.
 	stop := make(chan os.Signal, 1)
