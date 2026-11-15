@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Upgrade notes
+- **`forward` server: SIGHUP now cuts open connections whose key is gone.** Affects operators who reload the server's key table while clients are connected. A connection whose identity you removed, or whose key you replaced, ends at the reload (v0.0.26 to v0.0.31 kept it open). Connections on keys you left in place are untouched. To keep the old behavior for routine rotation, start the server with `--keep-sessions-on-reload`.
+
 ### Security
+- **Revoked keys stop working at reload:** the `forward` server tracks open connections by identity and key and cuts the ones the new key table no longer backs; `--max-session-lifetime` closes any connection after a fixed time as a backstop. `PeerInfo.KeyID` and `tunnel.PSKFingerprint` give a server an 8-byte fingerprint of the key a peer proved, so it can find such sessions; keep it out of logs. Connection log lines now carry the identity.
 - **`TransportConfig.Authorize`:** a stream listener can refuse an authenticated peer by policy before `Accept` returns the tunnel. A refusal sends the same handshake-failure alert as a failed handshake and surfaces as `ErrPeerNotAuthorized`; the hook is bounded in time (`AuthorizeTimeout`, 5 seconds by default) and in concurrent calls, and a panic or timeout refuses the peer. It is not a revocation mechanism by itself: see `docs/usage/CONFIGURATION.md`. Datagram endpoints do not call it yet.
 
 ### Operations

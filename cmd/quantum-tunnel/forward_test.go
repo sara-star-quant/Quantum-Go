@@ -522,8 +522,11 @@ func TestForwardReloadRotatesKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv.Reload(next)
-	if !roundTrip(open) {
-		t.Fatal("an open connection died on reload")
+	// The default cuts a session whose key was replaced (--keep-sessions-on-reload keeps it).
+	for deadline := time.Now().Add(10 * time.Second); roundTrip(open); time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("an open connection with the replaced key survived the reload")
+		}
 	}
 	if roundTrip(dial(t, cli.Addr().String())) {
 		t.Fatal("a client with the old key got through after the server reloaded")

@@ -52,6 +52,8 @@ type forwardLimits struct {
 	// 0 disables the limit.
 	maxPerIP      int
 	handshakeRate float64
+	// maxLifetime closes a connection after this long, whatever it is doing; 0 is off.
+	maxLifetime time.Duration
 }
 
 // isAcceptFailure reports whether err comes from the listening socket's accept call.
@@ -80,6 +82,64 @@ func (r *refusalLog) note(logf func(string, ...any), err error) {
 	r.last, r.suppressed = time.Now(), 0
 }
 
+// liveSession is an open server-side connection that proved a PSK: its identity, the fingerprint
+// of the key it proved, and a way to cut it.
+type liveSession struct {
+	identity string
+	keyID    []byte
+	cut      func()
+}
+
+// liveSessions tracks the open sessions of one server forwarder so a reload can cut the ones
+// whose key was removed or replaced. The library keeps no session registry by design; this one
+// lives here, in the command, and holds nothing after a session ends.
+type liveSessions struct {
+	mu sync.Mutex
+	m  map[*liveSession]struct{}
+}
+
+func (r *liveSessions) add(s *liveSession) {
+	r.mu.Lock()
+	if r.m == nil {
+		r.m = make(map[*liveSession]struct{})
+	}
+	r.m[s] = struct{}{}
+	r.mu.Unlock()
+}
+
+func (r *liveSessions) remove(s *liveSession) {
+	r.mu.Lock()
+	delete(r.m, s)
+	r.mu.Unlock()
+}
+
+// stale reports whether the key table no longer holds the key this session proved.
+func (s *liveSession) stale(lookup func([]byte) []byte) bool {
+	if lookup == nil {
+		return true
+	}
+	key := lookup([]byte(s.identity))
+	return key == nil || !bytes.Equal(tunnel.PSKFingerprint(key), s.keyID)
+}
+
+// cutStale cuts every session the key table no longer backs and returns how many it cut. Each
+// cut runs on its own goroutine, outside the lock: closing a tunnel can wait on a write, and a
+// reload runs on the command's signal loop, which must stay free to handle a shutdown.
+func (r *liveSessions) cutStale(lookup func([]byte) []byte) int {
+	r.mu.Lock()
+	var cut []*liveSession
+	for s := range r.m {
+		if s.stale(lookup) {
+			cut = append(cut, s)
+		}
+	}
+	r.mu.Unlock()
+	for _, s := range cut {
+		go s.cut()
+	}
+	return len(cut)
+}
+
 // forwarder is a running client or server side of a forwarding pair.
 type forwarder struct {
 	addr    net.Addr
@@ -94,14 +154,26 @@ type forwarder struct {
 	cfg atomic.Pointer[tunnel.TransportConfig]
 	// ops holds the counts, readiness and drain state the metrics endpoint reports.
 	ops *forwardOps
+	// live holds the open server-side sessions that proved a PSK.
+	live liveSessions
+	// keepSessions keeps open sessions across a reload (--keep-sessions-on-reload).
+	keepSessions atomic.Bool
 }
 
 func (f *forwarder) Addr() net.Addr { return f.addr }
 
 // Reload makes next the config for connections that start from now on. A client takes the
 // whole config (PSK and pinned key). A server takes only the PSK table, because its listener
-// keeps the static key it started with; changing --server-key needs a restart.
-func (f *forwarder) Reload(next tunnel.TransportConfig) { f.cfg.Store(&next) }
+// keeps the static key it started with; changing --server-key needs a restart. A server also
+// cuts the open sessions whose key is no longer in the table, unless --keep-sessions-on-reload
+// is set, and returns how many it cut.
+func (f *forwarder) Reload(next tunnel.TransportConfig) int {
+	f.cfg.Store(&next)
+	if f.keepSessions.Load() {
+		return 0
+	}
+	return f.live.cutStale(next.PSKLookup)
+}
 
 // Drain stops accepting, reports not ready, and waits up to timeout for open connections to
 // finish. It returns true when they all did. The caller cuts whatever is left by exiting.
@@ -199,26 +271,67 @@ func startForwardServer(addr, upstream string, cfg tunnel.TransportConfig, lim f
 			go func() {
 				defer done()
 				defer func() { <-sem }()
-				serveOne(t, upstream, lim, logf, f.ops)
+				serveOne(f, t, upstream, lim, logf)
 			}()
 		}
 	})
 	return f, nil
 }
 
-func serveOne(t *tunnel.Tunnel, upstream string, lim forwardLimits, logf func(string, ...any), ops *forwardOps) {
+func serveOne(f *forwarder, t *tunnel.Tunnel, upstream string, lim forwardLimits, logf func(string, ...any)) {
+	ops := f.ops
 	defer func() { _ = t.Close() }()
 	start := time.Now()
-	conn, err := dialUpstream(upstream, lim.dialTimeout)
+	var connMu sync.Mutex
+	var conn net.Conn // set once the upstream is dialed; cut may run before that
+	cut := func() {
+		connMu.Lock()
+		c := conn
+		connMu.Unlock()
+		if c != nil {
+			_ = c.Close()
+		}
+		_ = t.Close()
+	}
+	// Register before dialing the upstream, so a reload cannot pass between the handshake and the
+	// registry. The key table is checked once more right after registering: a reload that swapped
+	// the table in that gap never saw this session.
+	peer := t.Peer()
+	who := "no identity"
+	if len(peer.KeyID) > 0 {
+		who = "identity " + string(peer.Identity)
+		s := &liveSession{identity: string(peer.Identity), keyID: peer.KeyID, cut: cut}
+		f.live.add(s)
+		defer f.live.remove(s)
+		if !f.keepSessions.Load() && s.stale(f.cfg.Load().PSKLookup) {
+			logf("cut %v (%s): its key is no longer in the key table", t.RemoteAddr(), who)
+			return
+		}
+	}
+	up, err := dialUpstream(upstream, lim.dialTimeout)
 	if err != nil {
 		ops.dialFailed.Add(1)
 		logf("upstream %s: %v", upstream, err)
 		return
 	}
-	defer func() { _ = conn.Close() }()
-	sent, recv := pipe(conn, t, lim.idleTimeout)
+	connMu.Lock()
+	conn = up
+	connMu.Unlock()
+	defer func() { _ = up.Close() }()
+	defer capLifetime(lim.maxLifetime, cut)()
+	sent, recv := pipe(up, t, lim.idleTimeout)
 	ops.bytes(recv, sent)
-	logf("closed %v after %s: %d bytes to upstream, %d back", t.RemoteAddr(), time.Since(start).Round(time.Millisecond), recv, sent)
+	logf("closed %v (%s) after %s: %d bytes to upstream, %d back", t.RemoteAddr(), who, time.Since(start).Round(time.Millisecond), recv, sent)
+}
+
+// capLifetime runs cut after d, as a backstop for sessions nobody removed. A zero d does nothing.
+// The returned function stops the timer.
+func capLifetime(d time.Duration, cut func()) func() {
+	if d <= 0 {
+		return func() {}
+	}
+	t := time.AfterFunc(d, cut)
+	return func() { t.Stop() }
 }
 
 // startForwardClient accepts plain TCP on listen and carries each connection to connect
@@ -264,6 +377,7 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 					return
 				}
 				defer func() { _ = t.Close() }()
+				defer capLifetime(lim.maxLifetime, func() { _ = conn.Close(); _ = t.Close() })()
 				sent, recv := pipe(conn, t, lim.idleTimeout)
 				f.ops.bytes(sent, recv)
 				logf("closed %s after %s: %d bytes sent, %d received", connLabel(conn), time.Since(start).Round(time.Millisecond), sent, recv)
@@ -553,10 +667,17 @@ func reloadKeys(f *forwarder, server bool, a forwardAuth, logf func(string, ...a
 		logf("reload failed, keeping the current keys: %v", err)
 		return err
 	}
-	f.Reload(next)
+	cut := f.Reload(next)
 	f.ops.reloads.Add(1)
 	f.ops.lastReloadOK.Store(1)
-	logf("reloaded keys; open connections keep the keys they started with")
+	switch {
+	case !server:
+		logf("reloaded keys; open connections keep the keys they started with")
+	case f.keepSessions.Load():
+		logf("reloaded keys; open connections keep the keys they started with (--keep-sessions-on-reload)")
+	default:
+		logf("reloaded keys; cut %d open connections whose key is no longer in the key table", cut)
+	}
 	return nil
 }
 
@@ -666,6 +787,8 @@ func forwardCommand() {
 	insecure := fs.Bool("insecure-no-auth", false, "Skip authentication. For tests and development only: anyone who can reach the server can reach the upstream")
 	verbose := fs.Bool("verbose", false, "Log every connection")
 	metricsAddr := fs.String("metrics-addr", "", "Serve /metrics, /healthz and /readyz on this address (off by default; a bare :port binds 127.0.0.1, a wildcard address is refused)")
+	keepSessions := fs.Bool("keep-sessions-on-reload", false, "Server side: on SIGHUP keep open connections whose key was removed or changed (routine rotation); by default they are cut, so a revoked key stops working at once")
+	maxLifetime := fs.Duration("max-session-lifetime", 0, "Close any connection after this long, whatever it is doing, as a backstop for keys nobody removed (0 disables)")
 	drainTimeout := fs.Duration("drain-timeout", 30*time.Second, "On SIGTERM or Ctrl-C, stop accepting and let open connections finish for this long before cutting them (0 cuts at once); a second signal cuts at once")
 
 	fs.Usage = func() {
@@ -736,7 +859,7 @@ EXAMPLES:
 		fmt.Fprintln(os.Stderr, merr)
 		os.Exit(2)
 	}
-	lim := forwardLimits{socketMode: mode, maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second, maxPerIP: *maxPerIP, handshakeRate: *handshakeRate}
+	lim := forwardLimits{socketMode: mode, maxConns: *maxConns, idleTimeout: *idle, dialTimeout: 10 * time.Second, maxPerIP: *maxPerIP, handshakeRate: *handshakeRate, maxLifetime: *maxLifetime}
 
 	// Register before the listeners start, so a signal in the startup gap is not lost.
 	stop := make(chan os.Signal, 1)
@@ -766,6 +889,8 @@ EXAMPLES:
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+
+	f.keepSessions.Store(*keepSessions)
 
 	if *metricsAddr != "" {
 		ms, merr := startMetricsServer(*metricsAddr, getVersion(), f.ops)
