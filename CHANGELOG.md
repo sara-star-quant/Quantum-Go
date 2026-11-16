@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Datagram `Send` and `SendBatch` after `Close`:** they sealed and transmitted a datagram on a closed session and returned nil. They now return `ErrTunnelClosed`. New tests pin the close race on both transports and the forwarder's rekey after the peer's EOF.
 
 ### Evidence
+- **X-Wing draft vectors:** a test pins the three test vectors of draft-connolly-cfrg-xwing-kem revision 11 (seed, encapsulation seed, shared secret) through the wrapper, next to the existing digest check.
 - **Disclosure and review hygiene:** `SECURITY.md` now offers GitHub private vulnerability reporting next to the email address, the entries for 0.0.26 to 0.0.28 name their advisories (GHSA-9r43-mjfv-v586, GHSA-h8r6-xr2r-x997, GHSA-rcr6-xvv7-46fh), and pull requests get a checklist.
 - **Forwarder failure tests:** an upstream that closes during an upload, a client that resets mid-transfer, a slow reader and a SIGHUP key reload through the built binary now have tests, each followed by a goroutine-leak check that is itself tested.
 - **Receive-loop fuzzing:** `FuzzTransportReceive` feeds arbitrary bytes to an established stream transport, so every message handler (data, ping, pong, close, rekey, alert, unknown) is fuzzed after the handshake.

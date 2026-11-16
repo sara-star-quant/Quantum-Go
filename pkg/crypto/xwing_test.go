@@ -3,6 +3,7 @@ package crypto
 import (
 	"bytes"
 	"crypto/sha3"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"testing"
@@ -91,6 +92,50 @@ func TestXWingConformanceVectors(t *testing.T) {
 	const want = "1bcd0057d861d6b866239936cadcaeee1ec0164dedc181c386e9e54fe46156fe"
 	if got != want {
 		t.Fatalf("X-Wing conformance digest mismatch:\n got %s\nwant %s", got, want)
+	}
+}
+
+// TestXWingDraftVectors drives the three test vectors printed in Appendix C of
+// draft-connolly-cfrg-xwing-kem-11 (September 2026) through the wrapper. A shared secret
+// depends on the whole public key and ciphertext, so seed, encapsulation seed and shared secret
+// pin all of them. The digest test above covers the older vector stream; this one is anchored to
+// the text of the current draft, so a change in either the draft or the library shows here.
+func TestXWingDraftVectors(t *testing.T) {
+	vectors := []struct{ seed, eseed, ss string }{
+		{
+			"7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eacfa66ef26",
+			"3cb1eea988004b93103cfb0aeefd2a686e01fa4a58e8a3639ca8a1e3f9ae57e235b8cc873c23dc62b8d260169afa2f75ab916a58d974918835d25e6a435085b2",
+			"d2df0522128f09dd8e2c92b1e905c793d8f57a54c3da25861f10bf4ca613e384",
+		},
+		{
+			"badfd6dfaac359a5efbb7bcc4b59d538df9a04302e10c8bc1cbf1a0b3a5120ea",
+			"17cda7cfad765f5623474d368ccca8af0007cd9f5e4c849f167a580b14aabdefaee7eef47cb0fca9767be1fda69419dfb927e9df07348b196691abaeb580b32d",
+			"f2e86241c64d60f6649fbc6c5b7d17180b780a3f34355e64a85749949c45f150",
+		},
+		{
+			"ef58538b8d23f87732ea63b02b4fa0f4873360e2841928cd60dd4cee8cc0d4c9",
+			"22a96188d032675c8ac850933c7aff1533b94c834adbb69c6115bad4692d8619f90b0cdf8a7b9c264029ac185b70b83f2801f2f4b3f70c593ea3aeeb613a7f1b",
+			"953f7f4e8c5b5049bdc771d1dffada0dd961477d1a2ae0988baa7ea6898d893f",
+		},
+	}
+	for i, v := range vectors {
+		seed, _ := hex.DecodeString(v.seed)
+		eseed, _ := hex.DecodeString(v.eseed)
+		kp, err := NewXWingKeyPairFromSeed(seed)
+		if err != nil {
+			t.Fatalf("vector %d: %v", i+1, err)
+		}
+		ct, ss, err := XWingEncapsulateWithSeed(kp.PublicKeyBytes(), eseed)
+		if err != nil {
+			t.Fatalf("vector %d: encapsulate: %v", i+1, err)
+		}
+		if got := hex.EncodeToString(ss); got != v.ss {
+			t.Fatalf("vector %d: shared secret %s, draft says %s", i+1, got, v.ss)
+		}
+		back, err := XWingDecapsulate(kp.SeedBytes(), ct)
+		if err != nil || hex.EncodeToString(back) != v.ss {
+			t.Fatalf("vector %d: decapsulation does not recover the draft's shared secret (%v)", i+1, err)
+		}
 	}
 }
 

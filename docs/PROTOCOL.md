@@ -387,7 +387,8 @@ version, and bind the negotiated suite, versions, and transcript into the Finish
 SHOULD implement HelloRetryRequest (Section 5.2) so it can negotiate with a peer that leads with a
 different suite. The X-Wing suite (0x0002) MUST be byte-exact with draft-connolly-cfrg-xwing-kem; the
 implementation gates it against the published X-Wing test vectors (the SHAKE-128 digest of the spec
-vectors) as a conformance check.
+vectors) and against the three vectors printed in Appendix C of draft revision 11 (September 2026), as
+conformance checks. The draft is still moving, so a later revision can change the vectors.
 
 Published known-answer vectors live in `testdata/conformance/vectors.json` (see
 `testdata/conformance/README.md`). They cover the KEM suites (seed to public key; encapsulation coins to
