@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.32][] - 2026-11-16
+
+**Theme:** Operate it. Upgrade note first: a `forward` server now cuts open connections whose key you removed or replaced when you send SIGHUP, so a revoked key stops working at the reload; `--keep-sessions-on-reload` keeps the old behavior. The rest gives an operator and a first user what they need to run a link unattended: a listener can refuse an authenticated peer by policy, each finished connection can leave a record of what protected it, the build's cryptography exports as a CycloneDX bill of materials, and a one-page guide takes a pilot from download to a working tunnel.
+
 ### Upgrade notes
 - **`forward` server: SIGHUP now cuts open connections whose key is gone.** Affects operators who reload the server's key table while clients are connected. A connection whose identity you removed, or whose key you replaced, ends at the reload (v0.0.26 to v0.0.31 kept it open). Connections on keys you left in place are untouched. To keep the old behavior for routine rotation, start the server with `--keep-sessions-on-reload`.
 
@@ -22,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Line-count check covers the roadmap:** `scripts/loc.sh --check` now fails when the core size quoted in `docs/ROADMAP.md` drifts more than 5 percent, as it already did for the README. Both now say about 9,000 lines; the roadmap had said 8,685 while the core measured 9,023.
 - **Release gate and verifier:** `docs/RELEASING.md` writes down the checks a tag needs, and `scripts/release-verify.sh vX.Y.Z` downloads a published release and checks every asset against the checksums, the attestation identity per archive, the SBOM, the Go proxy answer and the binary's own report of the tag and commit.
 
+### Evidence
+- **X-Wing draft vectors:** a test pins the three test vectors of draft-connolly-cfrg-xwing-kem revision 11 (seed, encapsulation seed, shared secret) through the wrapper, next to the existing digest check.
+
 ## [0.0.31][] - 2026-11-14
 
 **Theme:** Failure paths and evidence. A datagram session no longer sends after `Close`: before, `Send` and `SendBatch` on a closed session sealed and transmitted a frame and returned nil. The rest is evidence a reviewer or a pilot can check: fuzzing of the stream receive loop, framing and key parsers, and failure tests for `forward` (resets, an upstream that closes early, a slow reader, SIGHUP through the built binary). No upgrade action is needed; code that ignored the error from `Send` after `Close` now gets `ErrTunnelClosed`.
@@ -33,7 +40,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Datagram `Send` and `SendBatch` after `Close`:** they sealed and transmitted a datagram on a closed session and returned nil. They now return `ErrTunnelClosed`. New tests pin the close race on both transports and the forwarder's rekey after the peer's EOF.
 
 ### Evidence
-- **X-Wing draft vectors:** a test pins the three test vectors of draft-connolly-cfrg-xwing-kem revision 11 (seed, encapsulation seed, shared secret) through the wrapper, next to the existing digest check.
 - **Disclosure and review hygiene:** `SECURITY.md` now offers GitHub private vulnerability reporting next to the email address, the entries for 0.0.26 to 0.0.28 name their advisories (GHSA-9r43-mjfv-v586, GHSA-h8r6-xr2r-x997, GHSA-rcr6-xvv7-46fh), and pull requests get a checklist.
 - **Forwarder failure tests:** an upstream that closes during an upload, a client that resets mid-transfer, a slow reader and a SIGHUP key reload through the built binary now have tests, each followed by a goroutine-leak check that is itself tested.
 - **Receive-loop fuzzing:** `FuzzTransportReceive` feeds arbitrary bytes to an established stream transport, so every message handler (data, ping, pong, close, rekey, alert, unknown) is fuzzed after the handshake.
@@ -626,7 +632,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.31...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.32...HEAD
+[0.0.32]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.31...v0.0.32
 [0.0.31]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.30...v0.0.31
 [0.0.30]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.29...v0.0.30
 [0.0.29]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.28...v0.0.29
