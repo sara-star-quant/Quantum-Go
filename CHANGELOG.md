@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.33][] - 2026-11-16
+
+**Theme:** Security patch. Upgrade if you run a listener or connect to servers you do not control: a malformed ClientHello or ServerHello could end the process in v0.0.15 to v0.0.32. This release changes nothing else.
+
 ### Security
-- **A malformed ClientHello or ServerHello could end the process** (v0.0.15 to v0.0.32; fixed in v0.0.33): a hello whose session-ID length ran past the message made the decoder panic. Both decoders now refuse it. A GitHub security advisory covers it.
+- **A malformed ClientHello or ServerHello could end the process** (v0.0.15 to v0.0.32; fixed in v0.0.33): a hello whose session-ID length ran past the message made the decoder panic. Both decoders now refuse it. Advisory: GHSA-h9r7-h7g2-22rj.
 
 ## [0.0.32][] - 2026-11-16
 
@@ -635,7 +639,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.32...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.33...HEAD
+[0.0.33]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.32...v0.0.33
 [0.0.32]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.31...v0.0.32
 [0.0.31]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.30...v0.0.31
 [0.0.30]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.29...v0.0.30
