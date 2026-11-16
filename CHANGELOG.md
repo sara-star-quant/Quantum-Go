@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Security
+- **A malformed ClientHello or ServerHello could end the process** (v0.0.15 to v0.0.32; fixed in v0.0.33): a hello whose session-ID length ran past the message made the decoder panic. Both decoders now refuse it. A GitHub security advisory covers it.
+
 ## [0.0.32][] - 2026-11-16
 
 **Theme:** Operate it. Upgrade note first: a `forward` server now cuts open connections whose key you removed or replaced when you send SIGHUP, so a revoked key stops working at the reload; `--keep-sessions-on-reload` keeps the old behavior. The rest gives an operator and a first user what they need to run a link unattended: a listener can refuse an authenticated peer by policy, each finished connection can leave a record of what protected it, the build's cryptography exports as a CycloneDX bill of materials, and a one-page guide takes a pilot from download to a working tunnel.

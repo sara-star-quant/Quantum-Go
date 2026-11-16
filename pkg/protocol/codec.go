@@ -219,6 +219,9 @@ func (c *Codec) DecodeClientHello(data []byte) (*ClientHello, error) {
 	// SessionID
 	sessionIDLen := int(data[offset])
 	offset++
+	if offset+sessionIDLen > payloadEnd {
+		return nil, qerrors.ErrInvalidMessage
+	}
 	if sessionIDLen > 0 {
 		m.SessionID = make([]byte, sessionIDLen)
 		copy(m.SessionID, data[offset:offset+sessionIDLen])
@@ -412,6 +415,9 @@ func (c *Codec) DecodeServerHello(data []byte) (*ServerHello, error) {
 	// SessionID
 	sessionIDLen := int(data[offset])
 	offset++
+	if offset+sessionIDLen > payloadEnd {
+		return nil, qerrors.ErrInvalidMessage
+	}
 	if sessionIDLen > 0 {
 		m.SessionID = make([]byte, sessionIDLen)
 		copy(m.SessionID, data[offset:offset+sessionIDLen])
