@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Added
+
+- Local security events: a `tunnel.SecurityObserver` extension and a `security_events_total{class,confidence}` metric for pin mismatch, downgrade and stream replay. See docs/usage/SECURITY_EVENTS.md.
+
 ## [0.0.33][] - 2026-11-16
 
 **Theme:** Security patch. Upgrade if you run a listener or connect to servers you do not control: a malformed ClientHello or ServerHello could end the process in v0.0.15 to v0.0.32. This release changes nothing else.

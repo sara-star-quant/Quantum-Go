@@ -113,6 +113,18 @@ func (e *PrometheusExporter) WriteMetrics(w io.Writer) {
 	e.writeType(pw, "rekeys_failed_total", "counter")
 	e.writeMetric(pw, "rekeys_failed_total", labels, float64(snap.RekeysFailed))
 
+	// One series per class and confidence, zeros included, so rate() works before the first event.
+	// A high confidence series is the one to alert on; low ones can be a dropped connection.
+	e.writeHelp(pw, "security_events_total", "Local security signals by class and confidence; see docs/usage/SECURITY_EVENTS.md for benign causes")
+	e.writeType(pw, "security_events_total", "counter")
+	for _, ev := range snap.SecurityEvents {
+		evLabels := fmt.Sprintf("class=\"%s\",confidence=\"%s\"", ev.Class, ev.Confidence)
+		if labels != "" {
+			evLabels = labels + "," + evLabels
+		}
+		e.writeMetric(pw, "security_events_total", evLabels, float64(ev.Count))
+	}
+
 	// --- Error Metrics ---
 	e.writeHelp(pw, "encrypt_errors_total", "Total encryption errors")
 	e.writeType(pw, "encrypt_errors_total", "counter")

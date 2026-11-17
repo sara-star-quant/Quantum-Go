@@ -520,6 +520,7 @@ func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce [
 		if s.observer != nil {
 			s.observer.OnReplayDetected()
 		}
+		s.reportSecurity(SecurityReplay, SecurityMedium)
 		return nil, qerrors.ErrReplayDetected
 	}
 

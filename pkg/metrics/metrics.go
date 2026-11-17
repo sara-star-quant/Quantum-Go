@@ -12,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
 )
 
 // Collector aggregates metrics from tunnel sessions and transports.
@@ -37,6 +39,10 @@ type Collector struct {
 	rekeysInitiated      atomic.Int64
 	rekeysCompleted      atomic.Int64
 	rekeysFailed         atomic.Int64
+	// securityEvents counts tunnel.SecurityEvent by class and confidence. The class and
+	// confidence values index the array, so a value from a newer tunnel package is ignored
+	// and the series set stays bounded.
+	securityEvents [securityClassSlots][securityConfidenceSlots]atomic.Int64
 
 	// Error metrics
 	encryptErrors  atomic.Int64
@@ -57,6 +63,11 @@ type Collector struct {
 	// Labels for this collector instance
 	labels Labels
 }
+
+const (
+	securityClassSlots      = 8
+	securityConfidenceSlots = 4
+)
 
 // Labels represents key-value pairs for metric labeling.
 type Labels map[string]string
@@ -174,6 +185,14 @@ func (c *Collector) RecordReplayBlocked() {
 	c.replayAttacksBlocked.Add(1)
 }
 
+// RecordSecurityEvent counts one security event. An unknown class or confidence is ignored.
+func (c *Collector) RecordSecurityEvent(class tunnel.SecurityClass, confidence tunnel.SecurityConfidence) {
+	if int(class) >= securityClassSlots || int(confidence) >= securityConfidenceSlots {
+		return
+	}
+	c.securityEvents[class][confidence].Add(1)
+}
+
 // RecordAuthFailure increments the authentication failure counter.
 func (c *Collector) RecordAuthFailure() {
 	c.authFailures.Add(1)
@@ -235,6 +254,13 @@ func (c *Collector) RecordDecryptLatency(d time.Duration) {
 
 // --- Snapshot ---
 
+// SecurityEventCount is the number of security events of one class and confidence.
+type SecurityEventCount struct {
+	Class      string
+	Confidence string
+	Count      int64
+}
+
 // Snapshot returns a point-in-time snapshot of all metrics.
 type Snapshot struct {
 	// Timestamp of the snapshot
@@ -267,6 +293,9 @@ type Snapshot struct {
 	RekeysCompleted      int64
 	RekeysFailed         int64
 
+	// SecurityEvents holds one count for every class and confidence, zeros included.
+	SecurityEvents []SecurityEventCount
+
 	// Error metrics
 	EncryptErrors  int64
 	DecryptErrors  int64
@@ -287,7 +316,18 @@ type Snapshot struct {
 
 // Snapshot returns a point-in-time snapshot of all metrics.
 func (c *Collector) Snapshot() Snapshot {
+	var security []SecurityEventCount
+	for _, class := range tunnel.SecurityClasses() {
+		for _, conf := range tunnel.SecurityConfidences() {
+			security = append(security, SecurityEventCount{
+				Class:      class.String(),
+				Confidence: conf.String(),
+				Count:      c.securityEvents[class][conf].Load(),
+			})
+		}
+	}
 	return Snapshot{
+		SecurityEvents:       security,
 		Timestamp:            time.Now(),
 		Uptime:               time.Since(c.createdAt),
 		SessionsActive:       c.sessionsActive.Load(),
@@ -333,6 +373,11 @@ func (c *Collector) Reset() {
 	c.rekeysInitiated.Store(0)
 	c.rekeysCompleted.Store(0)
 	c.rekeysFailed.Store(0)
+	for i := range c.securityEvents {
+		for j := range c.securityEvents[i] {
+			c.securityEvents[i][j].Store(0)
+		}
+	}
 	c.encryptErrors.Store(0)
 	c.decryptErrors.Store(0)
 	c.protocolErrors.Store(0)
