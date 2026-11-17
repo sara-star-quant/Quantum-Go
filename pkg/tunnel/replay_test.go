@@ -1,6 +1,9 @@
 package tunnel
 
-import "testing"
+import (
+	"math/rand/v2"
+	"testing"
+)
 
 func TestDatagramReplayWindow_InOrder(t *testing.T) {
 	w := NewDatagramReplayWindow()
@@ -121,5 +124,52 @@ func BenchmarkReplayWindowCheck(b *testing.B) {
 	rw := NewReplayWindow()
 	for i := 0; i < b.N; i++ {
 		rw.Check(uint64(i))
+	}
+}
+
+// Admissible is the cheap filter in front of the AEAD open, so it must agree with Check on
+// every input and must not record anything. A model with a plain set and a high mark decides
+// what each call should answer, over reordering, repeats and jumps past the window.
+func TestDatagramReplayWindow_AdmissibleAgreesWithCheck(t *testing.T) {
+	for seed := uint64(1); seed <= 8; seed++ {
+		rng := rand.New(rand.NewPCG(seed, seed*7919))
+		w := NewDatagramReplayWindow()
+		const size = DatagramReplayWindowSize
+		accepted := map[uint64]bool{}
+		var high uint64
+		anySeen := false
+		base := uint64(5000)
+		for step := range 4000 {
+			var seq uint64
+			switch rng.IntN(5) {
+			case 0: // a jump forward, sometimes past the whole window
+				seq = base + uint64(rng.IntN(3*size))
+			case 1: // a repeat of something already accepted
+				seq = base
+				for k := range accepted {
+					seq = k
+					break
+				}
+			default: // near the head, in or just outside the window
+				seq = base + uint64(rng.IntN(size+64)) - 32
+			}
+			want := !anySeen || seq > high || (high-seq < size && !accepted[seq])
+			if got := w.Admissible(seq); got != want {
+				t.Fatalf("seed %d step %d seq %d: Admissible = %v, want %v", seed, step, seq, got, want)
+			}
+			if got := w.Admissible(seq); got != want {
+				t.Fatalf("seed %d step %d seq %d: a second Admissible = %v, so the first one recorded it", seed, step, seq, got)
+			}
+			if got := w.Check(seq); got != want {
+				t.Fatalf("seed %d step %d seq %d: Check = %v, want %v", seed, step, seq, got, want)
+			}
+			if want {
+				accepted[seq] = true
+				if !anySeen || seq > high {
+					high, anySeen = seq, true
+				}
+				base = max(base, seq)
+			}
+		}
 	}
 }
