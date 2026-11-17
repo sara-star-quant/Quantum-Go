@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Fixed
+
+- Datagram handshake with a HelloRetryRequest: a late duplicate or reordered fragment of the first ClientHello no longer blocks the retried ClientHello. Over a link that duplicated or reordered datagrams, 6 to 9 of 24 such handshakes failed after about two seconds; none now do.
+
 ### Added
 
 - Local security events: a `tunnel.SecurityObserver` extension and a `security_events_total{class,confidence}` metric for pin mismatch, downgrade and stream replay. See docs/usage/SECURITY_EVENTS.md.

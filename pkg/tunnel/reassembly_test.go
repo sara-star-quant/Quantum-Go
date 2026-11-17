@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
@@ -124,7 +125,7 @@ func TestReassembler_Timeout(t *testing.T) {
 		t.Fatalf("post-timeout fragment: done=%v err=%v", done, err)
 	}
 	r.mu.Lock()
-	_, stillThere := r.bySource["s"][reasmKey{sender: 1, msg: protocol.MessageTypeClientHello}]
+	_, stillThere := r.bySource["s"][reasmKey{sender: 1, msg: protocol.MessageTypeClientHello, total: 10}]
 	r.mu.Unlock()
 	if stillThere {
 		t.Fatal("expired reassembly buffer was not evicted")
@@ -162,5 +163,35 @@ func TestReassembler_OverlappingFragmentsAndDrop(t *testing.T) {
 	r.Drop("d")
 	if r.sourceCount() != 0 {
 		t.Fatalf("sourceCount after Drop = %d, want 0", r.sourceCount())
+	}
+}
+
+// A HelloRetryRequest handshake sends two ClientHellos of different sizes under one sender and
+// type. A late duplicate of the first hello's fragment must not block the retried second one.
+func TestReassembler_SameTypeDifferentSizeDoNotCollide(t *testing.T) {
+	r := NewReassembler(4, 4096, 10*time.Second)
+	first := make([]byte, 300)
+	second := make([]byte, 200)
+	for i := range first {
+		first[i] = 0xAA
+	}
+	for i := range second {
+		second[i] = byte(i)
+	}
+
+	// One stale fragment of the first hello arrives and stays partial.
+	if _, done, err := r.Add("s", frag(1, 0, len(first), first[:100]), first[:100]); err != nil || done {
+		t.Fatalf("stale fragment: done=%v err=%v", done, err)
+	}
+	// The retried hello arrives in two fragments and must complete with its own bytes.
+	if _, done, err := r.Add("s", frag(1, 0, len(second), second[:120]), second[:120]); err != nil || done {
+		t.Fatalf("second hello, first fragment: done=%v err=%v", done, err)
+	}
+	got, done, err := r.Add("s", frag(1, 120, len(second), second[120:]), second[120:])
+	if err != nil || !done {
+		t.Fatalf("second hello, last fragment: done=%v err=%v", done, err)
+	}
+	if !bytes.Equal(got, second) {
+		t.Fatal("the retried hello reassembled with bytes from the stale one")
 	}
 }

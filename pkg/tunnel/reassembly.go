@@ -39,9 +39,13 @@ type Reassembler struct {
 	now                    func() time.Time
 }
 
+// reasmKey names one message in flight. The declared total is part of the key because a
+// HelloRetryRequest handshake sends two ClientHellos of different sizes under one sender and
+// type, and a late fragment of the first must not poison the retried second.
 type reasmKey struct {
 	sender uint32
 	msg    protocol.MessageType
+	total  int
 }
 
 type fragmentBuffer struct {
@@ -105,7 +109,7 @@ func (r *Reassembler) Add(source string, h protocol.DatagramHandshakeHeader, fra
 		r.bySource[source] = bufs
 	}
 
-	key := reasmKey{sender: h.SenderIndex, msg: h.MsgType}
+	key := reasmKey{sender: h.SenderIndex, msg: h.MsgType, total: total}
 	fb := bufs[key]
 	if fb == nil {
 		if len(bufs) >= r.maxConcurrentPerSource {
@@ -121,9 +125,6 @@ func (r *Reassembler) Add(source string, h protocol.DatagramHandshakeHeader, fra
 			createdAt: r.now(),
 		}
 		bufs[key] = fb
-	} else if fb.total != total {
-		// TotalLength must be stable across a message's fragments.
-		return nil, false, qerrors.ErrInvalidMessage
 	}
 
 	off := int(h.FragOffset)
