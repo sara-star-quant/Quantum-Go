@@ -43,12 +43,11 @@ The following are explicitly **not** in scope for security reports:
 
 ## Supported versions
 
-| Version | Supported          | Notes                          |
-| ------- | ------------------ | ------------------------------ |
-| 0.0.9+  | Yes                | Security-hardened release       |
-| < 0.0.9 | No                 | Pre-hardening, not supported   |
+While Quantum-Go is pre-1.0, only the latest release receives security fixes, and fixes are not backported. Run the latest release; each published advisory lists the versions it affects and the version that fixes it.
 
-**Note**: Versions prior to v0.0.9 contain known protocol-level weaknesses in session resumption, rekey authentication, and transcript binding. Upgrade to v0.0.9+ for security-hardened protocol composition. Production use is **not recommended** without independent security audit.
+Releases before v0.0.9 contain known protocol-level weaknesses in session resumption, rekey authentication and transcript binding.
+
+Production use of any release is **not recommended** without an independent security audit, and none has been done.
 
 ---
 
