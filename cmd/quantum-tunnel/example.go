@@ -277,6 +277,6 @@ func main() {
 	fmt.Println()
 	fmt.Println("Security:")
 	fmt.Println("  See SECURITY.md for security policy and best practices")
-	fmt.Println("  Report vulnerabilities: pzverkov@protonmail.com")
+	fmt.Println("  Report vulnerabilities: https://github.com/sara-star-quant/Quantum-Go/security/advisories/new")
 	fmt.Println()
 }

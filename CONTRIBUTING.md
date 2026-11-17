@@ -217,7 +217,7 @@ go test ./pkg/crypto -v -run "TestKAT"
 
 If you discover a security vulnerability:
 
-1. **Email the maintainers directly** with:
+1. **Report it privately** through [GitHub private vulnerability reporting](https://github.com/sara-star-quant/Quantum-Go/security/advisories/new) with:
    - Description of the vulnerability
    - Steps to reproduce
    - Potential impact
