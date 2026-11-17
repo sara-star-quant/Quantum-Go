@@ -119,11 +119,33 @@ func (s *Session) nextDatagramSeq() uint64 {
 	return s.sendSeq.Add(1) - 1
 }
 
-// datagramSendEpoch returns the current send epoch.
+// datagramCurLocked returns the current epoch, or nil once the session is closed or
+// before its datagram keys exist. The caller holds at least s.mu.RLock.
+func (s *Session) datagramCurLocked() *datagramEpoch {
+	if s.dgramEpochs == nil {
+		return nil
+	}
+	return s.dgramEpochs.cur
+}
+
+// datagramNoCipherErr names why no receive cipher matched: the session is closed, or
+// the frame names an epoch that is not live (which is an authentication failure).
+func (s *Session) datagramNoCipherErr() error {
+	if s.state.Load() == int32(SessionStateClosed) {
+		return qerrors.ErrTunnelClosed
+	}
+	return qerrors.ErrAuthenticationFailed
+}
+
+// datagramSendEpoch returns the current send epoch, or 0 on a closed session; the
+// seal that follows then fails with ErrInvalidState.
 func (s *Session) datagramSendEpoch() uint8 {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.dgramEpochs.cur.epoch
+	if cur := s.datagramCurLocked(); cur != nil {
+		return cur.epoch
+	}
+	return 0
 }
 
 // buildAEADNonce builds the 12-byte AEAD nonce prefix || seq(8B BE) into dst
@@ -140,7 +162,7 @@ func buildAEADNonce(dst, prefix []byte, seq uint64) {
 // nextDatagramSeq and builds the header (whose epoch must equal datagramSendEpoch).
 func (s *Session) DatagramSeal(aad []byte, seq uint64, plaintext []byte) ([]byte, error) {
 	s.mu.RLock()
-	cur := s.dgramEpochs.cur
+	cur := s.datagramCurLocked()
 	prefix := s.sendNoncePrefix
 	s.mu.RUnlock()
 	if cur == nil || cur.sendCipher == nil {
@@ -176,7 +198,7 @@ func (s *Session) DatagramOpen(epoch uint8, seq uint64, ciphertext, aad []byte) 
 	prefix := s.recvNoncePrefix
 	s.mu.RUnlock()
 	if cipher == nil {
-		return nil, qerrors.ErrAuthenticationFailed
+		return nil, s.datagramNoCipherErr()
 	}
 
 	var nonce [constants.AESNonceSize]byte

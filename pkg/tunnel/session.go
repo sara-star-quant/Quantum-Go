@@ -676,6 +676,11 @@ func (s *Session) Close() {
 
 	s.sendCipher = nil
 	s.recvCipher = nil
+	// A datagram session also holds its keys per epoch. Drop both epochs; every reader
+	// goes through datagramCurLocked or datagramRecvCipherLocked, which treat nil as closed.
+	// Go AEAD objects cannot be scrubbed, so this releases references as the stream path
+	// does. A seal already past its read lock may finish with the cipher it holds.
+	s.dgramEpochs = nil
 }
 
 // Stats returns session statistics.

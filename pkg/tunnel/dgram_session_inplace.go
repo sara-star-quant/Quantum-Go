@@ -21,7 +21,7 @@ import (
 // AEAD interface); pass nil to have one allocated. See DatagramSeal for the semantics.
 func (s *Session) DatagramSealTo(dst, aad []byte, seq uint64, plaintext, nonce []byte) ([]byte, error) {
 	s.mu.RLock()
-	cur := s.dgramEpochs.cur
+	cur := s.datagramCurLocked()
 	prefix := s.sendNoncePrefix
 	s.mu.RUnlock()
 	if cur == nil || cur.sendCipher == nil {
@@ -53,7 +53,7 @@ func (s *Session) DatagramOpenTo(dst []byte, epoch uint8, seq uint64, ciphertext
 	prefix := s.recvNoncePrefix
 	s.mu.RUnlock()
 	if cipher == nil {
-		return nil, qerrors.ErrAuthenticationFailed
+		return nil, s.datagramNoCipherErr()
 	}
 	if nonce == nil {
 		nonce = make([]byte, constants.AESNonceSize)

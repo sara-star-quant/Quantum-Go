@@ -38,7 +38,7 @@ const datagramRekeyHighWater = constants.MaxPacketsBeforeRekey * 9 / 10
 // still renews its keys.
 func (s *Session) datagramRekeyDue(seq uint64) bool {
 	s.mu.RLock()
-	cur := s.dgramEpochs.cur
+	cur := s.datagramCurLocked()
 	s.mu.RUnlock()
 	if cur == nil {
 		return false
@@ -66,7 +66,7 @@ func rekeyAAD(msgType protocol.MessageType, epoch uint8, seq uint64) []byte {
 func (s *Session) sealRekeyControl(msgType protocol.MessageType, payload []byte) (body []byte, epoch uint8, err error) {
 	seq := s.nextDatagramSeq()
 	s.mu.RLock()
-	cur := s.dgramEpochs.cur
+	cur := s.datagramCurLocked()
 	prefix := s.sendNoncePrefix
 	s.mu.RUnlock()
 	if cur == nil || cur.sendCipher == nil {
