@@ -158,3 +158,42 @@ func TestRoamingNoChangeSameSource(t *testing.T) {
 		t.Fatalf("same-source traffic changed peerAddr to %v, want %v", got, before)
 	}
 }
+
+// Known residual, pinned so a change to it is deliberate (docs/datagram-dos.md, "Authenticated
+// roaming"). Authentication and freshness are the only checks before the send address moves, so
+// an attacker on the path who holds back a fresh frame and forwards it from another source moves
+// the session there. The session heals on the genuine peer's next frame, and the held-back
+// original is then rejected as a replay. If a path challenge is added, this test changes with it.
+func TestRoamingHeldBackFrameMovesAddressUntilTheNextGenuineFrame(t *testing.T) {
+	e := mustEndpoint(t, &captureConn{})
+	home := udp("198.51.100.1", 4000)
+	idx, peer, ds := registerEstablished(t, e, home)
+
+	held := dataFrameFrom(t, peer, idx, 1, []byte("held back"))
+	next := dataFrameFrom(t, peer, idx, 2, []byte("next"))
+
+	// The attacker never lets seq 1 reach the responder from home, and forwards it from elsewhere.
+	victim := udp("203.0.113.66", 9999)
+	if err := e.routeDatagram(victim, held); err != nil {
+		t.Fatalf("route held frame: %v", err)
+	}
+	if got := ds.currentPeerAddr(); !addrEqual(got, victim) {
+		t.Fatalf("peerAddr = %v: a fresh held-back frame no longer moves the session, so update the documented residual", got)
+	}
+
+	// The genuine peer's next frame arrives from home and moves the session back.
+	if err := e.routeDatagram(home, next); err != nil {
+		t.Fatalf("route next frame: %v", err)
+	}
+	if got := ds.currentPeerAddr(); !addrEqual(got, home) {
+		t.Fatalf("peerAddr = %v after the genuine frame, want %v", got, home)
+	}
+
+	// The held-back original is now stale and must not move the session again.
+	if err := e.routeDatagram(victim, held); err != nil {
+		t.Fatalf("route stale frame: %v", err)
+	}
+	if got := ds.currentPeerAddr(); !addrEqual(got, home) {
+		t.Fatalf("a replayed held-back frame moved peerAddr to %v", got)
+	}
+}
