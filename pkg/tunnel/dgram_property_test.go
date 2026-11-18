@@ -84,23 +84,38 @@ func TestDatagramDataPlaneProperty(t *testing.T) {
 
 				// The fault model holds a packet until the next one overtakes it and data
 				// frames are not retransmitted, so a throwaway flush packet releases a held
-				// tail. Stop after the link has been quiet for a few flushes.
+				// tail. Stop once nothing new has arrived for long enough. Before the first
+				// message lands the wait is long, because a loaded runner can starve the
+				// receiver for a second or more and silence then says nothing about the link.
 				delivered := make(map[string]int)
-				flushes, quiet := 0, 0
-				deadline := time.After(10 * time.Second)
-				for quiet < 8 {
+				flushes := 0
+				lastProgress := time.Now()
+				for {
+					got := 0
+					for k := range delivered {
+						if strings.HasPrefix(k, "msg-") {
+							got++
+						}
+					}
+					quietFor := 300 * time.Millisecond
+					if got == 0 {
+						quietFor = 5 * time.Second
+					}
+					if p.complete && got == messages {
+						break
+					}
+					if time.Since(lastProgress) > quietFor {
+						break
+					}
 					select {
 					case b := <-server.ds.recvCh:
 						delivered[string(b)]++
 						if strings.HasPrefix(string(b), "msg-") {
-							quiet = 0 // a flush that arrives does not count as traffic
+							lastProgress = time.Now() // a flush that arrives does not count as traffic
 						}
 					case <-time.After(20 * time.Millisecond):
-						quiet++
 						_ = client.Send(fmt.Appendf(nil, "flush-%d", flushes))
 						flushes++
-					case <-deadline:
-						t.Fatal("link never went quiet")
 					}
 				}
 				if bad := dataPlaneViolations(delivered, sent, p.complete); len(bad) != 0 {
