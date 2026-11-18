@@ -12,7 +12,15 @@ import (
 // reorders, with the endpoints built from the given options, and returns both sessions.
 func handshakeOverFaults(t *testing.T, seed uint64, serverOpts []DatagramEndpointOption, tune func(client, server *DatagramEndpoint)) (client, server *Session) {
 	t.Helper()
-	connA, connB := memPipe(seed, 0.15, 0.1, 0.2)
+	return handshakeOverProfile(t, seed, faultProfile{0.15, 0.1, 0.2}, serverOpts, tune)
+}
+
+// faultProfile is the rate of each fault the in-memory link applies to every datagram.
+type faultProfile struct{ drop, dup, reorder float64 }
+
+func handshakeOverProfile(t *testing.T, seed uint64, p faultProfile, serverOpts []DatagramEndpointOption, tune func(client, server *DatagramEndpoint)) (client, server *Session) {
+	t.Helper()
+	connA, connB := memPipe(seed, p.drop, p.dup, p.reorder)
 	epA, err := NewDatagramEndpoint(connA, WithAllowUnauthenticated())
 	if err != nil {
 		t.Fatal(err)
@@ -85,5 +93,33 @@ func TestDatagramHandshakeBranchesUnderFaults(t *testing.T) {
 			assertDataRoundTrip(t, client, server)
 			assertDataRoundTrip(t, server, client)
 		})
+	}
+}
+
+// The retry-request handshake used to fail on 9 of 24 seeds when the link only duplicated
+// datagrams and on 6 of 24 when it only reordered them, because a late fragment of the first
+// ClientHello blocked the retried one. Each fault alone and combined must now complete on every
+// seed. The profiles isolate one fault each so a regression names the fault that breaks it.
+func TestDatagramRetryRequestSurvivesEachFault(t *testing.T) {
+	profiles := []struct {
+		name string
+		p    faultProfile
+	}{
+		{"loss", faultProfile{0.15, 0, 0}},
+		{"duplication", faultProfile{0, 0.3, 0}},
+		{"reordering", faultProfile{0, 0, 0.3}},
+		{"duplication and reordering", faultProfile{0, 0.1, 0.2}},
+		{"all three", faultProfile{0.15, 0.1, 0.2}},
+	}
+	const seeds = 24
+	for _, pr := range profiles {
+		for seed := uint64(1); seed <= seeds; seed++ {
+			t.Run(fmt.Sprintf("%s/seed-%d", pr.name, seed), func(t *testing.T) {
+				client, server := handshakeOverProfile(t, seed, pr.p, []DatagramEndpointOption{WithAllowedKEMSuites(chkem.SuiteXWing)}, nil)
+				if c, s := client.kemSuite.ID(), server.kemSuite.ID(); c != chkem.SuiteXWing || s != chkem.SuiteXWing {
+					t.Fatalf("suites after the retry: client=%#x server=%#x, want X-Wing on both", c, s)
+				}
+			})
+		}
 	}
 }

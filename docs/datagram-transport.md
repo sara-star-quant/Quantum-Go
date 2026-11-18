@@ -215,6 +215,10 @@ X25519 CH-KEM) is fixed and already at the high-assurance tier, matching the
 conservative posture BSI / US-federal guidance favors. It is **not** a certified
 BSI/FIPS profile; for FIPS 140-3 build mode see [FIPS.md](FIPS.md).
 
+## How it is tested
+
+The transport runs against a deterministic in-memory network that loses, duplicates and reorders datagrams. [FAULT_MODEL.md](technical/FAULT_MODEL.md) lists the faults, what each test checks and how to re-run a failing seed.
+
 ## Out of scope (future)
 
 PMTU discovery, multipath, and a parallel

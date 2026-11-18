@@ -130,6 +130,8 @@ All contributions must include appropriate tests:
    go test ./pkg/crypto -v
    ```
 
+   Datagram changes also need a seeded fault test: see [docs/technical/FAULT_MODEL.md](docs/technical/FAULT_MODEL.md) for the network, the existing tests and how to reproduce a failing seed.
+
 2. **Integration Tests**: Test complete workflows
    ```bash
    go test ./test/integration -v

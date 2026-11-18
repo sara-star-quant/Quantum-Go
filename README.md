@@ -141,6 +141,8 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 | [AI and cloud workloads](docs/usage/AI_AND_CLOUD.md) | Where post-quantum transport fits for model and data movement, and where TLS already covers you |
 | [Comparison](docs/COMPARISON.md) | Quantum-Go next to WireGuard, Rosenpass, IKEv2 and hybrid TLS |
 | [Datagram transport](docs/datagram-transport.md) and [DoS defences](docs/datagram-dos.md) | UDP transport design and limits |
+| [Datagram fault model](docs/technical/FAULT_MODEL.md) | The lossy, duplicating, reordering test network, what each test checks and how to re-run it |
+| [Security events](docs/usage/SECURITY_EVENTS.md) | Local signals for pin mismatch, downgrade and replay, with their benign causes |
 | [Architecture](docs/technical/ARCHITECTURE.md) | CH-KEM protocol and security design |
 | [Protocol specification](docs/PROTOCOL.md) | Wire handshake, KEM negotiation, key schedule |
 | [Formal verification](docs/formal/README.md) | Machine-checked ProVerif proofs |

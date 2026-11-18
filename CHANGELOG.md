@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- docs/technical/FAULT_MODEL.md: the datagram test network, what each seeded test checks, how to reproduce a failing seed. A new test runs the HelloRetryRequest handshake over 24 seeds for each fault alone and combined.
 - Local security events: a `tunnel.SecurityObserver` extension and a `security_events_total{class,confidence}` metric for pin mismatch, downgrade and stream replay. See docs/usage/SECURITY_EVENTS.md.
 
 ## [0.0.33][] - 2026-11-16
