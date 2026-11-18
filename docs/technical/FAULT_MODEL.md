@@ -65,7 +65,7 @@ To check that a test would notice a bug, weaken the code and run it. For the rep
 
 ## What the faults found
 
-A duplicated or reordered datagram broke the HelloRetryRequest handshake. The reassembler keyed fragment buffers by sender and message type, and the retry handshake sends two ClientHellos of different sizes under that key, so a late fragment of the first blocked the second until the reassembly timeout. Before the fix, a probe of 24 seeds per profile failed 9 on a link that only duplicated, 6 on one that only reordered, 7 on both and 2 on loss only. After it, `TestDatagramRetryRequestSurvivesEachFault` passes all 24 seeds for every profile. The fix keys buffers by declared size too.
+A duplicated or reordered datagram broke the HelloRetryRequest handshake. The reassembler keyed fragment buffers by sender and message type, and the retry handshake sends two ClientHellos of different sizes under that key, so a late fragment of the first blocked the second until the reassembly timeout. On v0.0.33, before the fix, `TestDatagramRetryRequestSurvivesEachFault` fails 2 of 24 seeds for loss, 9 for duplication, 6 for reordering, 7 for duplication and reordering together and 6 for all three. To see it, check out v0.0.33, copy `pkg/tunnel/dgram_handshake_faults_test.go` from main into it and run `go test -run TestDatagramRetryRequestSurvivesEachFault ./pkg/tunnel`. On main it passes every seed. The fix keys buffers by declared size too.
 
 ## Not covered yet
 
