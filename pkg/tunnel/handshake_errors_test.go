@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sara-star-quant/quantum-go/internal/constants"
 	qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
 	"github.com/sara-star-quant/quantum-go/pkg/protocol"
 )
@@ -148,6 +149,55 @@ func TestHandshakeRejectsDowngradedServerHello(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The initiator must refuse a cipher suite it did not offer. In a FIPS build it offers AES-256-GCM
+// only, so a server that answers with ChaCha20-Poly1305 would move a FIPS client onto a cipher
+// outside the approved module. A standard build offers both, so there is nothing to refuse there.
+func TestHandshakeRejectsUnofferedCipherSuite(t *testing.T) {
+	var unoffered constants.CipherSuite
+	for _, cs := range []constants.CipherSuite{constants.CipherSuiteAES256GCM, constants.CipherSuiteChaCha20Poly1305} {
+		offered := false
+		for _, o := range protocol.SupportedCipherSuites() {
+			offered = offered || o == cs
+		}
+		if !offered {
+			unoffered = cs
+		}
+	}
+	if unoffered == 0 {
+		t.Skip("this build offers every cipher suite the protocol knows")
+	}
+	edit := func(m *protocol.ServerHello) { m.CipherSuite = unoffered }
+	t.Run("stream", func(t *testing.T) {
+		client, server, ch := helloPair(t)
+		if err := server.ProcessClientHello(ch); err != nil {
+			t.Fatal(err)
+		}
+		sh, err := server.CreateServerHello()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = client.ProcessServerHello(rewriteServerHello(t, client, sh, edit))
+		if !errors.Is(err, qerrors.ErrUnsupportedCipherSuite) && !errors.Is(err, qerrors.ErrCipherSuiteNotFIPSApproved) {
+			t.Fatalf("got %v, want the suite refused", err)
+		}
+	})
+	t.Run("datagram", func(t *testing.T) {
+		initiator, responder := newFSMPair(t)
+		chs, _ := initiator.start()
+		flight, _ := responder.onMessage(protocol.MessageTypeClientHello, chs[0].body)
+		sh, sf := serverFlight(t, flight)
+		initiator.onMessage(protocol.MessageTypeServerHello, rewriteServerHello(t, initiator.hs, sh.body, edit))
+		// The edit also breaks the transcript, so a later Finished failure alone would not show
+		// the suite check at work. The initiator must refuse at the ServerHello itself.
+		if initiator.hs.state == HandshakeStateServerHelloReceived {
+			t.Fatal("initiator accepted a ServerHello that picked a cipher suite it did not offer")
+		}
+		if _, done := initiator.onMessage(protocol.MessageTypeServerFinished, sf.body); done {
+			t.Fatal("initiator completed on a cipher suite it did not offer")
+		}
+	})
 }
 
 // A HelloRetryRequest cannot steer the client to a suite it never offered, carry a

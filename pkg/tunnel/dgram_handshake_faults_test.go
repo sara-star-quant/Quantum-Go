@@ -50,20 +50,28 @@ func handshakeOverProfile(t *testing.T, seed uint64, p faultProfile, serverOpts 
 		c, err := DialDatagram(epA, connB.addr)
 		dialCh <- dialResult{c, err}
 	}()
+	started := time.Now()
 	select {
 	case ds := <-epB.acceptCh:
 		server = ds.getSession()
 	case <-time.After(10 * time.Second):
-		t.Fatal("responder did not surface a session")
+		// Say which side stalled: a dial that already failed points at the client, a dial
+		// still running points at the responder or the link.
+		select {
+		case r := <-dialCh:
+			t.Fatalf("responder did not surface a session after %v (seed %d, %+v); the dial had already returned: conn=%v err=%v", time.Since(started), seed, p, r.conn != nil, r.err)
+		default:
+			t.Fatalf("responder did not surface a session after %v (seed %d, %+v); the dial was still running", time.Since(started), seed, p)
+		}
 	}
 	select {
 	case r := <-dialCh:
 		if r.err != nil {
-			t.Fatalf("dial: %v", r.err)
+			t.Fatalf("dial (seed %d, %+v): %v", seed, p, r.err)
 		}
 		client = r.conn.Session()
 	case <-time.After(10 * time.Second):
-		t.Fatal("dial did not complete")
+		t.Fatalf("dial did not complete after %v (seed %d, %+v); the responder had surfaced a session in state %v", time.Since(started), seed, p, server.State())
 	}
 	if client.State() != SessionStateEstablished || server.State() != SessionStateEstablished {
 		t.Fatalf("not established: client=%v server=%v", client.State(), server.State())
