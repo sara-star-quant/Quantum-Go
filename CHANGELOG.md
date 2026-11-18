@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Fixed
+
+- The datagram reassembler sweeps for expired fragments at most once per quarter of its timeout instead of on every fragment, and it expires state when the endpoint reads its source count, so a fragment flood no longer rescans every buffer per packet and stale state no longer holds cookie pressure up.
+
 ## [0.0.34][] - 2026-11-18
 
 **Theme:** Datagram correctness, with the evidence to check it. A datagram handshake that needs a HelloRetryRequest no longer fails when the network duplicates or reorders its fragments: on v0.0.33, 9 of 24 seeds failed on a link that only duplicated datagrams and 6 of 24 on one that only reordered them, and none do now. A closed datagram session now drops its keys, and an operator can watch pin mismatch, downgrade and stream replay as local events. Nothing breaks: the wire format and the existing API are unchanged, and everything else is an addition.

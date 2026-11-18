@@ -37,6 +37,7 @@ type Reassembler struct {
 	maxMessageSize         int
 	timeout                time.Duration
 	now                    func() time.Time
+	lastSweep              time.Time
 }
 
 // reasmKey names one message in flight. The declared total is part of the key because a
@@ -95,15 +96,18 @@ func (r *Reassembler) Add(source string, h protocol.DatagramHandshakeHeader, fra
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.evictExpiredLocked()
+	r.sweepLocked(false)
 
 	bufs := r.bySource[source]
 	if bufs == nil {
-		// Global ceiling across all sources. evictExpiredLocked already ran above;
-		// if we are still at the cap, drop this new source rather than grow without
-		// bound (UDP sources are spoofable). Legit peers retry; stale state times out.
+		// Global ceiling across all sources. Force a sweep so stale state never
+		// holds the cap; if we are still at it, drop this new source rather than grow
+		// without bound (UDP sources are spoofable). Legit peers retry.
 		if len(r.bySource) >= r.maxSources {
-			return nil, false, errReassemblerFull
+			r.sweepLocked(true)
+			if len(r.bySource) >= r.maxSources {
+				return nil, false, errReassemblerFull
+			}
 		}
 		bufs = make(map[reasmKey]*fragmentBuffer)
 		r.bySource[source] = bufs
@@ -111,6 +115,11 @@ func (r *Reassembler) Add(source string, h protocol.DatagramHandshakeHeader, fra
 
 	key := reasmKey{sender: h.SenderIndex, msg: h.MsgType, total: total}
 	fb := bufs[key]
+	if fb != nil && r.now().Sub(fb.createdAt) > r.timeout {
+		// The sweep is throttled, so a buffer can outlive its timeout by a little.
+		delete(bufs, key)
+		fb = nil
+	}
 	if fb == nil {
 		if len(bufs) >= r.maxConcurrentPerSource {
 			// Over the per-source cap: evict this source's oldest buffer to make
@@ -163,11 +172,19 @@ func (r *Reassembler) Drop(source string) {
 func (r *Reassembler) sourceCount() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.sweepLocked(true)
 	return len(r.bySource)
 }
 
-func (r *Reassembler) evictExpiredLocked() {
-	deadline := r.now().Add(-r.timeout)
+// sweepLocked evicts timed-out buffers. Unforced calls run at most once per quarter
+// timeout, so a fragment flood does not rescan every source and buffer per packet.
+func (r *Reassembler) sweepLocked(force bool) {
+	now := r.now()
+	if !force && now.Sub(r.lastSweep) < r.timeout/4 {
+		return
+	}
+	r.lastSweep = now
+	deadline := now.Add(-r.timeout)
 	for src, bufs := range r.bySource {
 		for k, fb := range bufs {
 			if fb.createdAt.Before(deadline) {

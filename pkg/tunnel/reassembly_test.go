@@ -166,6 +166,38 @@ func TestReassembler_OverlappingFragmentsAndDrop(t *testing.T) {
 	}
 }
 
+// Expired state must not count toward cookie pressure or complete late, even when no new
+// fragment has arrived to trigger a sweep.
+func TestReassembler_ExpiryWithoutTraffic(t *testing.T) {
+	r := NewReassembler(4, 1500, 5*time.Second)
+	now := time.Unix(1000, 0)
+	r.now = func() time.Time { return now }
+	full := bytes.Repeat([]byte{7}, 100)
+	if _, _, err := r.Add("s", frag(1, 0, len(full), full[:50]), full[:50]); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(6 * time.Second)
+	if n := r.sourceCount(); n != 0 {
+		t.Fatalf("sourceCount after timeout = %d, want 0", n)
+	}
+}
+
+// With the sweep throttled, a buffer past its timeout still must not complete.
+func TestReassembler_ThrottledSweepStillExpires(t *testing.T) {
+	r := NewReassembler(4, 1500, 8*time.Second)
+	now := time.Unix(1000, 0)
+	r.now = func() time.Time { return now }
+	full := bytes.Repeat([]byte{7}, 100)
+	if _, _, err := r.Add("a", frag(1, 0, len(full), full[:50]), full[:50]); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(9 * time.Second)
+	r.lastSweep = now // the sweep just ran, so only the lookup check can expire "a"
+	if _, done, err := r.Add("a", frag(1, 50, len(full), full[50:]), full[50:]); err != nil || done {
+		t.Fatalf("expired buffer completed: done=%v err=%v", done, err)
+	}
+}
+
 // A HelloRetryRequest handshake sends two ClientHellos of different sizes under one sender and
 // type. A late duplicate of the first hello's fragment must not block the retried second one.
 func TestReassembler_SameTypeDifferentSizeDoNotCollide(t *testing.T) {
