@@ -99,16 +99,6 @@ jobs:
         # Coverage of the library (pkg and internal), credited by every test suite.
         run: go test ./... -coverpkg=./pkg/...,./internal/... -coverprofile=coverage.out
 
-      - name: Enforce the coverage floor
-        # The other coverage gate lives in Codecov, outside the repository, so the floor lives
-        # here too. Raise it when coverage rises; lower it only with a reason in the pull request.
-        env:
-          COVERAGE_FLOOR: "89"
-        run: |
-          total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%", "", $3); print $3}')
-          echo "library coverage: ${total}% (floor ${COVERAGE_FLOOR}%)"
-          awk -v t="$total" -v f="$COVERAGE_FLOOR" 'BEGIN { exit !(t + 0 >= f + 0) }' || { echo "coverage fell below the floor"; exit 1; }
-
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
@@ -122,6 +112,28 @@ jobs:
           name: coverage-ubuntu-latest
           path: coverage.out
           retention-days: 14
+
+  # The floors read both profiles merged, so a branch that only the FIPS build runs counts as
+  # covered. Codecov reports the same data, but it sits outside the repository: this gate does not.
+  coverage-floors:
+    name: Coverage floors
+    runs-on: ubuntu-latest
+    needs: [coverage, fips-coverage]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download coverage profiles
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage*
+          merge-multiple: true
+
+      - name: Check the test script
+        run: scripts/check-coverage-test.sh
+
+      - name: Enforce the floors
+        run: scripts/check-coverage.sh scripts/coverage-floors.txt coverage.out coverage-fips.out
 
   lint:
     name: Lint
@@ -211,6 +223,13 @@ jobs:
 
       - name: FIPS tests with coverage
         run: go test -tags fips ./... -coverpkg=./pkg/...,./internal/... -coverprofile=coverage-fips.out
+
+      - name: Upload FIPS coverage artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-fips
+          path: coverage-fips.out
+          retention-days: 14
 
       - name: Upload FIPS coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
@@ -432,7 +451,7 @@ jobs:
   ci-ok:
     name: CI result
     if: always()
-    needs: [changes, test, coverage, lint, vuln, fips, fips-coverage, build, security, codeql, docker, compliance]
+    needs: [changes, test, coverage, coverage-floors, lint, vuln, fips, fips-coverage, build, security, codeql, docker, compliance]
     runs-on: ubuntu-latest
     steps:
       - name: Check every job

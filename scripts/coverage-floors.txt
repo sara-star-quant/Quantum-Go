@@ -1,0 +1,9 @@
+# Coverage floors in percent, checked by scripts/check-coverage.sh in CI.
+# Each floor sits about a point under the value measured on main (standard and FIPS profiles
+# merged), so noise does not block unrelated work and a real drop does.
+# Raise a floor when coverage rises. Lower one only with a reason in the pull request.
+total        89
+pkg/crypto   87   # key generation, KDF, AEAD, self-tests
+pkg/chkem    87   # the hybrid KEM and suites
+pkg/protocol 96   # wire encoding and decoding
+pkg/tunnel   88   # handshake, sessions, both transports
