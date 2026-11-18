@@ -7,14 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.34][] - 2026-11-18
+
+**Theme:** Datagram correctness, with the evidence to check it. A datagram handshake that needs a HelloRetryRequest no longer fails when the network duplicates or reorders its fragments: on v0.0.33, 9 of 24 seeds failed on a link that only duplicated datagrams and 6 of 24 on one that only reordered them, and none do now. A closed datagram session now drops its keys, and an operator can watch pin mismatch, downgrade and stream replay as local events. Nothing breaks: the wire format and the existing API are unchanged, and everything else is an addition.
+
 ### Fixed
 
-- Datagram handshake with a HelloRetryRequest: a late duplicate or reordered fragment of the first ClientHello no longer blocks the retried ClientHello. Over a link that duplicated or reordered datagrams, 6 to 9 of 24 such handshakes failed after about two seconds; none now do.
+- **Datagram handshake with a HelloRetryRequest** (v0.0.15 to v0.0.33; fixed in v0.0.34): a late duplicate or reordered fragment of the first ClientHello blocked the retried ClientHello, and the handshake failed closed after about two seconds. The reassembler now keys its buffers by declared size too, and its memory bounds are unchanged. Counts per profile and the steps to reproduce them are in docs/technical/FAULT_MODEL.md.
+- **A closed datagram session kept its keys:** `Close` dropped the stream ciphers but left both datagram epoch ciphers referenced until garbage collection, so a closed session could still seal and open frames. `Close` now drops them, seal and rekey on a closed session return `ErrInvalidState`, and open returns `ErrTunnelClosed`. Go cannot scrub AEAD objects, so this releases references and does not zero memory.
 
 ### Added
 
-- docs/technical/FAULT_MODEL.md: the datagram test network, what each seeded test checks, how to reproduce a failing seed. A new test runs the HelloRetryRequest handshake over 24 seeds for each fault alone and combined.
-- Local security events: a `tunnel.SecurityObserver` extension and a `security_events_total{class,confidence}` metric for pin mismatch, downgrade and stream replay. See docs/usage/SECURITY_EVENTS.md.
+- **Local security events:** a `tunnel.SecurityObserver` extension and a `security_events_total{class,confidence}` metric for pin mismatch, downgrade and stream replay. High and medium need authenticated evidence, so downgrade and replay report low, and an attacker on the path can cause every class on purpose. Nothing goes to the peer. See docs/usage/SECURITY_EVENTS.md.
+- **docs/technical/FAULT_MODEL.md:** the datagram test network, what each seeded test checks and how to reproduce a failing seed. New tests run the datagram data plane over 48 seeds, the cookie and retry-request handshakes over lossy links, and the retry-request handshake over 24 seeds for each fault alone, and pin the replay window's cheap pre-check to its authoritative check.
+
+### Docs
+
+- **SECURITY.md:** only the latest release receives security fixes, and reports go through GitHub private reporting.
 
 ## [0.0.33][] - 2026-11-16
 
@@ -648,7 +657,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.33...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.34...HEAD
+[0.0.34]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.33...v0.0.34
 [0.0.33]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.32...v0.0.33
 [0.0.32]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.31...v0.0.32
 [0.0.31]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.30...v0.0.31
