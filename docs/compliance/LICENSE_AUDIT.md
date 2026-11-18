@@ -44,13 +44,15 @@ Deliberately not used: ratcheted and reinforced KEM constructions (licensing pos
 
 ## Patent research from public sources
 
-Method: query the IETF Datatracker IPR database (`/api/v1/ipr/iprdocrel/`, control query on RFC 6386 returns 2 disclosures, so the zero results below are meaningful) for the specifications each shipped mechanism is based on, plus NIST's published position on ML-KEM. Date: 2026-10-30. This reads public disclosures only; it is not a freedom-to-operate opinion.
+Method: query the IETF Datatracker IPR database (`/api/v1/ipr/iprdocrel/`, control query on RFC 6386 returns 2 disclosures, so the zero results below are meaningful) for the specifications each shipped mechanism is based on, plus NIST's published position on ML-KEM. Date: 2026-10-30, refreshed 2026-11-18 (control query on RFC 6386 again returned 2; the DTLS 1.3, QUIC and HPKE rows are new, and the X-Wing and hybrid-design drafts were re-queried and still show none). This reads public disclosures only; it is not a freedom-to-operate opinion.
 
 | Mechanism | Basis | IETF IPR disclosures |
 |---|---|---|
 | Pre-shared key folding and per-identity PSKs | RFC 8446 s2.2, RFC 9258, RFC 8784 | none |
 | ChaCha20-Poly1305, HKDF, X25519 | RFC 7539 / 8439, RFC 5869, RFC 7748 | none |
 | Hybrid KEM combiner (X-Wing) | draft-connolly-cfrg-xwing-kem, draft-ietf-tls-hybrid-design | none |
+| Stateless cookie and HelloRetryRequest on the datagram transport | RFC 9147 (DTLS 1.3), RFC 9000 and RFC 9001 (QUIC) | none |
+| Key schedule and key derivation, hybrid public-key encryption | RFC 9180 (HPKE) | none |
 | ML-KEM in TLS | draft-ietf-tls-mlkem, draft-ietf-tls-ecdhe-mlkem | one general statement (#7227) by an IETF participant, holder listed as "Unknown", no identified claim |
 | ML-KEM (FIPS 203) | NIST | NIST states it holds royalty-free patent licenses covering implementers of ML-KEM as published; commentators note the field of use is narrow, so deviating from ML-KEM is outside it |
 
