@@ -152,6 +152,8 @@ All contributions must include appropriate tests:
 - Aim for >80% coverage for new code
 - Critical cryptographic functions should have 100% coverage
 - Include both positive and negative test cases
+- CI fails when library coverage drops below the floor set in `.github/workflows/ci.yml` (`COVERAGE_FLOOR`). Raise it when coverage rises, and lower it only with a reason in the pull request
+- Write the failing test first, and check that it fails when you delete the code it covers
 
 ### Known Answer Tests (KATs)
 
