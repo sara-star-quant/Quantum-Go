@@ -97,15 +97,19 @@ func TestDatagramDataPlaneProperty(t *testing.T) {
 							got++
 						}
 					}
-					quietFor := 300 * time.Millisecond
-					if got == 0 {
-						quietFor = 5 * time.Second
-					}
-					if p.complete && got == messages {
-						break
-					}
-					if time.Since(lastProgress) > quietFor {
-						break
+					if p.complete {
+						// A loss-free link must deliver everything, so wait for it, not for quiet.
+						if got == messages || time.Since(lastProgress) > 10*time.Second {
+							break
+						}
+					} else {
+						quietFor := 300 * time.Millisecond
+						if got == 0 {
+							quietFor = 5 * time.Second
+						}
+						if time.Since(lastProgress) > quietFor {
+							break
+						}
 					}
 					select {
 					case b := <-server.ds.recvCh:
@@ -116,6 +120,18 @@ func TestDatagramDataPlaneProperty(t *testing.T) {
 					case <-time.After(20 * time.Millisecond):
 						_ = client.Send(fmt.Appendf(nil, "flush-%d", flushes))
 						flushes++
+					}
+				}
+				if !p.complete {
+					// A lossy link may lose messages, but a run that delivered none proves nothing.
+					got := 0
+					for k := range delivered {
+						if strings.HasPrefix(k, "msg-") {
+							got++
+						}
+					}
+					if got == 0 {
+						t.Fatalf("seed %d: nothing was delivered, so the property was not exercised", seed)
 					}
 				}
 				if bad := dataPlaneViolations(delivered, sent, p.complete); len(bad) != 0 {

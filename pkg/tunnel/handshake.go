@@ -224,7 +224,7 @@ func (h *Handshake) ProcessHelloRetryRequest(data []byte) error {
 		return qerrors.ErrInvalidState
 	}
 	if h.hrrDone {
-		h.session.reportSecurity(SecurityDowngrade, SecurityMedium)
+		h.session.reportSecurity(SecurityDowngrade, SecurityLow)
 		return qerrors.ErrUnsupportedKEMSuite // a second HelloRetryRequest is not allowed
 	}
 	msg, err := h.codec.DecodeHelloRetryRequest(data)
@@ -239,7 +239,7 @@ func (h *Handshake) ProcessHelloRetryRequest(data []byte) error {
 	suite, err := h.session.kemPolicy().resolve(msg.KEMSuite)
 	if err != nil {
 		if qerrors.Is(err, qerrors.ErrUnsupportedKEMSuite) {
-			h.session.reportSecurity(SecurityDowngrade, SecurityMedium)
+			h.session.reportSecurity(SecurityDowngrade, SecurityLow)
 		}
 		return err
 	}
@@ -299,7 +299,7 @@ func (h *Handshake) ProcessServerHello(data []byte) error {
 	// yet). A mismatch is a downgrade attempt; the transcript also binds the suite,
 	// so this fails the Finished MAC regardless, but reject early and clearly.
 	if msg.KEMSuite != uint16(h.session.kemSuite.ID()) {
-		h.session.reportSecurity(SecurityDowngrade, SecurityMedium)
+		h.session.reportSecurity(SecurityDowngrade, SecurityLow)
 		return qerrors.ErrUnsupportedKEMSuite
 	}
 

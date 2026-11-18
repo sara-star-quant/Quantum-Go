@@ -16,8 +16,11 @@ const (
 )
 
 // SecurityConfidence says how sure the endpoint is that the event is what its class says,
-// judged from the evidence at the point it was raised. It is not a measure of intent: a
-// High pin mismatch can still be a key rotation nobody announced.
+// judged from the evidence at the point it was raised. High and Medium need evidence that
+// passed authentication; anything raised from a message that has not authenticated yet is Low,
+// because an attacker on the path can forge it. It is not a measure of intent: a High pin
+// mismatch means the two ends derived different keys, which a rotated key, a wrong pin and
+// tampering all cause.
 type SecurityConfidence uint8
 
 const (
@@ -70,8 +73,9 @@ type SecurityEvent struct {
 }
 
 // SecurityObserver is an optional extension of Observer. When the session's Observer also
-// implements it, the session reports security events to it. Callbacks run on the
-// connection's goroutine, so an implementation must not block.
+// implements it, the session reports security events to it. Attach the observer before the
+// handshake, as with every observer. Callbacks run on the connection's goroutine, so an
+// implementation must not block.
 type SecurityObserver interface {
 	OnSecurityEvent(SecurityEvent)
 }

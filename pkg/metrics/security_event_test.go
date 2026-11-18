@@ -92,3 +92,25 @@ func TestPrometheusExportsEverySecuritySeries(t *testing.T) {
 		t.Fatalf("a zero series must still be exported:\n%s", out)
 	}
 }
+
+// A server builds one observer per session, so the log throttle has to live on the shared
+// collector: two observers on one collector log a flood of one series once, not twice.
+func TestSecurityEventLogThrottleIsSharedAcrossObservers(t *testing.T) {
+	c := NewCollector(nil)
+	var buf bytes.Buffer
+	logger := NewLogger(WithOutput(&buf), WithLevel(LevelWarn))
+	a := NewTunnelObserver(TunnelObserverConfig{Collector: c, Logger: logger})
+	b := NewTunnelObserver(TunnelObserverConfig{Collector: c, Logger: logger})
+
+	ev := tunnel.SecurityEvent{Class: tunnel.SecurityDowngrade, Confidence: tunnel.SecurityLow}
+	for range 20 {
+		a.OnSecurityEvent(ev)
+		b.OnSecurityEvent(ev)
+	}
+	if got := securityCount(c, "downgrade", "low"); got != 40 {
+		t.Fatalf("counted %d, want 40", got)
+	}
+	if lines := strings.Count(buf.String(), "security event"); lines != 1 {
+		t.Fatalf("log lines = %d, want 1 across both observers:\n%s", lines, buf.String())
+	}
+}

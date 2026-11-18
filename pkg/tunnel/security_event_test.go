@@ -60,7 +60,7 @@ func TestSecurityEventReplayOnStream(t *testing.T) {
 	if _, err := rx.Decrypt(ct, seq); err == nil {
 		t.Fatal("replayed record accepted")
 	}
-	wantEvents(t, rec, SecurityEvent{SecurityReplay, SecurityMedium})
+	wantEvents(t, rec, SecurityEvent{SecurityReplay, SecurityLow})
 }
 
 func TestSecurityEventDowngradedServerHello(t *testing.T) {
@@ -69,7 +69,7 @@ func TestSecurityEventDowngradedServerHello(t *testing.T) {
 		edit func(*protocol.ServerHello)
 		want []SecurityEvent
 	}{
-		{"suite the client did not offer", func(m *protocol.ServerHello) { m.KEMSuite = unknownSuite }, []SecurityEvent{{SecurityDowngrade, SecurityMedium}}},
+		{"suite the client did not offer", func(m *protocol.ServerHello) { m.KEMSuite = unknownSuite }, []SecurityEvent{{SecurityDowngrade, SecurityLow}}},
 		// A server that speaks another protocol version is skew, not a downgrade signal.
 		{"version skew", nil, nil},
 	}
@@ -101,7 +101,7 @@ func TestSecurityEventBadHelloRetryRequest(t *testing.T) {
 		}
 		return b
 	}
-	down := SecurityEvent{SecurityDowngrade, SecurityMedium}
+	down := SecurityEvent{SecurityDowngrade, SecurityLow}
 	t.Run("suite never offered", func(t *testing.T) {
 		client, _, _ := helloPair(t)
 		rec := &securityRecorder{}

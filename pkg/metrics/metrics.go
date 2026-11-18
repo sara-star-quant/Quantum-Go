@@ -43,6 +43,9 @@ type Collector struct {
 	// confidence values index the array, so a value from a newer tunnel package is ignored
 	// and the series set stays bounded.
 	securityEvents [securityClassSlots][securityConfidenceSlots]atomic.Int64
+	// securityLoggedAt holds the last log time of each series. It lives here, not on a
+	// per-session observer, so the log rate does not grow with the session count.
+	securityLoggedAt [securityClassSlots][securityConfidenceSlots]atomic.Int64
 
 	// Error metrics
 	encryptErrors  atomic.Int64
@@ -67,6 +70,8 @@ type Collector struct {
 const (
 	securityClassSlots      = 8
 	securityConfidenceSlots = 4
+	// securityLogEvery is the shortest gap between two log lines for one class and confidence.
+	securityLogEvery = 10 * time.Second
 )
 
 // Labels represents key-value pairs for metric labeling.
@@ -191,6 +196,18 @@ func (c *Collector) RecordSecurityEvent(class tunnel.SecurityClass, confidence t
 		return
 	}
 	c.securityEvents[class][confidence].Add(1)
+}
+
+// securityLogDue reports whether a log line for this series is due, and claims the slot when
+// it is. An unknown class or confidence is never due.
+func (c *Collector) securityLogDue(class tunnel.SecurityClass, confidence tunnel.SecurityConfidence) bool {
+	if int(class) >= securityClassSlots || int(confidence) >= securityConfidenceSlots {
+		return false
+	}
+	now := time.Now().UnixNano()
+	last := &c.securityLoggedAt[class][confidence]
+	prev := last.Load()
+	return now-prev >= int64(securityLogEvery) && last.CompareAndSwap(prev, now)
 }
 
 // RecordAuthFailure increments the authentication failure counter.
@@ -376,6 +393,7 @@ func (c *Collector) Reset() {
 	for i := range c.securityEvents {
 		for j := range c.securityEvents[i] {
 			c.securityEvents[i][j].Store(0)
+			c.securityLoggedAt[i][j].Store(0)
 		}
 	}
 	c.encryptErrors.Store(0)

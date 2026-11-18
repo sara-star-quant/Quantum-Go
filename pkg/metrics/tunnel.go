@@ -3,7 +3,6 @@ package metrics
 import (
 	"context"
 	"encoding/hex"
-	"sync/atomic"
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/pkg/tunnel"
@@ -17,13 +16,7 @@ type TunnelObserver struct {
 	logger    *Logger
 	sessionID string
 	role      string
-	// securityLogged holds the last log time of each class and confidence, so a flood of one
-	// event logs once per securityLogEvery.
-	securityLogged [securityClassSlots][securityConfidenceSlots]atomic.Int64
 }
-
-// securityLogEvery is the shortest gap between two log lines for one class and confidence.
-const securityLogEvery = 10 * time.Second
 
 var _ tunnel.SecurityObserver = (*TunnelObserver)(nil)
 
@@ -146,16 +139,10 @@ func (o *TunnelObserver) OnReplayDetected() {
 }
 
 // OnSecurityEvent counts a security event and logs it at most once per securityLogEvery for
-// its class and confidence. The log line carries no address or identity.
+// its class and confidence across every observer that shares the collector. The log line carries no address or identity.
 func (o *TunnelObserver) OnSecurityEvent(ev tunnel.SecurityEvent) {
 	o.collector.RecordSecurityEvent(ev.Class, ev.Confidence)
-	if int(ev.Class) >= securityClassSlots || int(ev.Confidence) >= securityConfidenceSlots {
-		return
-	}
-	now := time.Now().UnixNano()
-	last := &o.securityLogged[ev.Class][ev.Confidence]
-	prev := last.Load()
-	if now-prev < int64(securityLogEvery) || !last.CompareAndSwap(prev, now) {
+	if !o.collector.securityLogDue(ev.Class, ev.Confidence) {
 		return
 	}
 	o.logger.Warn("security event", Fields{"class": ev.Class.String(), "confidence": ev.Confidence.String()})

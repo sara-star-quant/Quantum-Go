@@ -520,7 +520,9 @@ func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce [
 		if s.observer != nil {
 			s.observer.OnReplayDetected()
 		}
-		s.reportSecurity(SecurityReplay, SecurityMedium)
+		// The window records the number before the record authenticates, so a forged record can
+		// raise this too: the evidence is unauthenticated.
+		s.reportSecurity(SecurityReplay, SecurityLow)
 		return nil, qerrors.ErrReplayDetected
 	}
 

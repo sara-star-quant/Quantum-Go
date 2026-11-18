@@ -2,15 +2,17 @@
 
 Quantum-Go reports a few local signals that an operator may want to watch. They stay on the host: nothing goes to the peer, so a prober learns nothing from them, and an event carries no address or identity.
 
-A signal is not a detection. Each one has benign causes, listed below, and a low or medium signal alone proves nothing.
+A signal is not a detection. Each one has benign causes, listed below, and a low or medium signal alone proves nothing. An attacker on the network path can also cause every class on purpose, by flipping a bit, dropping a connection or injecting a record, so an event means that something on this path is wrong or being tampered with, not that an attack failed or succeeded.
+
+**Confidence.** High and medium need evidence that passed authentication. A signal raised from a message that has not authenticated yet is low, because anyone on the path can forge it.
 
 ## What is reported
 
 | Class | Raised when | Confidence | Benign causes |
 | --- | --- | --- | --- |
-| `pin_mismatch` | A client that pins the server key fails the handshake with it | high: the server's Finished check failed. medium: the Finished message was malformed or failed for another reason. low: the Finished record never arrived whole | The server rotated its key and the client still pins the old one. The client pins the wrong server. On low, a dropped connection |
-| `downgrade` | The server answers with a KEM suite the client did not offer, or sends a second HelloRetryRequest, or a HelloRetryRequest names a suite the client never offered | medium | A server or middlebox with a bug or an older build. A mismatched suite allowlist between the two ends |
-| `replay` | A stream record arrives with a sequence number already seen | medium | A buggy sender that resends a record. A proxy that retries a write |
+| `pin_mismatch` | A client that pins the server key fails the handshake with it | high: the server's Finished check failed. medium: the Finished message was malformed or failed for another reason. low: the Finished record never arrived whole | The server rotated its key and the client still pins the old one. The client pins the wrong server. Tampering with the Finished record on the path. On low, a dropped connection |
+| `downgrade` | The server answers with a KEM suite the client did not offer, or sends a second HelloRetryRequest, or a HelloRetryRequest names a suite the client never offered | low: the message has not authenticated yet | A server or middlebox with a bug or an older build. A mismatched suite allowlist between the two ends. Anyone on the path can forge it |
+| `replay` | A stream record arrives with a sequence number already seen | low: the window records the number before the record authenticates | A buggy sender that resends a record. A proxy that retries a write. A forged record that used the number first |
 
 Covered by tests: each class above has a test that raises exactly one event, and a healthy handshake or record raises none. A version mismatch raises no event, because version skew between releases is common.
 
