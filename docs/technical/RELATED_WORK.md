@@ -33,8 +33,8 @@ This document compares the protocol with the closest published work and lists wh
 
 - A hybrid KEM from X25519 and ML-KEM-768 with SHA3-256. IND-CCA secure if the strong Diffie-Hellman assumption holds in the X25519 group (random oracle model), or if ML-KEM-768 is IND-CCA secure and SHA3-256 is a secure PRF (standard model). The authors say the efficiency gain depends on the concrete components and may not carry to other pairs.
 - **Same:** the X-Wing suite in this library is X-Wing, byte for byte, from circl, gated by the specification's vectors.
-- **Different:** CH-KEM-v1, the default suite, is our own combiner (X25519 and ML-KEM-1024 through a SHAKE-256 KDF). The X-Wing proof does not cover it. Its security rests on our symbolic models and on the combiner design (below), not on a published computational proof.
-- **Gap:** a computational argument for the CH-KEM-v1 combiner. [#277](https://github.com/sara-star-quant/Quantum-Go/issues/277) scopes it (a plan and dossier); the proof itself is not started.
+- **Different:** CH-KEM-v1, the default suite, is our own combiner (X25519 and ML-KEM-1024 through a SHAKE-256 KDF). The X-Wing proof does not cover it. Its security rests on the combiner design (below) and an unreviewed proof sketch. Our symbolic models cover protocol composition, not the computational security of the combiner, and there is no published computational proof.
+- **Gap:** a computational argument for the CH-KEM-v1 combiner. [#277](https://github.com/sara-star-quant/Quantum-Go/issues/277) scopes it (a plan and dossier). Only an unreviewed sketch exists (`docs/math/MATHEMATICAL_FOUNDATION.md` section 7.1, with its open points listed there); the proof itself is not started.
 
 ### Keeping Up with the KEMs (Cremers, Dax, Medinger)
 
@@ -86,8 +86,8 @@ A search of arXiv, ePrint and general web results on 2026-11-13 found no paper t
 
 | Question | Tracked in |
 |---|---|
-| Computational proof of the CH-KEM-v1 combiner and the handshake | [#277](https://github.com/sara-star-quant/Quantum-Go/issues/277), which scopes it; the proof is not started |
+| Computational proof of the CH-KEM-v1 combiner and the handshake | [#277](https://github.com/sara-star-quant/Quantum-Go/issues/277), which scopes it; only an unreviewed sketch exists (`docs/math/MATHEMATICAL_FOUNDATION.md` section 7.1) and the proof is not started |
 | Combiner binding check, a second-verifier run, key-compromise impersonation and identity-hiding queries for the current handshake | [#280](https://github.com/sara-star-quant/Quantum-Go/issues/280) |
-| Models for rekey, cookie and replay | [#252](https://github.com/sara-star-quant/Quantum-Go/issues/252) |
+| A stateful model of replay (the rekey and datagram cookie models shipped in v0.0.30) | [#252](https://github.com/sara-star-quant/Quantum-Go/issues/252), [#280](https://github.com/sara-star-quant/Quantum-Go/issues/280) |
 | Chosen-ciphertext exposure of long-lived decapsulation keys | [#236](https://github.com/sara-star-quant/Quantum-Go/issues/236) (device keys), [#276](https://github.com/sara-star-quant/Quantum-Go/issues/276) (side-channel tests) |
 | Read the full papers, not only abstracts, before a public claim leans on them | [#272](https://github.com/sara-star-quant/Quantum-Go/issues/272), which stays open for this |

@@ -9,7 +9,7 @@
 [![Codecov](https://codecov.io/gh/sara-star-quant/Quantum-Go/branch/main/graph/badge.svg)](https://codecov.io/gh/sara-star-quant/Quantum-Go)
 [![Go Build](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml/badge.svg)](https://github.com/sara-star-quant/quantum-go/actions/workflows/ci.yml)
 [![Fuzz](https://github.com/sara-star-quant/quantum-go/actions/workflows/fuzz.yml/badge.svg)](https://github.com/sara-star-quant/quantum-go/actions/workflows/fuzz.yml)
-[![Security Level](https://img.shields.io/badge/Security-NIST%20Category%205-green)](https://csrc.nist.gov/projects/post-quantum-cryptography)
+[![KEM parameter set](https://img.shields.io/badge/KEM-ML--KEM--1024%20(NIST%20Category%205)-green)](https://csrc.nist.gov/projects/post-quantum-cryptography)
 [![FIPS build mode](https://img.shields.io/badge/FIPS%20build%20mode-not%20validated-orange)](docs/FIPS.md)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
@@ -18,16 +18,16 @@
 
 **Post-quantum encryption for your Go network code. Keyed in one round trip. Familiar `Dial` and `Listen`.**
 
-Traffic an attacker records today can be decrypted later by a quantum computer. Quantum-Go reduces that exposure for traffic its tunnel protects: a **hybrid ML-KEM-1024 + X25519** handshake, so an attacker has to break both algorithms to read a session. You keep your protocol and your sockets; the library encrypts and authenticates the bytes.
+Traffic an attacker records today can be decrypted later by a quantum computer. Quantum-Go reduces that exposure for traffic its tunnel protects: a **hybrid ML-KEM-1024 + X25519** handshake, designed so that an attacker has to break both algorithms to read a session (checked in a symbolic model; the computational proof for the default combiner is open, see [SECURITY.md](SECURITY.md)). You keep your protocol and your sockets; the library encrypts and authenticates the bytes.
 
 ## What you get
 
 - **Speed to first byte.** The client sends data after **1 round trip** on both transports: 21 ms on a 20 ms link, 101 ms on a 100 ms link. The handshake costs 340 to 610 µs of CPU for both sides.
 - **Throughput.** Between two cloud hosts, one tunnel flow reaches **10 to 14 Gbps** and four or more flows fill a 20 Gbps link at plain-TCP speed (Google Cloud; AWS reaches its 12.4 Gbps instance limit the same way). Locally, about **2.5 GB/s** on a single stream tunnel with 60 KB records on a laptop and 1.4 to 1.6 GB/s on Linux CI runners (loopback); the record size changes it a lot, see [PERFORMANCE.md](docs/PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp). `Tunnel.SendBatch` writes a burst of small stream records together, 2 to 3x faster for 256 B records on macOS, Windows and x86-64 Linux ([numbers](docs/PERFORMANCE.md#batching-small-stream-records)). On Linux, batched datagram sends with UDP offload reach **701 MB/s** (x86-64) and **528 MB/s** (arm64) per flow, up to 3.6 times a plain send.
-- **High-assurance key establishment.** ML-KEM-1024 is NIST security level 5, hybridized with X25519. Prefer smaller handshakes? Set `KEMSuite` to the X-Wing suite (ML-KEM-768 + X25519), or register your own suite.
+- **Key establishment at NIST level 5.** ML-KEM-1024 is NIST security level 5, hybridized with X25519. Prefer smaller handshakes? Set `KEMSuite` to the X-Wing suite (ML-KEM-768 + X25519), or register your own suite.
 - **Two transports, one API.** TCP, and a connectionless UDP transport with retransmission, reliable rekey, anti-DoS cookies and roaming across IP changes.
 - **Authentication by default.** Unauthenticated use needs an explicit opt-out. Pin your server's key, or issue each client its own pre-shared key. A client with no key looks the same as one with a wrong key.
-- **Proof, not promises.** Machine-checked ProVerif models, published conformance vectors, fuzzed parsers, a written wire specification, and releases signed with cosign and attested.
+- **Evidence, not promises.** ProVerif models checked in CI (symbolic, so statements about the model), published conformance vectors, fuzzed parsers, a written wire specification, and releases signed with cosign and attested.
 - **A license you can ship.** Apache-2.0 with an express patent grant, a license scan on every release, and full third-party notices.
 
 How it stacks up against WireGuard, Rosenpass, IKEv2 and hybrid TLS, including where it loses: [docs/COMPARISON.md](docs/COMPARISON.md).
@@ -36,7 +36,7 @@ How it stacks up against WireGuard, Rosenpass, IKEv2 and hybrid TLS, including w
 
 - You run a TCP service you cannot change (a database, a broker, an HTTP or gRPC service) and want it behind a post-quantum tunnel: `quantum-tunnel forward`, no code changes. Try it in about 10 minutes with the [Docker Compose demo](examples/forward-demo/README.md).
 - You build a Go service, agent, relay or edge component and want quantum-resistant transport **without running a VPN daemon, a kernel module or root**.
-- You need an auditable protocol: a spec, proofs and test vectors you can hand to a reviewer.
+- You need an auditable protocol: a spec, symbolic models and test vectors you can hand to a reviewer.
 
 ## Who it is not for
 
@@ -119,7 +119,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 |----------|--------|
 | Post-quantum security | ML-KEM-1024 (NIST Category 5) |
 | Classical security | X25519 (128-bit) |
-| Hybrid guarantee | Secure if either algorithm is secure |
+| Hybrid property | Intended: secure if either algorithm holds. Symbolic model only; the computational proof is open ([SECURITY.md](SECURITY.md)) |
 | Endpoint authentication | Required: PSK, static-key server pinning or require-auth; explicit opt-out for tests |
 | Forward secrecy | Ephemeral keys per session and per rekey |
 | Session resumption | Removed in v0.0.26: it gave no speedup, so every connection does a full handshake |
@@ -145,7 +145,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 | [Security events](docs/usage/SECURITY_EVENTS.md) | Local signals for pin mismatch, downgrade and replay, with their benign causes |
 | [Architecture](docs/technical/ARCHITECTURE.md) | CH-KEM protocol and security design |
 | [Protocol specification](docs/PROTOCOL.md) | Wire handshake, KEM negotiation, key schedule |
-| [Formal verification](docs/formal/README.md) | Machine-checked ProVerif proofs |
+| [Formal verification](docs/formal/README.md) | ProVerif models checked in CI |
 | [Threat model](docs/technical/THREAT_MODEL.md) | Threat and risk analysis (NIST SP 800-30) |
 | [FIPS compliance](docs/FIPS.md) | FIPS 140-3 build mode and self-tests |
 | [Scope](docs/SCOPE.md) | What the library does and does not do |

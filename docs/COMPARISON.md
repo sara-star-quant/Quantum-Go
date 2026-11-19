@@ -16,11 +16,11 @@ Quantum-Go is a **library**: you embed it in a Go program to encrypt a `net.Conn
 ## What you get with Quantum-Go
 
 - **A post-quantum handshake in one round trip.** The client can send data after 1 RTT on both transports. Measured: 21 ms on a 20 ms link, 101 ms on a 100 ms link.
-- **Hybrid security.** ML-KEM-1024 (NIST security level 5) combined with X25519, so an attacker has to break both. Traffic recorded today and protected by the tunnel stays confidential against a future quantum computer.
+- **Hybrid security.** ML-KEM-1024 (NIST security level 5) combined with X25519, designed so that an attacker has to break both (symbolic model; no computational proof for the default combiner yet). Traffic recorded today and protected by the tunnel stays confidential against a future quantum computer.
 - **Two transports from one API.** Stream (TCP) and a connectionless datagram (UDP) transport with a fragmented handshake, retransmission, reliable rekey, anti-DoS cookies and roaming across IP or port changes.
 - **Throughput that scales with your kernel.** About 2.5 GB/s on one stream tunnel with 60 KB records on a laptop, and about 1.2 GB/s with 8 KB records, which depends on the record size ([PERFORMANCE.md](PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp)). On datagrams, `SendBatch` with UDP offload reached 701 MB/s on a Linux x86-64 CI runner and 528 MB/s on arm64, against 196 and 304 MB/s for one send per datagram.
-- **Authentication by default.** Unauthenticated use needs an explicit opt-out. Pin a server's static key, require it on the server, or give each client its own pre-shared key. An unknown client is indistinguishable from one with a wrong key.
-- **Evidence, not adjectives.** Machine-checked ProVerif models of secrecy, hybrid security, forward secrecy and authentication (including PSK), published conformance vectors, fuzz targets on every parser that sees unauthenticated bytes, a wire specification, and releases signed with cosign and attested.
+- **Authentication by default.** Unauthenticated use needs an explicit opt-out. Pin a server's static key, require it on the server, or give each client its own pre-shared key. By design, an unknown client is indistinguishable from one with a wrong key; this is not yet modelled.
+- **Evidence, not adjectives.** ProVerif models (symbolic, checked in CI) of secrecy, hybrid security, forward secrecy and authentication (including PSK), published conformance vectors, fuzz targets on every parser that sees unauthenticated bytes, a wire specification, and releases signed with cosign and attested.
 - **A license you can ship.** Apache-2.0, with an express patent grant, a license scan on every release and full third-party notices.
 
 ## At a glance
@@ -32,7 +32,7 @@ Quantum-Go is a **library**: you embed it in a Go program to encrypt a `net.Conn
 | Round trips until the client can send | 1 | 1 | Extra exchange alongside WireGuard's | Provider dependent | Several (IKE_SA_INIT, intermediate exchanges, IKE_AUTH) | 1 after TCP |
 | Handshake size | about 1.7 KB client flight plus a matching server flight (ML-KEM-1024) | 148 B and 92 B | Large (McEliece keys) | Provider dependent | Grows with each added exchange | adds about 1,176 B client and 1,088 B server |
 | Authentication | Required: static pin or per-client PSK (explicit opt-out) | Static public keys | Static keys, McEliece for authenticity | Account and keys managed by the provider | Certificates or PSK | Certificates |
-| Formal analysis | ProVerif models in-repo, run in CI | Noise-based design, published analyses | ProVerif symbolic analysis | Not published by the provider that I found | Not assessed here | Not assessed here |
+| Formal analysis | Symbolic ProVerif models in-repo, run in CI; no computational proof for the default suite | Noise-based design, published analyses | ProVerif symbolic analysis | Not published by the provider that I found | Not assessed here | Not assessed here |
 
 ## Notes and sources behind the table
 
@@ -62,7 +62,7 @@ Saying this plainly is part of being useful.
 
 ## When to choose what
 
-- **Choose Quantum-Go** when the tunnel lives inside your program, you want post-quantum protection without operating a VPN, and you value an auditable protocol with published proofs and vectors.
+- **Choose Quantum-Go** when the tunnel lives inside your program, you want post-quantum protection without operating a VPN, and you value an auditable protocol with published symbolic models and vectors.
 - **Choose WireGuard (with Rosenpass if you need post-quantum)** for a system-level VPN on hosts you control.
 - **Choose IKEv2/IPsec** when you need standards-based interoperability with existing gear and certificate PKI.
 - **Choose TLS 1.3 hybrid** for web and API traffic.
@@ -75,5 +75,5 @@ The speed figures in this repository come from our own benchmark workflow on Git
 ## Reproduce
 
 - Handshake and throughput numbers: `quantum-tunnel bench --handshakes N --datagram-handshakes N --throughput`, or the [Benchmarks workflow](../.github/workflows/bench.yml).
-- Proofs: `docs/formal/verify.sh` ([formal verification](formal/README.md)).
+- Symbolic models: `docs/formal/verify.sh` ([formal verification](formal/README.md)).
 - Conformance vectors: `go test ./test/conformance/`.

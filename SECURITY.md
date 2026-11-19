@@ -68,14 +68,14 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
    - Widely deployed and analyzed
 
 3. **Hybrid security guarantee**:
-   - System remains secure if **EITHER** algorithm is secure
+   - Intended property: the session key stays secret if **EITHER** algorithm holds. Checked in the symbolic model (`docs/formal/chkem_hybrid.pv`); the computational argument is a self-authored sketch (see the table below)
    - Defense-in-depth against cryptanalytic breakthroughs
    - Combined secret: `K = SHAKE-256(K_x || K_m || transcript || domain)`
 
 4. **Authenticated encryption**:
-   - AES-256-GCM (FIPS 140-2 approved)
+   - AES-256-GCM (a FIPS-approved algorithm; this library is not a validated module)
    - ChaCha20-Poly1305 (RFC 8439)
-   - Nonce-misuse resistance via sequence numbering
+   - Nonce uniqueness from sequence numbering; no nonce-misuse resistance
 
 5. **Forward secrecy**:
    - Ephemeral keys per session
@@ -86,20 +86,22 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 
 | Property                  | Status              | Implementation                         |
 |---------------------------|---------------------|----------------------------------------|
-| IND-CCA2 Security         | Provided            | ML-KEM-1024 + X25519                   |
-| Post-Quantum Resistance   | Provided            | ML-KEM-1024 (NIST Category 5)          |
+| ML-KEM-1024 IND-CCA2 | By design, per FIPS 203 | NIST's analysis of ML-KEM; not a result for this library |
+| X25519 | Diffie-Hellman, assumption-based | RFC 7748; not a KEM, and no IND-CCA2 notion applies on its own |
+| IND-CCA2 of the CH-KEM-v1 combiner | Argued, not reviewed | Self-authored reduction sketch, `docs/math/MATHEMATICAL_FOUNDATION.md` section 7.1; no published or machine-checked proof |
+| Post-Quantum Resistance   | Provided            | ML-KEM-1024 (NIST Category 5); the assurance is NIST's analysis, not a result for this library |
 | Forward Secrecy           | Provided            | Ephemeral keys per session             |
-| Replay Protection         | Provided            | Sliding window (1024, multi-word)      |
+| Replay Protection         | Provided            | Sliding window (1024, multi-word); tested, not verified symbolically |
 | Endpoint Authentication   | Required (PSK or key) | Static-key pinning (server) + PSK (mutual) |
 | Nonce-Misuse Resistance   | Partial/Conditional | Session-bound derived nonce (prefix \|\| seq), not transmitted |
-| Side-Channel Resistance   | Partial/Conditional | Relies on Go stdlib (audited)          |
+| Side-Channel Resistance   | Partial/Conditional | Relies on the Go standard library and on circl; no side-channel evaluation of this library's own code |
 | Key Compromise Impersonation | Not provided     | Not designed for (ephemeral keys)      |
 
 ### Authentication modes
 
 Since v0.0.29 the library requires authentication: an endpoint needs a PSK or a PSK lookup, a static key (server) or a pinned server key (client), or an explicit `AllowUnauthenticated` (`DialInsecure` and `ListenInsecure` for tests and demos). With the opt-out on both sides, the handshake provides encryption and forward secrecy but does not prove peer identity, so an active attacker can sit in the middle.
 
-**Static-key server authentication** (one way to satisfy the authentication requirement, since v0.0.12) lets a client cryptographically pin a server's long-term identity, stopping an active relaying machine-in-the-middle for the pinned-server case.
+**Static-key server authentication** (one way to satisfy the authentication requirement, since v0.0.12) lets a client cryptographically pin a server's long-term identity, stopping an active relaying machine-in-the-middle for the pinned-server case (checked in the symbolic model, `docs/formal/chkem_auth.pv`).
 
 1. Generate a long-term server identity:
 
@@ -135,7 +137,7 @@ The client encapsulates a second CH-KEM leg to the pinned key and folds the secr
 - Stream path: fails fast with `ErrServerKeyMismatch`.
 - Datagram path: fails closed as a retry-ceiling timeout (the server drops the undecryptable ClientFinished as if lost), so `DialDatagram` returns `ErrServerKeyMismatch` only after the handshake times out.
 
-The wire alert stays generic, so a prober that guesses pins learns nothing.
+The wire alert stays generic, so a prober that guesses pins learns nothing from the alert. Identity hiding is by design and is not yet modelled ([#280](https://github.com/sara-star-quant/Quantum-Go/issues/280)).
 
 **Requiring authentication (server side)**: by default a server with a static identity still serves clients that do not pin it (the static leg is opt-in from the client). Set `TransportConfig.RequireStaticAuth` (stream) or `tunnel.WithRequireStaticAuth()` (datagram) to reject any client that does not authenticate the server, closing a silent downgrade where a misconfigured or stripped client connects unauthenticated. An unpinned client then fails closed: stream with `ErrStaticAuthRequired`, datagram as a retry-ceiling timeout. Requiring auth without a static key is a misconfiguration that fails closed (`ErrStaticAuthMisconfigured`). This requires clients to prove they used the server's public key; it is not client identity verification (the key is public).
 
@@ -192,7 +194,7 @@ The client advertises the identity label so the server selects the matching key,
    - Nonce exhaustion triggers automatic rekey
 
 4. **Timing side-channels**:
-   - ML-KEM-1024 comes from cloudflare/circl (Go's `crypto/mlkem` in `-tags fips` builds) and the X-Wing suite from circl; both use constant-time operations
+   - ML-KEM-1024 comes from cloudflare/circl (Go's `crypto/mlkem` in `-tags fips` builds) and the X-Wing suite from circl; both document constant-time implementations; this project has not tested that (see [#276](https://github.com/sara-star-quant/Quantum-Go/issues/276))
    - X25519 from Go stdlib is constant-time
    - **AES-GCM requires hardware AES-NI** for constant-time (CPU flags checked)
    - ChaCha20-Poly1305 is software-constant-time
@@ -297,9 +299,9 @@ The client advertises the identity label so the server selects the matching key,
 
 | Dependency            | Version | Purpose                  | Audit Status                           |
 |-----------------------|---------|--------------------------|----------------------------------------|
-| cloudflare/circl      | v1.6.3+ | ML-KEM-1024 (default build), X-Wing | Audited by Trail of Bits (2023)        |
+| cloudflare/circl      | v1.6.3+ | ML-KEM-1024 (default build), X-Wing | Audit status not verified by us; advisories tracked by govulncheck in CI |
 | golang.org/x/crypto   | v0.49.0+| ChaCha20, SHAKE-256     | Go Security Team maintained            |
-| Go stdlib crypto      | 1.26+   | ML-KEM-1024 (`-tags fips`), AES-GCM, X25519, crypto/rand, runtime/secret | Regular security audits |
+| Go stdlib crypto      | 1.26+   | ML-KEM-1024 (`-tags fips`), AES-GCM, X25519, crypto/rand, runtime/secret | Trail of Bits audit of the Go cryptography packages, May 2025, covering ECDH, ML-KEM, AES-GCM and the random number generator ([Go blog](https://go.dev/blog/tob-crypto-audit)) |
 
 **Dependency update policy**:
 - Monitor security advisories
@@ -380,5 +382,5 @@ We acknowledge security researchers who responsibly disclose vulnerabilities:
 
 ---
 
-**Last updated**: 2026-03-13
-**Next review**: 2026-06-13 (quarterly updates)
+**Last updated**: 2026-11-19
+**Next review**: 2027-02-19 (quarterly updates)

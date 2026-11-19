@@ -14,7 +14,7 @@
 4. [ML-KEM-1024 Algorithm](#4-ml-kem-1024-algorithm)
 5. [X25519 Elliptic Curve Diffie-Hellman](#5-x25519-elliptic-curve-diffie-hellman)
 6. [CH-KEM: Cascaded Hybrid Key Encapsulation](#6-ch-kem-cascaded-hybrid-key-encapsulation)
-7. [Security Proofs](#7-security-proofs)
+7. [Security Argument (Proof Sketch)](#7-security-argument-proof-sketch)
 8. [Parameter Selection Rationale](#8-parameter-selection-rationale)
 9. [References](#9-references)
 
@@ -335,9 +335,16 @@ CH-KEM.Decaps(sk, ct):
 
 ---
 
-## 7. Security Proofs
+## 7. Security Argument (Proof Sketch)
 
 ### 7.1 Theorem: CH-KEM IND-CCA2 Security
+
+> **Status: argued, not proven.** This is a self-authored proof sketch. No independent reviewer has read it and no tool has checked it. Two points are open, and the theorem should not be relied on until they are settled:
+>
+> - The bound at the end adds the two advantages. That is the form for "secure if both assumptions hold". The theorem claims "either", which needs a bound that stays small when only one assumption holds.
+> - A chosen-ciphertext reduction for the Diffie-Hellman leg needs more than plain CDH. The X-Wing proof for its own combiner uses the strong Diffie-Hellman assumption in the random oracle model (ePrint 2024/039). Which assumption this combiner needs is not decided.
+>
+> The computational proof is tracked in [#277](https://github.com/sara-star-quant/Quantum-Go/issues/277).
 
 **Theorem:** CH-KEM is IND-CCA2 secure if either:
 1. X25519 is CDH-secure on Curve25519, OR
@@ -365,17 +372,17 @@ If ML-KEM is IND-CCA2 secure, Games 2 and 3 are indistinguishable.
 
 In Game 4, the adversary has zero advantage.
 
-**Conclusion:** ε ≤ ε_CDH + ε_MLKEM + negl(λ)
+**Conclusion as drafted:** ε ≤ ε_CDH + ε_MLKEM + negl(λ)
 
-If either ε_CDH or ε_MLKEM is negligible, then ε is negligible. ∎
+A sum is small only when both terms are small, so this bound supports "secure if both assumptions hold" and does not yet support "secure if either holds". The sketch stops here; see the status note at the start of this section.
 
 ### 7.2 Transcript Binding
 
-The inclusion of the transcript hash provides:
+Including the transcript hash in the key derivation gives the following, and nothing beyond it:
 
-1. **Key confirmation:** Ensures both parties computed the same shared secret
-2. **Man-in-the-middle prevention:** Any modification to public keys changes K
-3. **Forward secrecy:** Past transcripts don't help decrypt future sessions
+1. **Agreement on the inputs:** parties that saw different transcripts derive different keys, so a mismatch shows when the Finished MACs are checked. Key confirmation itself comes from the Finished messages (`docs/PROTOCOL.md`), not from this hash.
+2. **Binding to the exchanged values:** changing a public key or a ciphertext in transit changes the derived key. That detects tampering only when the peer is authenticated by a pin or a PSK; without one, an active attacker can substitute the values on both sides (see `SECURITY.md`, Authentication modes).
+3. **Forward secrecy** comes from ephemeral keys per session (checked in the symbolic model `docs/formal/chkem_fs.pv`), not from the transcript hash.
 
 ---
 
@@ -439,5 +446,5 @@ SHAKE-256 provides:
 
 ---
 
-*Document Version: 1.1*
-*Last Updated: 2026-03-13*
+*Document Version: 1.2*
+*Last Updated: 2026-11-19*
