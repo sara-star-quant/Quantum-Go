@@ -445,13 +445,28 @@ jobs:
           path: compliance-bundle.zip
           retention-days: 14
 
+  # The claims register must stay consistent with the files and tests it names, and every claim
+  # ID a document cites must exist. Pure Python, no toolchain, so it runs on docs-only changes too.
+  claims:
+    name: Claims register
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Test the checker
+        run: python3 -I scripts/check-claims-test.py
+
+      - name: Check the register
+        run: python3 -I scripts/check-claims.py
+
   # One check that stands for the whole workflow: it fails when any job failed or was
   # cancelled and passes when the rest succeeded or were skipped. Require this one in the
   # branch rules and the jobs above can change names or shape without a ruleset edit.
   ci-ok:
     name: CI result
     if: always()
-    needs: [changes, test, coverage, coverage-floors, lint, vuln, fips, fips-coverage, build, security, codeql, docker, compliance]
+    needs: [changes, test, coverage, coverage-floors, lint, vuln, fips, fips-coverage, build, security, codeql, docker, compliance, claims]
     runs-on: ubuntu-latest
     steps:
       - name: Check every job

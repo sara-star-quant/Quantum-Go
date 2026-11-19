@@ -119,7 +119,7 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 |----------|--------|
 | Post-quantum security | ML-KEM-1024 (NIST Category 5) |
 | Classical security | X25519 (128-bit) |
-| Hybrid property | Intended: secure if either algorithm holds. Symbolic model only; the computational proof is open ([SECURITY.md](SECURITY.md)) |
+| Hybrid property | Intended: secure if either algorithm holds. Symbolic model only (C-04); the computational proof is open (C-03, [claims register](docs/technical/CLAIMS.md)) |
 | Endpoint authentication | Required: PSK, static-key server pinning or require-auth; explicit opt-out for tests |
 | Forward secrecy | Ephemeral keys per session and per rekey |
 | Session resumption | Removed in v0.0.26: it gave no speedup, so every connection does a full handshake |

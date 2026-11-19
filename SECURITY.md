@@ -68,7 +68,7 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
    - Widely deployed and analyzed
 
 3. **Hybrid security guarantee**:
-   - Intended property: the session key stays secret if **EITHER** algorithm holds. Checked in the symbolic model (`docs/formal/chkem_hybrid.pv`); the computational argument is a self-authored sketch (see the table below)
+   - Intended property: the session key stays secret if **EITHER** algorithm holds. Checked in the symbolic model (`docs/formal/chkem_hybrid.pv`, claim C-04); the computational argument is a self-authored sketch (C-03, see the table below)
    - Defense-in-depth against cryptanalytic breakthroughs
    - Combined secret: `K = SHAKE-256(K_x || K_m || transcript || domain)`
 
@@ -86,15 +86,15 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 
 | Property                  | Status              | Implementation                         |
 |---------------------------|---------------------|----------------------------------------|
-| ML-KEM-1024 IND-CCA2 | By design, per FIPS 203 | NIST's analysis of ML-KEM; not a result for this library |
-| X25519 | Diffie-Hellman, assumption-based | RFC 7748; not a KEM, and no IND-CCA2 notion applies on its own |
-| IND-CCA2 of the CH-KEM-v1 combiner | Argued, not reviewed | Self-authored reduction sketch, `docs/math/MATHEMATICAL_FOUNDATION.md` section 7.1; no published or machine-checked proof |
+| ML-KEM-1024 IND-CCA2 | By design, per FIPS 203 (C-01) | NIST's analysis of ML-KEM; not a result for this library |
+| X25519 | Diffie-Hellman, assumption-based (C-02) | RFC 7748; not a KEM, and no IND-CCA2 notion applies on its own |
+| IND-CCA2 of the CH-KEM-v1 combiner | Argued, not reviewed (C-03) | Self-authored reduction sketch, `docs/math/MATHEMATICAL_FOUNDATION.md` section 7.1; no published or machine-checked proof |
 | Post-Quantum Resistance   | Provided            | ML-KEM-1024 (NIST Category 5); the assurance is NIST's analysis, not a result for this library |
-| Forward Secrecy           | Provided            | Ephemeral keys per session             |
-| Replay Protection         | Provided            | Sliding window (1024, multi-word); tested, not verified symbolically |
-| Endpoint Authentication   | Required (PSK or key) | Static-key pinning (server) + PSK (mutual) |
+| Forward Secrecy           | Provided (C-05, symbolic model) | Ephemeral keys per session             |
+| Replay Protection         | Provided (C-11) | Sliding window (1024, multi-word); tested, not verified symbolically |
+| Endpoint Authentication   | Required (PSK or key) (C-06, C-07) | Static-key pinning (server) + PSK (mutual) |
 | Nonce-Misuse Resistance   | Partial/Conditional | Session-bound derived nonce (prefix \|\| seq), not transmitted |
-| Side-Channel Resistance   | Partial/Conditional | Relies on the Go standard library and on circl; no side-channel evaluation of this library's own code |
+| Side-Channel Resistance   | Partial/Conditional (C-16: constant time not claimed) | Relies on the Go standard library and on circl; no side-channel evaluation of this library's own code |
 | Key Compromise Impersonation | Not provided     | Not designed for (ephemeral keys)      |
 
 ### Authentication modes

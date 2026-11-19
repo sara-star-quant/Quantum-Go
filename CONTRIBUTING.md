@@ -82,6 +82,10 @@ Use descriptive branch names:
 
 [docs/SCOPE.md](docs/SCOPE.md) lists every capability as shipped, planned or out of scope, and `llms.txt` points readers and AI tools at it. If your change ships, closes or reshapes something listed there, update its row in the same pull request. When a change adds a capability that a GitHub topic would describe (for example `zero-trust` once #196 ships, or `grpc` once #219 ships), say so in the pull request so the maintainer can add the topic.
 
+### Keep the claims register current
+
+[docs/technical/CLAIMS.md](docs/technical/CLAIMS.md) lists every security claim with a status and its evidence. If your change adds, strengthens, weakens or removes a security claim, change its row in the same pull request, and cite the claim ID wherever a document makes the claim. `scripts/check-claims.py` runs in CI and fails when a row's evidence does not exist or a document cites an ID the register lacks.
+
 ### Code Style
 
 - Follow standard Go conventions and `gofmt` formatting
