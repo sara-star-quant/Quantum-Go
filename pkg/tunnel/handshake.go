@@ -1062,6 +1062,12 @@ func InitiatorHandshake(session *Session, rw io.ReadWriter) error {
 		}
 	}
 
+	if err != nil {
+		// A failed handshake leaves nothing to reuse. Mark the session closed and drop the keys it
+		// derived, so a failure after keying (the final write failing, say) cannot leave an
+		// established session behind an error.
+		session.Close()
+	}
 	return err
 }
 
@@ -1098,5 +1104,11 @@ func ResponderHandshake(session *Session, rw io.ReadWriter) error {
 		}
 	}
 
+	if err != nil {
+		// A failed handshake leaves nothing to reuse. Mark the session closed and drop the keys it
+		// derived, so a failure after keying (the final write failing, say) cannot leave an
+		// established session behind an error.
+		session.Close()
+	}
 	return err
 }
