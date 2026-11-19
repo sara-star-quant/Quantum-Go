@@ -169,3 +169,16 @@ func TestForgedRecordDuringRekeyChangesNothing(t *testing.T) {
 		t.Fatalf("genuine record after the forgery: %q, %v", got, err)
 	}
 }
+
+// Only the initiator starts a stream rekey. A responder that calls it must get an error and keep
+// its state, because it would otherwise wait for a response nobody sends and ignore the
+// initiator's own request.
+func TestOnlyTheInitiatorStartsAStreamRekey(t *testing.T) {
+	_, responder := keyedSessionPair(t)
+	if _, _, err := responder.InitiateRekey(); err == nil {
+		t.Fatal("a responder started a rekey")
+	}
+	if responder.IsRekeyInProgress() || responder.State() != SessionStateEstablished {
+		t.Fatalf("a refused rekey left state=%v inProgress=%v", responder.State(), responder.IsRekeyInProgress())
+	}
+}

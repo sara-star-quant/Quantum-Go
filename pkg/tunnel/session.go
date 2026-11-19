@@ -807,6 +807,12 @@ func (s *Session) InitiateRekey() ([]byte, uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Only the initiator starts a stream rekey. A responder that did would wait for a response
+	// nobody sends and would ignore the initiator's own request.
+	if s.Role != RoleInitiator {
+		return nil, 0, qerrors.ErrInvalidState
+	}
+
 	if s.rekeyInProgress {
 		return nil, 0, qerrors.ErrRekeyInProgress
 	}
