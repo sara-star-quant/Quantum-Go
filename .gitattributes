@@ -1,0 +1,3 @@
+# Vendored test vectors are byte-exact input: Git must not rewrite their line endings, or the
+# SHA-256 check in the tests fails on Windows checkouts.
+pkg/crypto/testdata/wycheproof/* -text
