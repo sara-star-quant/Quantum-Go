@@ -248,6 +248,23 @@ func (kp *KeyPair) PublicKey() *PublicKey {
 	}
 }
 
+// combineKey derives the CH-KEM-v1 shared secret from the two component secrets and the values
+// the key must bind. Encapsulate and Decapsulate both call it, so the combination exists once.
+//
+//	transcript = SHA3-256(pk_x25519 || pk_mlkem || ct_x25519 || ct_mlkem || version || role)
+//	K          = SHAKE-256(K_x25519 || K_mlkem || transcript)
+//
+// Both public keys, both ciphertexts, the protocol version and the role go into the key
+// derivation, so two exchanges that differ in any of them derive different keys even when the
+// component secrets are equal. role is the encapsulating party's role.
+func combineKey(x25519Secret, mlkemSecret, pkX25519, pkMLKEM, ctX25519, ctMLKEM, version []byte, role Role) ([]byte, error) {
+	transcriptHash, err := crypto.TranscriptHash(pkX25519, pkMLKEM, ctX25519, ctMLKEM, version, []byte{byte(role)})
+	if err != nil {
+		return nil, err
+	}
+	return crypto.DeriveCHKEMSecret(x25519Secret, mlkemSecret, transcriptHash)
+}
+
 // Encapsulate performs CH-KEM encapsulation to create a shared secret.
 //
 // This operation:
@@ -293,24 +310,11 @@ func Encapsulate(recipientPublic *PublicKey, role Role) (*Ciphertext, []byte, er
 		mlkemCiphertext: mlkemCiphertext,
 	}
 
-	// Compute transcript hash for domain binding, including the protocol version
-	// and the encapsulating party's role (reflection/role-confusion resistance).
-	// transcript = SHA3-256(pk_x25519 || pk_mlkem || ct_x25519_eph || ct_mlkem || version || role)
-	transcriptHash, err := crypto.TranscriptHash(
-		recipientPublic.x25519.Bytes(),
-		recipientPublic.mlkem.Bytes(),
-		ct.x25519Ephemeral,
-		ct.mlkemCiphertext,
-		protocolVersionBytes(),
-		[]byte{byte(role)},
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Derive final shared secret
-	// K = SHAKE-256(K_x25519 || K_mlkem || transcript, 256)
-	sharedSecret, err := crypto.DeriveCHKEMSecret(x25519Secret, mlkemSecret, transcriptHash)
+	// The encapsulator binds its own role (reflection/role-confusion resistance).
+	sharedSecret, err := combineKey(x25519Secret, mlkemSecret,
+		recipientPublic.x25519.Bytes(), recipientPublic.mlkem.Bytes(),
+		ct.x25519Ephemeral, ct.mlkemCiphertext,
+		protocolVersionBytes(), role)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -362,23 +366,12 @@ func Decapsulate(ct *Ciphertext, kp *KeyPair, role Role) ([]byte, error) {
 		return nil, qerrors.NewCryptoError("CHKEM.Decapsulate", err)
 	}
 
-	// Compute transcript hash (must match encapsulation). The decapsulator binds
-	// the peer's (encapsulating responder's) role, so a legit exchange matches and
-	// a reflected/same-role one does not.
-	transcriptHash, err := crypto.TranscriptHash(
-		kp.x25519Public.Bytes(),
-		kp.mlkemPublic.Bytes(),
-		ct.x25519Ephemeral,
-		ct.mlkemCiphertext,
-		protocolVersionBytes(),
-		[]byte{byte(role.peer())},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// Derive final shared secret
-	sharedSecret, err := crypto.DeriveCHKEMSecret(x25519Secret, mlkemSecret, transcriptHash)
+	// The decapsulator binds the peer's (encapsulating responder's) role, so a legit
+	// exchange matches and a reflected or same-role one does not.
+	sharedSecret, err := combineKey(x25519Secret, mlkemSecret,
+		kp.x25519Public.Bytes(), kp.mlkemPublic.Bytes(),
+		ct.x25519Ephemeral, ct.mlkemCiphertext,
+		protocolVersionBytes(), role.peer())
 	if err != nil {
 		return nil, err
 	}
