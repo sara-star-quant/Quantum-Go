@@ -236,6 +236,12 @@ func (rw *ReplayWindow) Check(seq uint64) bool {
 	return rw.inner.Check(seq)
 }
 
+// Admissible reports whether seq could still be accepted, without recording it. Use it before
+// authenticating a frame and Check only after, so a forged frame cannot spend a sequence number.
+func (rw *ReplayWindow) Admissible(seq uint64) bool {
+	return rw.inner.Admissible(seq)
+}
+
 // NewSession creates a new session with the given role.
 func NewSession(role Role) (*Session, error) {
 	return NewSessionWithSuite(role, chkem.DefaultSuite())
@@ -515,14 +521,12 @@ func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce [
 		return nil, qerrors.ErrInvalidState
 	}
 
-	// Check replay window
-	if !s.replayWindow.Check(seq) {
-		if s.observer != nil {
-			s.observer.OnReplayDetected()
-		}
-		// The window records the number before the record authenticates, so a forged record can
-		// raise this too: the evidence is unauthenticated.
-		s.reportSecurity(SecurityReplay, SecurityLow)
+	// Peek at the replay window. It records the number only after the record authenticates, so a
+	// forged record cannot use up a sequence number or push the window ahead of the genuine
+	// records. The replay signal below still rests on unauthenticated evidence: a forged record
+	// with a used number raises it too.
+	if !s.replayWindow.Admissible(seq) {
+		s.replayDetected()
 		return nil, qerrors.ErrReplayDetected
 	}
 
@@ -559,6 +563,12 @@ func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce [
 		s.reportDecrypt(timer, len(ciphertext), err)
 		return nil, err
 	}
+	// The record authenticated: spend its sequence number. A concurrent receiver can have recorded
+	// the same number between the peek and here, and then this copy is the replay.
+	if !s.replayWindow.Check(seq) {
+		s.replayDetected()
+		return nil, qerrors.ErrReplayDetected
+	}
 	s.reportDecrypt(timer, len(ciphertext), nil)
 
 	s.BytesReceived.Add(int64(len(plaintext)))
@@ -568,6 +578,14 @@ func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce [
 	s.mu.Unlock()
 
 	return plaintext, nil
+}
+
+// replayDetected reports a rejected replay to the observer and as a local security event.
+func (s *Session) replayDetected() {
+	if s.observer != nil {
+		s.observer.OnReplayDetected()
+	}
+	s.reportSecurity(SecurityReplay, SecurityLow)
 }
 
 // NeedsRekey returns true if the session should initiate rekeying.
