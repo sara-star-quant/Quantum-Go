@@ -512,6 +512,7 @@ func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce [
 	cipher := s.recvCipher
 	pendingCipher := s.pendingRecvCipher
 	prefix := s.recvNoncePrefix
+	window := s.replayWindow // a rekey can swap the window, so take it under the same lock as the ciphers
 	s.mu.RUnlock()
 
 	if cipher == nil {
@@ -525,7 +526,7 @@ func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce [
 	// forged record cannot use up a sequence number or push the window ahead of the genuine
 	// records. The replay signal below still rests on unauthenticated evidence: a forged record
 	// with a used number raises it too.
-	if !s.replayWindow.Admissible(seq) {
+	if !window.Admissible(seq) {
 		s.replayDetected()
 		return nil, qerrors.ErrReplayDetected
 	}
@@ -565,7 +566,7 @@ func (s *Session) decryptDataTo(dst, ciphertext []byte, seq uint64, aad, nonce [
 	}
 	// The record authenticated: spend its sequence number. A concurrent receiver can have recorded
 	// the same number between the peek and here, and then this copy is the replay.
-	if !s.replayWindow.Check(seq) {
+	if !window.Check(seq) {
 		s.replayDetected()
 		return nil, qerrors.ErrReplayDetected
 	}
