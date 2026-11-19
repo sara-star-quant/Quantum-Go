@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.35][] - 2026-11-19
+
+**Theme:** Stream session fixes, found by writing the session's invariants as tests first. A forged stream record no longer makes the genuine records after it look like replays, a session that closes during a rekey stays closed and drops the rekey's key material, and a failed handshake leaves no keyed session behind. Two exported calls behave differently, listed first below. Nothing changes on the wire and no advisory applies: the worst cases were a stalled connection and a closed session that kept live send keys, and none is a remote crash or a key exposure.
+
+### Upgrade notes
+
+- `InitiateRekey`, and `Transport.SendRekey` through it, now returns `ErrInvalidState` on a responder session instead of marking a rekey in progress. Affected: code that started a rekey from the server side, which stalled before. Fix: start it on the initiator; `CheckAndRekey` already does.
+- `InitiatorHandshake` and `ResponderHandshake` now close the session when they return an error. Affected: code that reused a session after a failed handshake. Fix: create a new session for the next attempt.
+
 ### Fixed
 
 - A session that closes during a rekey stays closed, and `Close` drops the key material a half-finished rekey holds. A late `ActivateRekeySend` or `ActivatePendingKeys` used to move a closed session back to Established with a send cipher, and `Close` left the pending ciphers, the pending master secret and the pending key pair in memory.
@@ -15,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A failed handshake closes its session. `InitiatorHandshake` and `ResponderHandshake` now close the session on any error, which marks it Closed and drops the keys it derived, so an error no longer sits beside a session that reads as established.
 - A forged stream record no longer uses up a sequence number. The stream replay window now records a number only after the record authenticates, as the datagram path already did, so a forged record can no longer make the genuine record that follows look like a replay or too old.
 - The datagram reassembler sweeps for expired fragments at most once per quarter of its timeout, whether a fragment arrives or the cookie gate reads the source count, instead of on every fragment, so a fragment flood no longer rescans every buffer per packet and stale state no longer holds cookie pressure up for longer than that quarter.
+
+### Added
+
+- Independent test vectors (Project Wycheproof, Apache-2.0, vendored with their license, a source commit and a SHA-256 per file) for ML-KEM-1024, X25519, AES-256-GCM and ChaCha20-Poly1305, run through this library's wrappers on the standard build, and on the FIPS build for everything it supports (it refuses ChaCha20-Poly1305, and the test asserts that refusal). No wrapper changed.
+- Binding tests for the CH-KEM-v1 key: changing either public key, either ciphertext, the version or the role must change the key, with the component secrets held equal. The combination moved into one helper with no change in behavior.
+- A claims register, `docs/technical/CLAIMS.md`, with a CI check (`scripts/check-claims.py`): each security claim has one status and named evidence, and a document cannot cite a claim the register lacks.
+- A weekly mutation report workflow for `pkg/protocol` and `pkg/crypto`. It reports and does not gate.
+- Tests for rate-limit enforcement, an I/O fault at every step of the stream handshake, the rekey lifecycle, the datagram pre-authentication guards, the self-test paths, the FIPS cipher-suite refusal, the peer identity of a pinned-server handshake and the datagram roaming limit (a held-back fresh frame moves the session's send address until the peer's next frame, now pinned by a test). The coverage floors rise to 90 in total, 89 for `pkg/crypto`, 89 for `pkg/chkem`, 96 for `pkg/protocol` and 89 for `pkg/tunnel`.
+
+### Docs
+
+- The security claims in the README, SECURITY.md, the formal-verification page, the math document, COMPARISON and RELATED_WORK now match their evidence. ProVerif results read "verified in the model". Section 7 of `docs/math/MATHEMATICAL_FOUNDATION.md` is a proof sketch with a status note: its bound supports "secure if both hold" and not "either", and the assumption for the X25519 leg is undecided. The unsourced audit claim for circl is gone, and the Go standard library row cites the Trail of Bits audit of May 2025.
 
 ## [0.0.34][] - 2026-11-18
 
@@ -666,7 +687,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.34...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.35...HEAD
+[0.0.35]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.34...v0.0.35
 [0.0.34]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.33...v0.0.34
 [0.0.33]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.32...v0.0.33
 [0.0.32]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.31...v0.0.32
