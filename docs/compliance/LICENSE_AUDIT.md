@@ -39,7 +39,7 @@ No third-party code is copied into the repository (no vendor directory, no copie
 | Rosenpass whitepaper | cited for concepts; paper license not recorded |
 | Rosenpass (code) | Apache-2.0 per GitHub's license field, checked 2026-11-11; concepts only, no code used |
 | Kudelski pq-wireguard (code) | MIT per GitHub's license field and a `COPYING` file, checked 2026-11-11; archived repository; concepts only, no code used |
-| Project Wycheproof test vectors (ML-KEM-1024) | Apache-2.0 per the repository's LICENSE, checked 2026-11-19; vendored unmodified in `pkg/crypto/testdata/wycheproof` with the license text, the source commit and a SHA-256 per file; test input only, not shipped in release archives |
+| Project Wycheproof test vectors (ML-KEM-1024, X25519, AES-GCM, ChaCha20-Poly1305) | Apache-2.0 per the repository's LICENSE, checked 2026-11-19; vendored unmodified in `pkg/crypto/testdata/wycheproof` with the license text, the source commit and a SHA-256 per file; test input only, not shipped in release archives |
 
 Deliberately not used: ratcheted and reinforced KEM constructions (licensing position unclear), non-standardized KEMs, and papers published under non-derivative or non-commercial terms (for example ePrint 2026/1581, whose page shows CC BY-NC-ND, checked 2026-11-11). Author lists and titles in `docs/DESIGN_INFLUENCES.md` were checked against the publisher or paper page on the same date.
 

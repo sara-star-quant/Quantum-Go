@@ -14,8 +14,11 @@ import (
 type wycheproofFile struct {
 	NumberOfTests int `json:"numberOfTests"`
 	TestGroups    []struct {
-		Type  string           `json:"type"`
-		Tests []map[string]any `json:"tests"`
+		Type    string           `json:"type"`
+		KeySize int              `json:"keySize"`
+		IvSize  int              `json:"ivSize"`
+		TagSize int              `json:"tagSize"`
+		Tests   []map[string]any `json:"tests"`
 	} `json:"testGroups"`
 }
 
