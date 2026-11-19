@@ -697,6 +697,18 @@ func (s *Session) Close() {
 
 	s.sendCipher = nil
 	s.recvCipher = nil
+	// A half-finished rekey holds key material as sensitive as the live keys.
+	if s.pendingRekeySecret != nil {
+		crypto.Zeroize(s.pendingRekeySecret)
+		s.pendingRekeySecret = nil
+	}
+	if s.pendingRekeyKeyPair != nil {
+		s.pendingRekeyKeyPair.Zeroize()
+		s.pendingRekeyKeyPair = nil
+	}
+	s.pendingRecvCipher = nil
+	s.pendingSendCipher = nil
+	s.rekeyInProgress = false
 	// A datagram session also holds its keys per epoch. Drop both epochs; every reader
 	// goes through datagramCurLocked or datagramRecvCipherLocked, which treat nil as closed.
 	// Go AEAD objects cannot be scrubbed, so this releases references as the stream path
@@ -962,6 +974,9 @@ func (s *Session) finalizeRekeyStateLocked() {
 	}
 	s.rekeyInProgress = false
 	s.rekeyActivationSeq = 0
+	if s.State() == SessionStateClosed {
+		return // Closed is terminal: a late activation must not bring a closed session back
+	}
 	s.EstablishedAt = time.Now()
 	s.state.Store(int32(SessionStateEstablished))
 }
@@ -994,7 +1009,7 @@ func (s *Session) ActivatePendingKeys() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if !s.rekeyInProgress {
+	if !s.rekeyInProgress || s.State() == SessionStateClosed {
 		return
 	}
 
@@ -1025,6 +1040,9 @@ func (s *Session) ActivateRekeySend() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.State() == SessionStateClosed {
+		return
+	}
 	if s.pendingSendCipher != nil {
 		s.sendCipher = s.pendingSendCipher
 		s.pendingSendCipher = nil
