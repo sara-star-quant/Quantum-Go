@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A failed handshake closes its session. `InitiatorHandshake` and `ResponderHandshake` now close the session on any error, which marks it Closed and drops the keys it derived, so an error no longer sits beside a session that reads as established.
 - A forged stream record no longer uses up a sequence number. The stream replay window now records a number only after the record authenticates, as the datagram path already did, so a forged record can no longer make the genuine record that follows look like a replay or too old.
-- The datagram reassembler sweeps for expired fragments at most once per quarter of its timeout instead of on every fragment, and it expires state when the endpoint reads its source count, so a fragment flood no longer rescans every buffer per packet and stale state no longer holds cookie pressure up.
+- The datagram reassembler sweeps for expired fragments at most once per quarter of its timeout, whether a fragment arrives or the cookie gate reads the source count, instead of on every fragment, so a fragment flood no longer rescans every buffer per packet and stale state no longer holds cookie pressure up for longer than that quarter.
 
 ## [0.0.34][] - 2026-11-18
 

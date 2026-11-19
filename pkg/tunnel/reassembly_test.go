@@ -227,3 +227,31 @@ func TestReassembler_SameTypeDifferentSizeDoNotCollide(t *testing.T) {
 		t.Fatal("the retried hello reassembled with bytes from the stale one")
 	}
 }
+
+// sourceCount runs for every handshake frame, because the cookie gate asks whether the endpoint is
+// under pressure before it looks at anything else. It must not rescan every source and buffer on
+// each call: with a thousand held sources that scan cost 48 microseconds a packet, enough for a
+// modest flood to hold the reassembler lock and starve real handshakes. The fake clock advances a
+// millisecond per read, so a thousand calls span one second, and a sweep every quarter of the
+// 10 second timeout means at most one sweep in that span.
+func TestReassembler_SourceCountDoesNotSweepPerCall(t *testing.T) {
+	r := NewReassembler(4, 4096, 10*time.Second)
+	clock := time.Unix(1_000, 0)
+	r.now = func() time.Time { clock = clock.Add(time.Millisecond); return clock }
+	a := []byte{1}
+	if _, _, err := r.Add("src", frag(1, 0, 16, a), a); err != nil {
+		t.Fatal(err)
+	}
+
+	sweeps, last := 0, r.lastSweep
+	for range 1000 {
+		r.sourceCount()
+		if !r.lastSweep.Equal(last) {
+			sweeps++
+			last = r.lastSweep
+		}
+	}
+	if sweeps > 1 {
+		t.Fatalf("sourceCount swept %d times in 1000 calls over one second, want at most 1", sweeps)
+	}
+}

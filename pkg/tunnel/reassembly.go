@@ -166,13 +166,14 @@ func (r *Reassembler) Drop(source string) {
 }
 
 // sourceCount returns the number of sources with in-progress reassembly state.
-// The endpoint reads it as one of the cookie-pressure signals; it is only
-// consulted on the handshake-frame path (never the data hot path), so the lock
-// cost is irrelevant and a mirrored atomic is not worth the desync risk.
+// The endpoint reads it as one of the cookie-pressure signals for every handshake
+// frame, and an attacker drives that path before any authentication, so it must stay
+// cheap: it uses the throttled sweep, which runs at most once per quarter of the
+// timeout, and the count can include state up to that long past its expiry.
 func (r *Reassembler) sourceCount() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.sweepLocked(true)
+	r.sweepLocked(false)
 	return len(r.bySource)
 }
 
