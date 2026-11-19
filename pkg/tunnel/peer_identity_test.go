@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/internal/constants"
+	"github.com/sara-star-quant/quantum-go/pkg/chkem"
 )
 
 func pskBytes(base byte) []byte {
@@ -94,6 +95,34 @@ func TestPeerIdentityEmptyWithoutPSK(t *testing.T) {
 	t.Cleanup(func() { _ = server.Close() })
 	if id := server.Peer().Identity; id != nil {
 		t.Fatalf("an unauthenticated peer got identity %q", id)
+	}
+}
+
+// Pinning authenticates the server to the client and nothing more: the server learns no client
+// identity unless a PSK supplies one. SECURITY.md says so, and this keeps the code honest if a
+// later change starts reporting an identity it cannot have verified.
+func TestPeerIdentityEmptyWithServerPinOnly(t *testing.T) {
+	serverKP, _, err := chkem.GenerateStaticKeyPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverCfg := DefaultTransportConfig()
+	serverCfg.StaticKeyPair = serverKP
+	ln, accepted := acceptOne(t, serverCfg)
+	clientCfg := DefaultTransportConfig()
+	clientCfg.PinnedServerKey = serverKP.PublicKey()
+	client, err := DialWithConfig("tcp", ln.Addr().String(), clientCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	server := <-accepted
+	t.Cleanup(func() { _ = server.Close() })
+	if id := server.Peer().Identity; id != nil {
+		t.Fatalf("a client that only pinned the server got identity %q", id)
+	}
+	if id := client.Peer().Identity; id != nil {
+		t.Fatalf("a pinning client got a server identity %q from a handshake with no PSK", id)
 	}
 }
 
