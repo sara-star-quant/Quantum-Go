@@ -1,8 +1,8 @@
 // Package crypto implements key derivation functions using SHAKE-256 (SHA-3 XOF).
 //
 // This file (kdf.go) uses SHAKE-256 (FIPS 202), an extendable-output function (XOF) based on the
-// Keccak sponge construction. It provides 256-bit security against collision
-// and preimage attacks, and 128-bit security against length-extension attacks.
+// Keccak sponge construction. Its preimage resistance reaches 256 bits, and its collision
+// resistance is half the output length up to 256 bits: 128 bits at the 32-byte outputs used here.
 //
 // Mathematical Foundation:
 //
@@ -13,16 +13,18 @@
 // 2. Squeeze: Extract arbitrary-length output
 //
 // Security Properties:
-//   - 256-bit preimage and collision resistance
+//   - Preimage resistance up to 256 bits; collision resistance of half the output length
+//     (128 bits at 32 bytes)
 //   - Extendable output: can generate arbitrary length keys
 //   - No length-extension attacks (unlike SHA-2)
 //   - Domain separation prevents key/message confusion
 //
 // Usage in CH-KEM:
 // The KDF combines multiple secret values with domain separation to derive
-// the final shared secret:
+// the final shared secret. Every input carries a 4-byte length prefix, preceded by the domain
+// string and the input count (DeriveKeyMultiple):
 //
-//	K = SHAKE-256(K_x25519 || K_mlkem || transcript_hash || context_info, 256)
+//	K = SHAKE-256(domain || K_x25519 || K_mlkem || transcript_hash), 32 bytes
 
 package crypto
 
@@ -213,14 +215,14 @@ func TranscriptHash(components ...[]byte) ([]byte, error) {
 //
 // This is the core key derivation for the Cascaded Hybrid KEM:
 //
-//	K_final = SHAKE-256(
-//	    K_classical || K_pq || transcript_hash || context_info,
-//	    output_length = 256 bits
-//	)
+//	K_final = SHAKE-256(domain || K_classical || K_pq || transcript_hash), 32 bytes,
+//	          with a length prefix on every input
 //
 // Security Properties:
-//   - If EITHER X25519 OR ML-KEM is secure, the output is indistinguishable from random
-//   - Transcript binding prevents man-in-the-middle attacks
+//   - The claim that the output is indistinguishable from random if EITHER X25519 OR ML-KEM
+//     holds is argued, not proven (docs/technical/CLAIMS.md, C-03)
+//   - Transcript binding changes the key when any bound value changes (C-19); it detects
+//     tampering only when the peer is authenticated
 //   - Domain separation prevents cross-protocol attacks
 //
 // Parameters:

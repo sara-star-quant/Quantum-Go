@@ -252,7 +252,10 @@ func (kp *KeyPair) PublicKey() *PublicKey {
 // the key must bind. Encapsulate and Decapsulate both call it, so the combination exists once.
 //
 //	transcript = SHA3-256(pk_x25519 || pk_mlkem || ct_x25519 || ct_mlkem || version || role)
-//	K          = SHAKE-256(K_x25519 || K_mlkem || transcript)
+//	K          = SHAKE-256(domain || K_x25519 || K_mlkem || transcript)
+//
+// Both hashes take a component count and a 4-byte length prefix on every input (TranscriptHash,
+// DeriveKeyMultiple), so adjacent values cannot trade bytes.
 //
 // Both public keys, both ciphertexts, the protocol version and the role go into the key
 // derivation, so two exchanges that differ in any of them derive different keys even when the
