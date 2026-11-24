@@ -21,6 +21,11 @@ updates:
     groups:
       github-actions:
         patterns: ["*"]
+    ignore:
+      # v2.6.0's container image cannot be pulled (ossf/scorecard-action#1752), which fails the
+      # Scorecard job. Remove this entry when a fixed release ships.
+      - dependency-name: "ossf/scorecard-action"
+        versions: ["2.6.0"]
 
   - package-ecosystem: docker
     directory: /
