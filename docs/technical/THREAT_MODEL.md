@@ -274,7 +274,7 @@ Risk Score: 1-25
 | V18 | A forged RekeyInit under the cached epoch made the responder resend its response to its peer                                                                                        | Low      | Fixed in 0.0.36: the cache answers only a byte-identical retransmit                                                                                                                                                                                                                                                                                     |
 | V19 | Half-open cleanup keyed by address could free a newer responder's slot                                                                                                              | Low      | Fixed in 0.0.36 (cleanup by owning session)                                                                                                                                                                                                                                                                                                             |
 | V20 | A failed stream rekey left the session marked as rekeying                                                                                                                           | Medium   | Fixed in 0.0.36 (the session closes)                                                                                                                                                                                                                                                                                                                    |
-| V21 | One real address can hold many half-open slots (T12)                                                                                                                                | Medium   | Open: an optional per-address cap is planned, default off, because users behind one NAT share an address                                                                                                                                                                                                                                                |
+| V21 | One real address can hold many half-open slots (T12)                                                                                                                                | Medium   | Mitigated when set: WithMaxHalfOpenPerIP caps handshakes per address (IPv6 per /64). Off by default because users behind one NAT share an address                                                                                                                                                                                                       |
 | V22 | Datagram rekey: after every response flight was lost, the initiator's next attempt used a fresh init, so the responder's cached response never matched and the pair could not rekey | Medium   | Fixed after 0.0.36 (unreleased): the initiator resends the same init until the responder answers; end-to-end test                                                                                                                                                                                                                                       |
 | V23 | A forged RETRY with a garbage cookie can use up the initiator's three honored RETRYs                                                                                                | Low      | Open: needs the 32-bit sender index; accepted for now                                                                                                                                                                                                                                                                                                   |
 | V24 | Forged records under a live key (T13)                                                                                                                                               | Medium   | Mitigated: a datagram session closes after 2^36 failed authentications (claim C-21); a stream ends on the first failed record                                                                                                                                                                                                                           |
@@ -300,14 +300,14 @@ Likelihood (L) and impact (I) use the scales in 2.3. Scores for T1 to T11 come f
 | T9     | 2 x 4 = 8 (Moderate)   | 1 x 4 = 4 (Low)         | Negotiation path has tests, no separate formal model                                                     |
 | T10    | 4 x 2 = 8 (Moderate)   | 4 x 2 = 8 (Moderate)    | No control removes it; padding is opt-in and does not hide the header                                    |
 | T11    | 2 x 5 = 10 (High)      | 2 x 5 = 10 (High)       | An in-process suite cannot be sandboxed                                                                  |
-| T12    | 3 x 3 = 9 (Moderate)   | 3 x 3 = 9 (Moderate)    | No mitigation yet: an optional per-address cap is planned, default off                                   |
+| T12    | 3 x 3 = 9 (Moderate)   | 3 x 3 = 9 (Moderate)    | With WithMaxHalfOpenPerIP set; unchanged while it is off, which is the default                           |
 | T13    | 2 x 4 = 8 (Moderate)   | 1 x 4 = 4 (Low)         | Datagram: close at 2^36 failures (C-21); stream: first failure ends the session                          |
 | T14    | 2 x 4 = 8 (Moderate)   | 2 x 4 = 8 (Moderate)    | Unchanged until an authenticated key exchange model is chosen and applied                                |
 | T15    | 3 x 3 = 9 (Moderate)   | 2 x 3 = 6 (Moderate)    | Stream failure closes the session (0.0.36); the datagram lost-response stall is fixed after 0.0.36 (V22) |
 
 ### 6.2 What Does Not Improve
 
-T3 and T14 stay where they are for different reasons: T3 relies on the standard library's constant-time code, which this project has not tested (claim C-16), and T14 waits for an authenticated key exchange model. T10, T11 and T12 do not improve because no control removes them today: padding is opt-in and does not hide the header, an in-process suite cannot be sandboxed, and the per-address cap for T12 is planned and not built.
+T3 and T14 stay where they are for different reasons: T3 relies on the standard library's constant-time code, which this project has not tested (claim C-16), and T14 waits for an authenticated key exchange model. T10, T11 and T12 do not improve because no control removes them today: padding is opt-in and does not hide the header, an in-process suite cannot be sandboxed, and the per-address cap for T12 exists and is off by default.
 
 ---
 
@@ -356,7 +356,7 @@ Keys rotate by a rekey that the initiator starts before a key reaches its wear l
 | T8 (DoS)                | Per-IP and handshake rate limits, handshake timeout, `MaxPendingHandshakes`; on UDP a load-gated stateless cookie and a de-amplifying RETRY                  | Medium to High under load; Medium otherwise                                                         |
 | T9 (Downgrade)          | Offered suites bound into the Finished transcript; HelloRetryRequest synthetic transcript hash; offer list enforced on both sides, including the FIPS filter | High, tested; not separately modeled                                                                |
 | T10 (Fingerprinting)    | Optional fixed-size handshake padding                                                                                                                        | Low                                                                                                 |
-| T12 (One valid address) | Global half-open ceiling; load-gated cookie; a per-address cap is planned as an option                                                                       | Low against a single host today; the ceiling bounds memory, not availability                        |
+| T12 (One valid address) | Global half-open ceiling; load-gated cookie; optional per-address cap (WithMaxHalfOpenPerIP, IPv6 per /64), default off                                      | Medium with the cap set; Low against a single host without it                                       |
 | T13 (Forgery attempts)  | Datagram session closes after 2^36 failed authentications; the stream ends on the first failed record; usage limits tested                                   | High                                                                                                |
 | T14 (Static-key signal) | Implicit rejection; the full ciphertext compared by the standard library and circl, tested at every byte; rate limits bound attempts                         | Medium; the model is open                                                                           |
 | T15 (Rekey failure)     | A failed stream rekey closes the session; within one datagram rekey attempt the same init is retransmitted until a response arrives                          | Medium; the datagram lost-response case is fixed after 0.0.36                                       |
@@ -370,15 +370,15 @@ Keys rotate by a rekey that the initiator starts before a key reaches its wear l
 
 ### 8.1 Accepted Risks
 
-| Risk                                                 | Justification                                                                                                                              | Area           |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
-| Side-channel (reduced)                               | Using audited std lib                                                                                                                      | Implementation |
-| Key theft (reduced)                                  | Operational controls                                                                                                                       | Operations     |
-| Algorithm break (very low)                           | Multiple layers                                                                                                                            | Cryptographic  |
-| Wire fingerprinting (T10)                            | No obfuscation layer yet; padding is opt-in                                                                                                | Protocol       |
-| External suite code (T11)                            | The registering application owns the suite's code and supply chain                                                                         | Operations     |
-| One valid address holding many half-open slots (T12) | Memory is bounded by the ceiling; the per-address cap waits for a pilot that shows the need, because users behind one NAT share an address | Protocol       |
-| Static pinned-key signal (T14)                       | One bit per online attempt, rate limited, no known failure attack; accepted until an authenticated key exchange model is applied           | Cryptographic  |
+| Risk                                                 | Justification                                                                                                                       | Area           |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| Side-channel (reduced)                               | Using audited std lib                                                                                                               | Implementation |
+| Key theft (reduced)                                  | Operational controls                                                                                                                | Operations     |
+| Algorithm break (very low)                           | Multiple layers                                                                                                                     | Cryptographic  |
+| Wire fingerprinting (T10)                            | No obfuscation layer yet; padding is opt-in                                                                                         | Protocol       |
+| External suite code (T11)                            | The registering application owns the suite's code and supply chain                                                                  | Operations     |
+| One valid address holding many half-open slots (T12) | Memory is bounded by the ceiling; the per-address cap exists and stays off by default because users behind one NAT share an address | Protocol       |
+| Static pinned-key signal (T14)                       | One bit per online attempt, rate limited, no known failure attack; accepted until an authenticated key exchange model is applied    | Cryptographic  |
 
 ### 8.2 Residual Risk Summary
 
@@ -389,7 +389,7 @@ Keys rotate by a rekey that the initiator starts before a key reaches its wear l
 | Protocol       | Moderate       | Low             | Yes         |
 | Operational    | High           | Moderate        | Conditional |
 
-**Overall Residual Risk: LOW to MODERATE** for the stream transport and for authenticated deployments; MODERATE for an internet-facing datagram responder until the per-address cap and the datagram rekey fix exist.
+**Overall Residual Risk: LOW to MODERATE** for the stream transport and for authenticated deployments; MODERATE for an internet-facing datagram responder until the per-address cap is switched on.
 
 ---
 
@@ -398,11 +398,10 @@ Keys rotate by a rekey that the initiator starts before a key reaches its wear l
 ### 9.1 High Priority
 
 1. **Choose an authenticated key exchange model for the handshake** (Bellare-Rogaway with forward secrecy, CK or eCK) and apply it to the computational argument; this also settles T14. Tracked in #277 and #276
-2. **Build the optional per-address half-open cap** (T12), default off, and document a starting value for deployments that face the internet
-3. **Model suite negotiation and HelloRetryRequest in ProVerif.** Downgrade resistance rests on the transcript-agreement proof and on tests today; the negotiation path itself is not formally modeled
-4. **Establish key management procedures** including rotation schedules
-5. **Deploy monitoring** for cryptographic operation failures
-6. **Reduce wire fingerprinting (T10)** with an optional obfuscation layer; the default header is a constant layout
+2. **Model suite negotiation and HelloRetryRequest in ProVerif.** Downgrade resistance rests on the transcript-agreement proof and on tests today; the negotiation path itself is not formally modeled
+3. **Establish key management procedures** including rotation schedules
+4. **Deploy monitoring** for cryptographic operation failures
+5. **Reduce wire fingerprinting (T10)** with an optional obfuscation layer; the default header is a constant layout
 
 ### 9.2 Medium Priority
 

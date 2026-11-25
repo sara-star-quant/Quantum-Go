@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DatagramConn.Recv` after a close hands over the payloads already buffered, in order, and then returns `ErrTunnelClosed` every time. It used to pick between a buffered payload and the close at random, so a reader could see a payload, then the error, then another payload.
 - A datagram rekey recovers after every response of an earlier attempt was lost. The responder had already moved to the next epoch and cached its response, and the initiator's next attempt built a fresh init that the responder could not match to it, so the pair could not rekey again until the session ended. The initiator now resends the same init for as long as it has no answer in that epoch.
 
+### Added
+
+- `WithMaxHalfOpenPerIP(n)` caps how many half-open handshakes one address may hold (an IPv6 address counts per /64). The cookie proves an address but does not limit how many handshakes it holds, so one host could take a slot per source port until the global ceiling was full. The default is no cap, because users behind one NAT share an address; see docs/datagram-dos.md.
+
 ### Docs
 
 - Code comments and docs no longer call X-Wing standardized or its implementation certified (it is an Internet-Draft wrapped from circl), and the design notes and roadmap say the default stays CH-KEM-v1 instead of promising to align it with X-Wing.

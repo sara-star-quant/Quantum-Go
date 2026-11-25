@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"net"
+	"net/netip"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -256,6 +257,8 @@ type connRegistry struct {
 	halfOpen      map[string]int              // source identity -> count of un-established sessions
 	halfOpenTotal int                         // sum of halfOpen across all sources (cookie-pressure signal)
 	maxHalfOpen   int                         // hard ceiling on halfOpenTotal; reserveSource drops new sources at it
+	maxPerIP      int                         // optional cap on half-open handshakes per address (IPv6: per /64); 0 means none
+	halfOpenByIP  map[string]int              // half-open handshakes per address key, kept only while maxPerIP is set
 
 	// recentHellos remembers ClientHellos whose handshake finished, so a late
 	// byte-identical duplicate is dropped instead of building a second responder.
@@ -426,9 +429,52 @@ func (r *connRegistry) addHalfOpenLocked(source string) bool {
 	if r.halfOpenTotal >= r.maxHalfOpen {
 		return false
 	}
+	if r.maxPerIP > 0 {
+		key := addrKey(source)
+		if r.halfOpenByIP[key] >= r.maxPerIP {
+			return false
+		}
+		if r.halfOpenByIP == nil {
+			r.halfOpenByIP = make(map[string]int)
+		}
+		r.halfOpenByIP[key]++
+	}
 	r.halfOpen[source]++
 	r.halfOpenTotal++
 	return true
+}
+
+// addrKey names the address a source belongs to for the per-address cap: the IP without its port,
+// and for IPv6 the /64 prefix, because a host can pick any address inside its prefix. A source that
+// does not parse is its own key.
+func addrKey(source string) string {
+	ap, err := netip.ParseAddrPort(source)
+	if err != nil {
+		return source
+	}
+	a := ap.Addr().Unmap()
+	if a.Is6() {
+		p, err := a.Prefix(64)
+		if err != nil {
+			return a.String()
+		}
+		return p.String()
+	}
+	return a.String()
+}
+
+// dropAddrCount lowers the per-address count for source when one half-open slot is released. The
+// caller holds r.mu.
+func (r *connRegistry) dropAddrCount(source string) {
+	if r.maxPerIP <= 0 {
+		return
+	}
+	key := addrKey(source)
+	if n := r.halfOpenByIP[key]; n > 1 {
+		r.halfOpenByIP[key] = n - 1
+	} else {
+		delete(r.halfOpenByIP, key)
+	}
 }
 
 // releaseHalfOpen decrements the half-open count for source (on establishment or
@@ -446,6 +492,7 @@ func (r *connRegistry) releaseHalfOpen(source string) {
 		delete(r.halfOpen, source)
 	}
 	r.halfOpenTotal--
+	r.dropAddrCount(source)
 }
 
 // halfOpenLoad returns the global half-open count, one of the endpoint's
@@ -533,9 +580,11 @@ func (r *connRegistry) releaseSource(source string, ds *datagramSession) {
 	if n := r.halfOpen[source]; n > 1 {
 		r.halfOpen[source] = n - 1
 		r.halfOpenTotal--
+		r.dropAddrCount(source)
 	} else if n == 1 {
 		delete(r.halfOpen, source)
 		r.halfOpenTotal--
+		r.dropAddrCount(source)
 	}
 }
 
@@ -592,6 +641,9 @@ type DatagramEndpoint struct {
 	// WithMaxHalfOpen; 0 means autoscale with core count. newEndpoint resolves it into
 	// the registry's hard cap and the cookie-pressure water-mark.
 	maxHalfOpen int
+
+	// maxHalfOpenPerIP is the optional per-address cap set by WithMaxHalfOpenPerIP; 0 means none.
+	maxHalfOpenPerIP int
 
 	// recvBuffer is the requested kernel receive buffer in bytes (0 leaves it alone),
 	// set by WithDatagramRecvBuffer and applied to every socket the endpoint owns.
@@ -668,6 +720,16 @@ func WithReceiveSockets(n int) DatagramEndpointOption {
 // at half the effective ceiling.
 func WithMaxHalfOpen(n int) DatagramEndpointOption {
 	return func(e *DatagramEndpoint) { e.maxHalfOpen = n }
+}
+
+// WithMaxHalfOpenPerIP caps how many half-open handshakes one address may hold at once; an IPv6
+// address counts per /64 prefix. The stateless cookie proves that a source can receive at its
+// address, but not how many handshakes it may hold, so without a cap one host can take a slot per
+// source port until the global ceiling is full and new peers are dropped. The default is no cap,
+// because users behind one NAT share an address: set a generous value (16 to 64) once an
+// internet-facing deployment needs it. Values below 1 mean no cap.
+func WithMaxHalfOpenPerIP(n int) DatagramEndpointOption {
+	return func(e *DatagramEndpoint) { e.maxHalfOpenPerIP = n }
 }
 
 // WithDatagramRecvBuffer asks the kernel for a receive buffer of n bytes on every
@@ -843,6 +905,7 @@ func newEndpoint(conn net.PacketConn, opts []DatagramEndpointOption) (*DatagramE
 	}
 	e.cookiePressureHighWater = e.maxHalfOpen / 2
 	e.registry = newConnRegistry(e.maxHalfOpen)
+	e.registry.maxPerIP = e.maxHalfOpenPerIP
 	e.reasm.maxSources = e.maxHalfOpen
 	// Build the primary receive batchIO after opts so WithDatagramOffload is in effect.
 	e.tuneRecvBuffer(conn)
