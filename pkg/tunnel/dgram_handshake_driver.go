@@ -111,8 +111,12 @@ func (d *dgramDriver) onInbound(typ protocol.MessageType, body []byte) []hsMessa
 	}
 
 	before := d.fsm.state()
+	hrrBefore := d.fsm.hs.hrrDone
 	out, complete := d.fsm.onMessage(typ, body)
-	advanced := d.fsm.state() != before
+	// The first HelloRetryRequest sends the initiator back to its initial state and forward again
+	// inside one call, so the state looks unchanged. It still proves the peer answers, so it counts
+	// as an advance and restarts the retransmit schedule. A repeat does not: hrrDone is already set.
+	advanced := d.fsm.state() != before || (!hrrBefore && d.fsm.hs.hrrDone && d.fsm.role == RoleInitiator)
 	if out == nil && !complete && !advanced {
 		return nil // dropped
 	}
