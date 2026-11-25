@@ -9,7 +9,7 @@ import (
 
 // A decapsulation whose ciphertext comparison skips part of the ciphertext accepts a modified
 // ciphertext as valid and turns any accept or reject signal into a plaintext-checking oracle
-// (CVE-2026-10097 in wolfSSL compared only a prefix). This pins the property for the
+// (CVE-2026-10097 in wolfSSL compared 1,536 of the 1,568 bytes). This pins the property for the
 // production path: changing any single byte of a valid ciphertext gives a different key, and
 // the same different key every time, never an error and never the honest key.
 func requireRejectionAtEveryByte(t *testing.T, decap func([]byte) ([]byte, error), ct, honest []byte) []int {
@@ -51,8 +51,8 @@ func TestMLKEMRejectsEveryModifiedCiphertextByte(t *testing.T) {
 	}
 }
 
-// Negative control: a decapsulation that compares only the first 1,024 bytes must fail the
-// same property, or the test above could not catch the bug class.
+// Negative control: a decapsulation that compares only the first 1,536 bytes, as the wolfSSL
+// bug did, must fail the same property, or the test above could not catch the bug class.
 func TestRejectionCheckCatchesAPrefixOnlyComparison(t *testing.T) {
 	kp, err := crypto.GenerateMLKEMKeyPair()
 	if err != nil {
@@ -62,7 +62,7 @@ func TestRejectionCheckCatchesAPrefixOnlyComparison(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const compared = 1024
+	const compared = 1536
 	prefixOnly := func(c []byte) ([]byte, error) {
 		if bytes.Equal(c[:compared], ct[:compared]) {
 			return bytes.Clone(honest), nil
