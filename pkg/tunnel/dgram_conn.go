@@ -198,13 +198,21 @@ func (c *DatagramConn) isClosed() bool {
 }
 
 // Recv returns the next decrypted application payload, blocking until one arrives
-// or the session is closed (ErrTunnelClosed) or the endpoint shuts down.
+// or the session is closed (ErrTunnelClosed) or the endpoint shuts down. After a close it
+// hands over the payloads already buffered, in order, and then returns ErrTunnelClosed.
 func (c *DatagramConn) Recv() ([]byte, error) {
 	select {
 	case b := <-c.ds.recvCh:
 		return b, nil
 	case <-c.ds.closed:
-		return nil, qerrors.ErrTunnelClosed
+		// The select picks at random when both are ready, so drain here: a buffered payload
+		// always wins over the close, and the error comes only when the buffer is empty.
+		select {
+		case b := <-c.ds.recvCh:
+			return b, nil
+		default:
+			return nil, qerrors.ErrTunnelClosed
+		}
 	case <-c.ep.done:
 		return nil, errEndpointClosed
 	}

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `DatagramConn.Recv` after a close hands over the payloads already buffered, in order, and then returns `ErrTunnelClosed` every time. It used to pick between a buffered payload and the close at random, so a reader could see a payload, then the error, then another payload.
 - A datagram rekey recovers after every response of an earlier attempt was lost. The responder had already moved to the next epoch and cached its response, and the initiator's next attempt built a fresh init that the responder could not match to it, so the pair could not rekey again until the session ended. The initiator now resends the same init for as long as it has no answer in that epoch.
 
 ### Docs
