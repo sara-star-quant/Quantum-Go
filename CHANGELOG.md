@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Docs
+
+- docs/technical/THREAT_MODEL.md is current as of v0.0.36: four new threats (half-open exhaustion from one valid address, forgery attempts against one AEAD key, the static pinned-key signal, rekey failure), the findings of the pre-release reads with their status, one table of every threat before and after mitigation, and rendering fixes (scenario lines, table alignment, the data-flow diagram).
+
 ## [0.0.36][] - 2026-11-25
 
 **Theme:** A security fix for the datagram transport, plus the rest of what the second pre-release review found. A malformed first ClientHello could hold a responder's half-open slot and keep a goroutine spinning at full CPU (GHSA-qqwq-hqjh-4hgf, versions 0.0.17 to 0.0.35); upgrade if you run the datagram transport. Two behaviors change, listed first. Nothing changes on the wire.
