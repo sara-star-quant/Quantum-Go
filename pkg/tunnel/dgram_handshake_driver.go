@@ -69,7 +69,7 @@ func newDgramDriverWithRTO(session *Session, now func() time.Time, rtoInitial, r
 	if now == nil {
 		now = time.Now
 	}
-	return &dgramDriver{
+	d := &dgramDriver{
 		fsm:        newDgramHandshake(session),
 		now:        now,
 		rtoInitial: rtoInitial,
@@ -78,6 +78,14 @@ func newDgramDriverWithRTO(session *Session, now func() time.Time, rtoInitial, r
 		maxRetries: constants.DatagramHandshakeMaxRetries,
 		status:     driverRunning,
 	}
+	// A responder is admitted when a ClientHello arrives, and holds a half-open slot from then on.
+	// If that hello never advances its state (it does not parse, or it only draws a
+	// HelloRetryRequest), no later step arms the timer, so the driver would never fail and the slot
+	// would never free. Arm it now; an advance resets it.
+	if session.Role == RoleResponder {
+		d.armRetransmit()
+	}
+	return d
 }
 
 // start emits the initiator's ClientHello and arms its retransmit timer.
