@@ -989,6 +989,11 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 		}
 		pt, oerr := sess.DatagramOpen(hdr.Epoch, hdr.Seq, body, protocol.DatagramAAD(data))
 		if oerr != nil {
+			// The failure that reaches the forgery limit closes the session; release the
+			// connection with it so readers wake and the registry slot goes.
+			if sess.State() == SessionStateClosed {
+				ds.teardown(e.registry)
+			}
 			return nil //nolint:nilerr // a datagram that fails authentication is dropped, not an error
 		}
 		if !sess.dgramReplay.Check(hdr.Seq) {
@@ -1026,6 +1031,9 @@ func (e *DatagramEndpoint) routeDatagram(src net.Addr, data []byte) error {
 			return nil
 		}
 		if _, oerr := ds.getSession().DatagramOpen(hdr.Epoch, hdr.Seq, body, protocol.DatagramAAD(data)); oerr != nil {
+			if ds.getSession().State() == SessionStateClosed {
+				ds.teardown(e.registry)
+			}
 			return nil //nolint:nilerr // a datagram that fails authentication is dropped, not an error
 		}
 		if !ds.getSession().dgramReplay.Check(hdr.Seq) {

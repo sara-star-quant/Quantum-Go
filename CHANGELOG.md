@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Changed
+
+- A datagram session closes after 2^36 datagrams fail authentication, counted across all epochs, so an attacker who can reach a session cannot keep guessing forgeries under one key. The limit is the RFC 9001 integrity figure for ChaCha20-Poly1305. Forged rekey control messages count too, and reaching the limit releases the connection, so a blocked reader wakes and the registry slot goes. A frame for an epoch the session does not hold does not count. Affected: none in practice, since reaching the limit takes tens of billions of forged datagrams; a flooded session now ends and the peer starts a new handshake.
+
+### Added
+
+- A test that fails if a packet or byte cap, or the datagram size, lets one AES-GCM key exceed the TLS 1.3 confidentiality target of 2^-60. The limits and their derivation are in docs/PROTOCOL.md section 8.1.
+- Tests that pin the decoder length checks and the key derivation length limit at their exact boundaries, and that ML-KEM gives a different key when any single ciphertext byte changes.
+
 ## [0.0.35][] - 2026-11-19
 
 **Theme:** Stream session fixes, found by writing the session's invariants as tests first. A forged stream record no longer makes the genuine records after it look like replays, a session that closes during a rekey stays closed and drops the rekey's key material, and a failed handshake leaves no keyed session behind. Two exported calls behave differently, listed first below. Nothing changes on the wire and no advisory applies: the worst cases were a stalled connection and a closed session that kept live send keys, and none is a remote crash or a key exposure.

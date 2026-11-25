@@ -100,7 +100,12 @@ func (s *Session) openRekeyControl(msgType protocol.MessageType, epoch uint8, bo
 	}
 	var nonce [constants.AESNonceSize]byte
 	buildAEADNonce(nonce[:], prefix, seq)
-	return cipher.OpenWithNonce(nonce[:], body[8:], rekeyAAD(msgType, epoch, seq))
+	pt, err := cipher.OpenWithNonce(nonce[:], body[8:], rekeyAAD(msgType, epoch, seq))
+	if err != nil {
+		s.noteDatagramAuthFailure(err)
+		return nil, err
+	}
+	return pt, nil
 }
 
 // deriveNextDatagramSecret ratchets the current master secret with a fresh KEM

@@ -205,10 +205,27 @@ func (s *Session) DatagramOpen(epoch uint8, seq uint64, ciphertext, aad []byte) 
 	buildAEADNonce(nonce[:], prefix, seq)
 	pt, err := cipher.OpenWithNonce(nonce[:], ciphertext, aad)
 	if err != nil {
+		s.noteDatagramAuthFailure(err)
 		return nil, err
 	}
 	s.lastActivityNanos.Store(coarseTimeNanos())
 	return pt, nil
+}
+
+// noteDatagramAuthFailure counts a failed AEAD open and closes the session at the limit. Only
+// a real decryption attempt counts: a frame for an epoch the session does not hold never reaches
+// the AEAD. The caller holds no session lock.
+func (s *Session) noteDatagramAuthFailure(err error) {
+	if !qerrors.Is(err, qerrors.ErrAuthenticationFailed) {
+		return
+	}
+	limit := s.authFailureLimit
+	if limit == 0 {
+		limit = constants.MaxAuthFailuresPerSession
+	}
+	if s.dgramAuthFailures.Add(1) >= limit {
+		s.Close()
+	}
 }
 
 // datagramRecvCipherLocked returns the receive cipher for epoch: the current

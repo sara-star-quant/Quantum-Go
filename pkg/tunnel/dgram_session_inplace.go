@@ -61,6 +61,7 @@ func (s *Session) DatagramOpenTo(dst []byte, epoch uint8, seq uint64, ciphertext
 	buildAEADNonce(nonce, prefix, seq)
 	pt, err := cipher.OpenWithNonceTo(dst, nonce, ciphertext, aad)
 	if err != nil {
+		s.noteDatagramAuthFailure(err)
 		return nil, err
 	}
 	s.lastActivityNanos.Store(coarseTimeNanos())
