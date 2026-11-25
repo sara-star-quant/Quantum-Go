@@ -2,14 +2,16 @@
 
 **Status:** Interop profile, descriptive of the current implementation.
 **Wire protocol version:** 6.0
-**Last updated:** 2026-06-20
+**Describes:** release v0.0.35
+**Last updated:** 2026-11-25
 
 This document specifies the Quantum-Go tunnel handshake and KEM negotiation on the wire, so that an
 independent implementation can interoperate and so the construction maps to published cryptographic
 standards. It covers the handshake and key schedule (Sections 1-6), the record layer, rekey, and the
 datagram transport (Sections 7-9), with further operational detail in `docs/datagram-transport.md` and
 `docs/datagram-dos.md`. This is a profile of an existing implementation, not an IETF standards-track
-document.
+document. It specifies the wire and does not itself claim security properties: each security claim the project
+makes, with its status and evidence, is in `docs/technical/CLAIMS.md`.
 
 ## 1. Scope and versions
 
@@ -52,7 +54,7 @@ and ciphertext sizes and the internal construction differ.
 | SuiteID | Name | Construction | Pubkey | Ciphertext | NIST cat | FIPS |
 | ------- | ---- | ------------ | ------ | ---------- | -------- | ---- |
 | 0x0001  | CH-KEM-v1 | ML-KEM-1024 + X25519, SHAKE-256 combiner | 1600 | 1600 | 5 | yes (operational) |
-| 0x0002  | X-Wing | ML-KEM-768 + X25519, draft-connolly-cfrg-xwing-kem | 1216 | 1120 | 1 | yes (operational) |
+| 0x0002  | X-Wing | ML-KEM-768 + X25519, draft-connolly-cfrg-xwing-kem | 1216 | 1120 | 1 (draft target) | yes (operational) |
 
 CH-KEM-v1 is the mandatory-to-implement default: any two conforming peers share it, so negotiation always
 succeeds. "FIPS (operational)" means the suite is permitted in the FIPS build; it is a hybrid that uses
@@ -62,17 +64,18 @@ X25519, so it is an operational posture, not a strict FIPS 140-3 algorithm claim
 
 A cascaded hybrid of ML-KEM-1024 (FIPS 203) and X25519 (RFC 7748). Serialized public key and ciphertext
 are the 32-byte X25519 part followed by the 1568-byte ML-KEM part. The combiner is specified in Section
-4.1. The construction follows the standardized hybrid-KEM combiner direction (X-Wing / CFRG generic
-combiner): both shares are bound, together with the public keys and ciphertexts, into a SHA3 transcript
+4.1. The construction follows the combiner direction of the X-Wing proposal and the CFRG hybrid-KEM drafts, which
+are Internet-Drafts and not standards: both shares are bound, together with the public keys and ciphertexts, into a SHA3 transcript
 that feeds the final SHAKE-256 derivation. It keeps ML-KEM-1024 (Category 5) rather than adopting X-Wing
-verbatim (which fixes ML-KEM-768, Category 1).
+verbatim (which fixes ML-KEM-768).
 
 ### 3.2 X-Wing (0x0002)
 
-The standardized X-Wing KEM (ML-KEM-768 + X25519, draft-connolly-cfrg-xwing-kem), wrapped byte-for-byte
-from a certified implementation, so its outputs are interoperable with any other X-Wing peer. X-Wing's
+The X-Wing KEM (ML-KEM-768 + X25519) as defined by draft-connolly-cfrg-xwing-kem, an Internet-Draft (revision
+11, 23 September 2026) that is not an IETF standard, wrapped byte-for-byte from the circl implementation, so its
+outputs match any other peer that follows the draft. X-Wing's
 combiner is fixed by its specification; role and version binding therefore come from the handshake
-transcript (Section 5), not from the KEM. X-Wing is the explicit Category-1 interop profile.
+transcript (Section 5), not from the KEM. X-Wing is the interop profile; the draft targets 128-bit security (NIST level 1).
 
 ## 4. KEM operations
 
@@ -98,9 +101,11 @@ shared_secret = KDF( "CH-KEM-v1-SharedSecret", [ K_x, K_m, transcript ], 32 )
 ```
 
 ML-KEM-1024's Fujisaki-Okamoto transform provides IND-CCA2 with implicit rejection: a wrong key yields a
-pseudo-random secret with no error, so the mismatch surfaces only at the Finished MAC (Section 5), never as
-a decapsulation oracle. X25519 contributes classical hardness, so the hybrid is secure if either the
-structured lattice or the elliptic-curve assumption holds.
+pseudo-random secret with no error, so the mismatch surfaces only at the Finished MAC (Section 5) and not as a
+decapsulation error. For the static pinned key of Section 5.5 that MAC check is observable to a client that
+built the ciphertext itself, one bit per online attempt; the analysis of that exposure is tracked in #276.
+X25519 contributes classical hardness. That the hybrid stays secure if either the structured lattice or the
+elliptic-curve assumption holds is argued, not proven (`docs/technical/CLAIMS.md`, C-03).
 
 ### 4.2 X-Wing
 
@@ -415,4 +420,4 @@ can validate against them byte-for-byte.
 - NIST SP 800-38D - Galois/Counter Mode (AES-256-GCM).
 - RFC 8439 - ChaCha20 and Poly1305 for IETF Protocols.
 
-See also `docs/DESIGN_INFLUENCES.md` Section 2.8 for the standardized hybrid-KEM combiner direction.
+See also `docs/DESIGN_INFLUENCES.md` Section 2.8 for the hybrid-KEM combiner direction.
