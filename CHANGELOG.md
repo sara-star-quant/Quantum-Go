@@ -7,20 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.36][] - 2026-11-25
+
+**Theme:** A security fix for the datagram transport, plus the rest of what the second pre-release review found. A malformed first ClientHello could hold a responder's half-open slot and keep a goroutine spinning at full CPU (GHSA-qqwq-hqjh-4hgf, versions 0.0.17 to 0.0.35); upgrade if you run the datagram transport. Two behaviors change, listed first. Nothing changes on the wire.
+
+### Upgrade notes
+
+- A stream rekey that fails after it began now closes the session. Affected: code that kept using a transport after `SendRekey` or `Receive` returned a rekey error. Before, the session stayed marked as rekeying for good: every later `SendRekey` returned `ErrRekeyInProgress` and the responder ignored later requests. The request or response can already be on the wire, so the rekey cannot be resumed. Fix: treat the error as fatal and reconnect.
+- A datagram session closes after 2^36 datagrams fail authentication, counted across all epochs. Affected: none in practice, since reaching it takes tens of billions of forged datagrams; a flooded session now ends and the peer starts a new handshake.
+
+### Security
+
+- A malformed first ClientHello no longer holds a datagram responder's half-open slot or keeps a goroutine spinning (GHSA-qqwq-hqjh-4hgf). Affected: the datagram transport, responder side, 0.0.17 to 0.0.35. Fixed in 0.0.36. Impact: remote denial of service, no key or data exposure. Workaround: none in the library; rate-limit UDP per source or use the stream transport. The stream transport is not affected.
+
 ### Fixed
 
-- A datagram responder frees only the half-open slot and source mapping its own session holds. The cleanup was keyed by remote address, so when the same address redialed while an older handshake loop lingered and the old loop ran its cleanup again, it released the newer responder's slot and mapping: the half-open count drifted down and a retransmitted ClientHello could start a second responder. An initiator completing toward an address that was also a responder had the same effect.
-- A datagram responder no longer replays its cached rekey response to an unauthenticated RekeyInit. It answered any init that named the epoch of the last completed rekey, so a small forged packet from an observer who knew the connection index made it resend the full response (about 1.7 KB) to its own peer. It now replays only for a byte-identical retransmit of the init it answered. Affects datagram sessions since v0.0.17; the target is the session peer, not a third party.
-
-### Changed
-
-- A stream rekey that fails after it began now closes the session. A failed write of the rekey request or response, a response that is not a ciphertext, or a request the responder cannot answer used to leave the session marked as rekeying for good: every later `SendRekey` returned `ErrRekeyInProgress` and the responder ignored later requests. The request or response can already be on the wire, so the peer may switch keys while this side does not, and the rekey cannot be resumed; closing makes both sides fail the same way. Affected: code that kept using a transport after `SendRekey` or `Receive` returned a rekey error. Fix: treat the error as fatal and reconnect.
-- A datagram session closes after 2^36 datagrams fail authentication, counted across all epochs, so an attacker who can reach a session cannot keep guessing forgeries under one key. The limit is the RFC 9001 integrity figure for ChaCha20-Poly1305. Forged rekey control messages count too, and reaching the limit releases the connection, so a blocked reader wakes and the registry slot goes. A frame for an epoch the session does not hold does not count. Affected: none in practice, since reaching the limit takes tens of billions of forged datagrams; a flooded session now ends and the peer starts a new handshake.
+- A datagram responder frees only the half-open slot and source mapping its own session holds. A late or repeated cleanup after the same address redialed released the newer responder's slot, so the half-open count drifted and a retransmitted ClientHello could start a second responder.
+- A datagram responder replays its cached rekey response only for a byte-identical retransmit of the init it answered. A small forged init that named the right epoch used to make it resend the full response (about 1.7 KB) to its own peer. Datagram sessions since 0.0.17; the target is the session peer, not a third party.
+- Forged rekey control messages count toward the datagram forgery limit, and reaching the limit releases the connection, so a blocked reader wakes and the registry slot goes.
 
 ### Added
 
-- A test that fails if a packet or byte cap, or the datagram size, lets one AES-GCM key exceed the TLS 1.3 confidentiality target of 2^-60. The limits and their derivation are in docs/PROTOCOL.md section 8.1.
-- Tests that pin the decoder length checks and the key derivation length limit at their exact boundaries, and that ML-KEM gives a different key when any single ciphertext byte changes.
+- Tests that pin the decoder length checks, the key derivation length limit and ML-KEM rejection of a change to any single ciphertext byte, and a test that fails if a cap or the datagram size lets one AES-GCM key exceed the TLS 1.3 confidentiality target of 2^-60 (derivation in docs/PROTOCOL.md section 8.1).
+- Claims C-21 and C-22 in the claims register, for the forgery limit and the usage limits.
+
+### Docs
+
+- docs/PROTOCOL.md no longer calls X-Wing standardized or its implementation certified, states that the either-component security claim is argued and not proven, and records that the Finished check on the static pinned key is observable to a client that built the ciphertext.
+- Comments in the key derivation code no longer overstate or misdescribe it.
+
+### CI and dependencies
+
+- golang.org/x/net 0.63.0, setup-go 7.1.0, the codeql-action pins; scorecard-action stays at v2.5.0 because the v2.6.0 container image cannot be pulled (ossf/scorecard-action#1752).
 
 ## [0.0.35][] - 2026-11-19
 
@@ -702,7 +720,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.35...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.36...HEAD
+[0.0.36]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.35...v0.0.36
 [0.0.35]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.34...v0.0.35
 [0.0.34]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.33...v0.0.34
 [0.0.33]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.32...v0.0.33
