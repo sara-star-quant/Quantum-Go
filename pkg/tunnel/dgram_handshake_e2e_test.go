@@ -39,6 +39,9 @@ type faultModel struct {
 	dropFirst   protocol.MessageType
 	dropFirstOK bool
 
+	// dropAll drops every handshake datagram of this message type until it is cleared.
+	dropAll protocol.MessageType
+
 	// tap, if set, sees every datagram sent (for tests that capture traffic).
 	tap func(data []byte)
 }
@@ -58,6 +61,26 @@ func (f *faultModel) isFirstOfDropType(data []byte) bool {
 	}
 	f.dropFirstOK = true
 	return true
+}
+
+// isDroppedType reports whether data is a handshake datagram of the type that is being dropped
+// outright.
+func (f *faultModel) isDroppedType(data []byte) bool {
+	if f.dropAll == 0 {
+		return false
+	}
+	if ft, err := protocol.PeekDatagramType(data); err != nil || ft != protocol.DatagramFrameHandshake {
+		return false
+	}
+	h, _, err := protocol.ParseDatagramHandshake(data)
+	return err == nil && h.MsgType == f.dropAll
+}
+
+// setDropAll drops every handshake datagram of msg until it is called again with 0.
+func (f *faultModel) setDropAll(msg protocol.MessageType) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.dropAll = msg
 }
 
 func newFaultModel(seed uint64, drop, dup, reorder float64) *faultModel {
@@ -99,7 +122,7 @@ func (f *faultModel) emit(peer *memPacketConn, data []byte, src net.Addr) {
 	if f.tap != nil {
 		f.tap(data)
 	}
-	if f.isFirstOfDropType(data) || f.rng.Float64() < f.dropP {
+	if f.isDroppedType(data) || f.isFirstOfDropType(data) || f.rng.Float64() < f.dropP {
 		return // lost
 	}
 	if f.held == nil && f.rng.Float64() < f.reorderP {

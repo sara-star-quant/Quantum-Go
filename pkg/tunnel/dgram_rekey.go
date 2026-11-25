@@ -221,20 +221,29 @@ func (c *DatagramConn) Rekey() error {
 	}
 	defer c.ds.endRekey()
 
-	kp, err := s.kemSuite.GenerateKeyPair()
-	if err != nil {
-		return err
+	// An earlier attempt in this epoch may have timed out after the responder already answered it and
+	// moved on, with every response lost. Resend the same init then: the responder matches it to the
+	// response it cached and replays it. A fresh init would be ignored and the pair could never rekey.
+	p := c.ds.pendingRekeyFor(s.datagramSendEpoch())
+	if p == nil {
+		kp, err := s.kemSuite.GenerateKeyPair()
+		if err != nil {
+			return err
+		}
+		body, epoch, err := s.buildDatagramRekeyInit(kp)
+		if err != nil {
+			kp.Zeroize()
+			return err
+		}
+		frames, err := fragmentRekey(c.ds, epoch, protocol.MessageTypeDatagramRekeyInit, body, c.ep.padHandshake)
+		if err != nil {
+			kp.Zeroize()
+			return err
+		}
+		p = &pendingRekeyInit{kp: kp, epoch: epoch, frames: frames}
+		c.ds.setPendingRekey(p)
 	}
-	defer kp.Zeroize()
-
-	body, epoch, err := s.buildDatagramRekeyInit(kp)
-	if err != nil {
-		return err
-	}
-	frames, err := fragmentRekey(c.ds, epoch, protocol.MessageTypeDatagramRekeyInit, body, c.ep.padHandshake)
-	if err != nil {
-		return err
-	}
+	kp, epoch, frames := p.kp, p.epoch, p.frames
 
 	// Drain any stale response left from a prior attempt.
 	select {
@@ -261,6 +270,7 @@ func (c *DatagramConn) Rekey() error {
 			}
 		case resp := <-c.ds.rekeyInbox:
 			if err := s.completeDatagramRekey(epoch, resp, kp); err == nil {
+				c.ds.clearPendingRekey()
 				return nil
 			}
 			// A response that fails to authenticate is ignored; keep waiting.

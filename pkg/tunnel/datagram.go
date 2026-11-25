@@ -87,6 +87,13 @@ type datagramSession struct {
 	rekeyRespValid  bool
 	rekeyRespFrames [][]byte
 
+	// rekeyPend is the initiator's in-flight RekeyInit: its key pair, the epoch it was sealed under and
+	// its frames. A later attempt in the same epoch resends the same frames, so the responder can
+	// match them to the response it cached, which matters when every response of an earlier attempt was
+	// lost. See Rekey.
+	rekeyPendMu sync.Mutex
+	rekeyPend   *pendingRekeyInit
+
 	// retryCh delivers a server anti-DoS cookie (from a RETRY frame) to an
 	// initiator handshake goroutine so it can re-send its ClientHello carrying the
 	// cookie. Only the initiator (DialDatagram) creates it.
@@ -118,6 +125,48 @@ func (ds *datagramSession) setSession(s *Session) {
 		ds.recvCh = make(chan []byte, dataInboxCap)
 	}
 	ds.sess.Store(s)
+}
+
+// pendingRekeyInit is a RekeyInit that was sent and not yet answered.
+type pendingRekeyInit struct {
+	kp     *chkem.KeyPair
+	epoch  uint8
+	frames [][]byte
+}
+
+// pendingRekeyFor returns the unanswered init sealed under epoch, or nil. An init sealed under another
+// epoch is stale and is dropped.
+func (ds *datagramSession) pendingRekeyFor(epoch uint8) *pendingRekeyInit {
+	ds.rekeyPendMu.Lock()
+	defer ds.rekeyPendMu.Unlock()
+	if p := ds.rekeyPend; p != nil {
+		if p.epoch == epoch {
+			return p
+		}
+		p.kp.Zeroize()
+		ds.rekeyPend = nil
+	}
+	return nil
+}
+
+// setPendingRekey records the init that was just sent.
+func (ds *datagramSession) setPendingRekey(p *pendingRekeyInit) {
+	ds.rekeyPendMu.Lock()
+	defer ds.rekeyPendMu.Unlock()
+	if ds.rekeyPend != nil && ds.rekeyPend != p {
+		ds.rekeyPend.kp.Zeroize()
+	}
+	ds.rekeyPend = p
+}
+
+// clearPendingRekey drops the unanswered init and zeroizes its key pair.
+func (ds *datagramSession) clearPendingRekey() {
+	ds.rekeyPendMu.Lock()
+	defer ds.rekeyPendMu.Unlock()
+	if ds.rekeyPend != nil {
+		ds.rekeyPend.kp.Zeroize()
+		ds.rekeyPend = nil
+	}
 }
 
 // beginRekey claims the single initiator rekey slot, returning false if one is
@@ -186,6 +235,7 @@ const datagramRecvBuffer = 4 << 20
 // is idempotent and must be called WITHOUT holding the registry lock.
 func (ds *datagramSession) teardown(r *connRegistry) {
 	r.remove(ds.index)
+	ds.clearPendingRekey()
 	ds.closeOnce.Do(func() {
 		if ds.closed != nil {
 			close(ds.closed)
