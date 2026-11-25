@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A stream rekey that fails after it began now closes the session. A failed write of the rekey request or response, a response that is not a ciphertext, or a request the responder cannot answer used to leave the session marked as rekeying for good: every later `SendRekey` returned `ErrRekeyInProgress` and the responder ignored later requests. The request or response can already be on the wire, so the peer may switch keys while this side does not, and the rekey cannot be resumed; closing makes both sides fail the same way. Affected: code that kept using a transport after `SendRekey` or `Receive` returned a rekey error. Fix: treat the error as fatal and reconnect.
 - A datagram session closes after 2^36 datagrams fail authentication, counted across all epochs, so an attacker who can reach a session cannot keep guessing forgeries under one key. The limit is the RFC 9001 integrity figure for ChaCha20-Poly1305. Forged rekey control messages count too, and reaching the limit releases the connection, so a blocked reader wakes and the registry slot goes. A frame for an epoch the session does not hold does not count. Affected: none in practice, since reaching the limit takes tens of billions of forged datagrams; a flooded session now ends and the peer starts a new handshake.
 
 ### Added

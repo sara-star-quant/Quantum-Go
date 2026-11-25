@@ -711,12 +711,14 @@ func (t *Transport) handleRekey(msg []byte) error {
 		// Prepare response (encapsulate to new key)
 		responseCT, err := t.session.PrepareRekeyResponse(newPublicKey, activationSeq)
 		if err != nil {
+			t.failRekey()
 			return err
 		}
 
 		// Send encrypted rekey response back (under the current/old send key so the
 		// initiator can still decrypt it).
 		if err := t.sendRekeyResponse(responseCT, activationSeq); err != nil {
+			t.failRekey()
 			return err
 		}
 
@@ -730,6 +732,7 @@ func (t *Transport) handleRekey(msg []byte) error {
 	if t.session.Role == RoleInitiator && t.session.IsRekeyInProgress() {
 		// Process the response
 		if err := t.session.ProcessRekeyResponse(newPublicKey); err != nil {
+			t.failRekey()
 			return err
 		}
 	}
@@ -752,12 +755,14 @@ func (t *Transport) SendRekey() error {
 		_, done = observer.OnRekeyStart(context.Background())
 	}
 
+	begun := false
 	err := func() error {
 		// Initiate rekey in session
 		newPublicKey, activationSeq, err := t.session.InitiateRekey()
 		if err != nil {
 			return err
 		}
+		begun = true
 
 		// Build inner payload
 		innerPayload, err := t.codec.EncodeRekeyPayload(newPublicKey, activationSeq)
@@ -779,12 +784,24 @@ func (t *Transport) SendRekey() error {
 
 		return t.writeFrame(msg)
 	}()
+	if err != nil && begun {
+		t.failRekey()
+	}
 
 	if done != nil {
 		done(err)
 	}
 
 	return err
+}
+
+// failRekey closes the session after a rekey failed once it had begun. The request or the response
+// may already be on the wire, so the peer may switch keys while this side does not, and the rekey
+// cannot be resumed. Leaving the session marked as rekeying forever would make every later
+// SendRekey fail and the responder ignore later requests; closing it fails the same way for both.
+func (t *Transport) failRekey() {
+	t.session.Close()
+	t.markClosed()
 }
 
 // sendRekeyResponse sends an encrypted rekey response (called by responder).
