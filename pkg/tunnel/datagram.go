@@ -469,12 +469,24 @@ func (r *connRegistry) sourceOwner(source string, ds *datagramSession) bool {
 	return r.bySource[source] == ds
 }
 
-// removeSource drops the source mapping (on establishment or teardown). It is
-// idempotent.
-func (r *connRegistry) removeSource(source string) {
+// releaseSource frees the source mapping and the half-open slot that ds holds for source. It does
+// nothing unless ds is still the in-progress responder for source, so a cleanup that runs twice,
+// or late after the same address started a newer responder, cannot free the newer one's slot. It
+// is idempotent.
+func (r *connRegistry) releaseSource(source string, ds *datagramSession) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.bySource[source] != ds {
+		return
+	}
 	delete(r.bySource, source)
+	if n := r.halfOpen[source]; n > 1 {
+		r.halfOpen[source] = n - 1
+		r.halfOpenTotal--
+	} else if n == 1 {
+		delete(r.halfOpen, source)
+		r.halfOpenTotal--
+	}
 }
 
 // DatagramEndpoint is a connectionless UDP transport over a single PacketConn.

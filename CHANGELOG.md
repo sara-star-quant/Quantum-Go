@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A datagram responder frees only the half-open slot and source mapping its own session holds. The cleanup was keyed by remote address, so when the same address redialed while an older handshake loop lingered and the old loop ran its cleanup again, it released the newer responder's slot and mapping: the half-open count drifted down and a retransmitted ClientHello could start a second responder. An initiator completing toward an address that was also a responder had the same effect.
 - A datagram responder no longer replays its cached rekey response to an unauthenticated RekeyInit. It answered any init that named the epoch of the last completed rekey, so a small forged packet from an observer who knew the connection index made it resend the full response (about 1.7 KB) to its own peer. It now replays only for a byte-identical retransmit of the init it answered. Affects datagram sessions since v0.0.17; the target is the session peer, not a third party.
 
 ### Changed

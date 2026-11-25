@@ -92,7 +92,7 @@ func (e *DatagramEndpoint) deliverHandshake(src net.Addr, h protocol.DatagramHan
 				e.deliverHandshake(src, h, msg)
 			}
 		}
-		return // reserved == nil means the per-source cap is reached: drop
+		return // reserved == nil means the global half-open ceiling is reached: drop
 	}
 	e.startResponder(src, reserved, in)
 }
@@ -104,8 +104,7 @@ func (e *DatagramEndpoint) deliverHandshake(src net.Addr, h protocol.DatagramHan
 func (e *DatagramEndpoint) startResponder(src net.Addr, ds *datagramSession, first inboundMsg) {
 	session, err := NewSession(RoleResponder)
 	if err != nil {
-		e.registry.removeSource(src.String())
-		e.registry.releaseHalfOpen(src.String())
+		e.registry.releaseSource(src.String(), ds)
 		return
 	}
 	session.StaticKeyPair = e.staticIdentity
@@ -117,8 +116,7 @@ func (e *DatagramEndpoint) startResponder(src net.Addr, ds *datagramSession, fir
 	session.AllowedKEMSuites = e.allowedKEMSuites
 	idx, err := e.registry.add(ds)
 	if err != nil {
-		e.registry.removeSource(src.String())
-		e.registry.releaseHalfOpen(src.String())
+		e.registry.releaseSource(src.String(), ds)
 		return
 	}
 
@@ -315,8 +313,7 @@ func (l *handshakeLoop) loop(earlyReturn bool) (*Session, error) {
 	}
 
 	if l.driver.failed() {
-		l.ep.registry.removeSource(l.src.String())
-		l.ep.registry.releaseHalfOpen(l.src.String())
+		l.ep.registry.releaseSource(l.src.String(), l.ds)
 		l.ep.registry.remove(l.localIndex)
 		return nil, errHandshakeFailed
 	}
@@ -361,8 +358,7 @@ func (l *handshakeLoop) maybeSurface() {
 	l.surfaced = true
 	l.ds.setSession(l.driver.session())
 	l.ds.peerIndex = l.peerIndex
-	l.ep.registry.removeSource(l.src.String())
-	l.ep.registry.releaseHalfOpen(l.src.String())
+	l.ep.registry.releaseSource(l.src.String(), l.ds)
 	l.ep.flushEarly(l.ds)
 	if l.established != nil {
 		l.established()
