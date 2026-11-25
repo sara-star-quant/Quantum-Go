@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- Code comments and docs no longer call X-Wing standardized or its implementation certified (it is an Internet-Draft wrapped from circl), and the design notes and roadmap say the default stays CH-KEM-v1 instead of promising to align it with X-Wing.
 - docs/technical/THREAT_MODEL.md is current as of v0.0.36: four new threats (half-open exhaustion from one valid address, forgery attempts against one AEAD key, the static pinned-key signal, rekey failure), the findings of the pre-release reads with their status, one table of every threat before and after mitigation, and rendering fixes (scenario lines, table alignment, the data-flow diagram).
 
 ## [0.0.36][] - 2026-11-25

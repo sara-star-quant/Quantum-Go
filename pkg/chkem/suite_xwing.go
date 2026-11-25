@@ -6,9 +6,10 @@ import (
 	"github.com/sara-star-quant/quantum-go/pkg/crypto"
 )
 
-// SuiteXWing is the standardized X-Wing KEM (ML-KEM-768 + X25519 with a fixed
-// SHA3-256 combiner, draft-connolly-cfrg-xwing-kem). It is the interop-friendly
-// alternative to CH-KEM-v1: smaller key share, byte-exact with any X-Wing peer.
+// SuiteXWing is the X-Wing KEM (ML-KEM-768 + X25519 with a fixed SHA3-256 combiner)
+// as defined by draft-connolly-cfrg-xwing-kem, an Internet-Draft that is not an IETF
+// standard. It is the interop-friendly alternative to CH-KEM-v1: smaller key share,
+// byte-exact with any peer that follows the draft.
 const SuiteXWing SuiteID = 0x0002
 
 // xwingSuite adapts the X-Wing crypto wrapper to the Suite interface. It stores the

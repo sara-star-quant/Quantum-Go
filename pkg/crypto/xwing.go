@@ -1,7 +1,7 @@
-// Package crypto - xwing.go wraps the standardized X-Wing KEM (ML-KEM-768 + X25519
-// with a fixed SHA3-256 combiner) from draft-connolly-cfrg-xwing-kem. It delegates
-// to cloudflare/circl's certified implementation, so the wire output is byte-exact
-// with any other X-Wing implementation; this package never re-implements the
+// Package crypto - xwing.go wraps the X-Wing KEM (ML-KEM-768 + X25519 with a fixed
+// SHA3-256 combiner) from draft-connolly-cfrg-xwing-kem, an Internet-Draft that is not
+// an IETF standard. It delegates to cloudflare/circl's implementation, so the wire output
+// is byte-exact with any other peer that follows the draft; this package never re-implements the
 // combiner. The private key is the 32-byte derivation seed (circl PrivateKeySize).
 
 package crypto

@@ -82,13 +82,13 @@ The protocol draws on published post-quantum cryptography research and public st
 
 **Difference:** Rosenpass uses a dedicated biscuit key separate from the handshake keys. Our design encrypts the server state using the server's existing AEAD infrastructure with a key derived from the long-term server key, avoiding the need for an additional key management layer.
 
-### 2.8 Standardized Hybrid KEM Combiner
+### 2.8 Hybrid KEM Combiner (X-Wing and the CFRG drafts)
 
 **Source:** X-Wing (Barbosa, Connolly, Duarte, Kaiser, Schwabe, Varner, Westerbaan; ePrint 2024/039) and the CFRG/IETF generic hybrid-KEM combiner work.
 
-**Concept:** A hybrid KEM that combines a post-quantum KEM with X25519 should run both shares through a standardized, proof-carrying combiner that binds the ML-KEM ciphertext and the X25519 share into the final key derivation. X-Wing is the concrete, widely-reviewed instantiation of this idea.
+**Concept:** A hybrid KEM that combines a post-quantum KEM with X25519 should run both shares through a combiner that binds the ML-KEM ciphertext and the X25519 share into the final key derivation, with a published proof. X-Wing is the concrete instantiation of this idea; it is an Internet-Draft, not an IETF standard.
 
-**Our adaptation:** X-Wing ships as an opt-in KEM suite (since v0.0.15). The open direction, targeted at v1.0.0, is to align the default CH-KEM combiner step to the standardized construction so the derivation maps to a published IND-CCA proof and an interop profile becomes possible.
+**Our adaptation:** X-Wing ships as an opt-in KEM suite (since v0.0.15). The default stays CH-KEM-v1 by the owner's decision of 2026-11-19: it is ML-KEM-1024 based, its wire format is stable, and its combiner hashes both public keys and both ciphertexts. Its security argument is our own and is written up in the claims register (C-03) and the security-argument draft; a published proof for the default is the proof track (#277).
 
 **Difference and accuracy note:** X-Wing is fixed to ML-KEM-768 + X25519 (NIST Category 1). Quantum-Go uses ML-KEM-1024 (Category 5), so adopting X-Wing verbatim would downgrade the KEM. The direction is therefore one of two honest options: (a) adapt the combiner *construction* (its labeled SHA3 binding of the ML-KEM ciphertext and X25519 share) to our ML-KEM-1024 instantiation, keeping Category 5; and/or (b) offer an X-Wing-conformant Category-1 profile as an explicit interop option. Our current combiner, `SHAKE-256(K_x25519 || K_mlkem || transcript)`, is already sound and already binds the public keys and ciphertext through the transcript; aligning buys conformance and proof reuse, not a fix for a defect.
 

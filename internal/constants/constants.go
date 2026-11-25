@@ -172,7 +172,7 @@ const (
 	CHKEMSharedSecretSize = 32
 )
 
-// X-Wing KEM sizes (standardized ML-KEM-768 + X25519 combiner, draft-connolly-cfrg-xwing-kem).
+// X-Wing KEM sizes (ML-KEM-768 + X25519 combiner, draft-connolly-cfrg-xwing-kem, an Internet-Draft).
 const (
 	// XWingPublicKeySize is the X-Wing public key length: ML-KEM-768 (1184) + X25519 (32).
 	XWingPublicKeySize = 1216

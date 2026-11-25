@@ -668,7 +668,7 @@ Techniques adapted from published PQ cryptography research. See [Design Influenc
 | Formal verification in ProVerif/Tamarin | v0.1.0 | Lafourcade et al. USENIX Sec '25 |
 | 3-message handshake optimization (done, protocol 6.0) | Unreleased | Schwabe et al. IEEE S&P '21 |
 | Stateless responder / DoS resilience cookie | v1.0.0+ | Rosenpass biscuit pattern |
-| Standardized hybrid KEM combiner (interop + proof reuse) | v1.0.0 | X-Wing (Barbosa et al. '24), CFRG hybrid-KEM |
+| Hybrid KEM combiner interop: X-Wing opt-in (shipped v0.0.15); default stays CH-KEM-v1 | decided | X-Wing (Barbosa et al. '24), CFRG hybrid-KEM drafts |
 
 ---
 
