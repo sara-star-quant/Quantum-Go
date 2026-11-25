@@ -83,6 +83,7 @@ type datagramSession struct {
 	rekeyActive     atomic.Bool
 	rekeyRespMu     sync.Mutex
 	rekeyRespFrom   uint8
+	rekeyInitHash   [32]byte // SHA3-256 of the init the cached response answers; only a byte-identical retransmit replays it
 	rekeyRespValid  bool
 	rekeyRespFrames [][]byte
 

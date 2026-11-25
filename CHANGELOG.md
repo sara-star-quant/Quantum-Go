@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Fixed
+
+- A datagram responder no longer replays its cached rekey response to an unauthenticated RekeyInit. It answered any init that named the epoch of the last completed rekey, so a small forged packet from an observer who knew the connection index made it resend the full response (about 1.7 KB) to its own peer. It now replays only for a byte-identical retransmit of the init it answered. Affects datagram sessions since v0.0.17; the target is the session peer, not a third party.
+
 ### Changed
 
 - A datagram session closes after 2^36 datagrams fail authentication, counted across all epochs, so an attacker who can reach a session cannot keep guessing forgeries under one key. The limit is the RFC 9001 integrity figure for ChaCha20-Poly1305. Forged rekey control messages count too, and reaching the limit releases the connection, so a blocked reader wakes and the registry slot goes. A frame for an epoch the session does not hold does not count. Affected: none in practice, since reaching the limit takes tens of billions of forged datagrams; a flooded session now ends and the peer starts a new handshake.

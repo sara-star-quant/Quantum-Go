@@ -14,6 +14,7 @@
 package tunnel
 
 import (
+	"crypto/sha3"
 	"encoding/binary"
 	"errors"
 	"time"
@@ -300,9 +301,15 @@ func (e *DatagramEndpoint) handleRekeyInit(ds *datagramSession, epoch uint8, bod
 	ds.rekeyRespMu.Lock()
 	defer ds.rekeyRespMu.Unlock()
 
+	initHash := sha3.Sum256(body)
 	if ds.rekeyRespValid && ds.rekeyRespFrom == epoch {
-		peer := ds.currentPeerAddr()
-		e.batch.writeAll(ds.rekeyRespFrames, peer)
+		// Replay only for a byte-identical retransmit of the init this response answers. A
+		// different body under the same epoch is unauthenticated input, and answering it would
+		// let a tiny forged packet trigger the full response toward the genuine peer.
+		if initHash == ds.rekeyInitHash {
+			peer := ds.currentPeerAddr()
+			e.batch.writeAll(ds.rekeyRespFrames, peer)
+		}
 		return
 	}
 	// Only a rekey transitioning from the current epoch is processed; stale or
@@ -319,6 +326,7 @@ func (e *DatagramEndpoint) handleRekeyInit(ds *datagramSession, epoch uint8, bod
 		return
 	}
 	ds.rekeyRespFrom = epoch
+	ds.rekeyInitHash = initHash
 	ds.rekeyRespFrames = frames
 	ds.rekeyRespValid = true
 	peer := ds.currentPeerAddr()
