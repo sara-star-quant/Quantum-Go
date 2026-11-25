@@ -677,7 +677,9 @@ func (s *Session) Rekey(newMasterSecret []byte) error {
 	// Zeroize key material (sendKey/recvKey are aliases to initiatorKey/responderKey)
 	crypto.ZeroizeMultiple(initiatorKey, responderKey)
 
-	// Reset counters
+	// Reset counters. Resetting the window is safe here because the receive cipher was replaced
+	// above in the same critical section: a record sealed under the old key no longer
+	// authenticates, so it cannot be replayed across the swap (TestReplayAcrossAnEagerKeySwapIsNotDelivered).
 	s.replayWindow = NewReplayWindow()
 	s.EstablishedAt = time.Now()
 
@@ -1036,6 +1038,9 @@ func (s *Session) ActivatePendingKeys() {
 		s.pendingSendCipher = nil
 		s.sendEpochStartSeq.Store(s.sendSeq.Load())
 	}
+	// Safe to reset: the receive cipher was just replaced, so old-key records no longer
+	// authenticate and cannot be replayed (unlike the lazy trial-decryption path, which keeps
+	// the window because it still opens old-key records).
 	s.replayWindow = NewReplayWindow()
 
 	// Adopt the new master secret and clear rekey handshake state.
