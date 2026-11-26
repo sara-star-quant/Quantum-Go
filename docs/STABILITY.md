@@ -49,7 +49,7 @@ Every error below is an exported value of `pkg/tunnel` that you can match with `
 | `ErrMessageTooLarge`, `ErrInvalidState` | A message was oversized, or arrived out of sequence. |
 | `ErrPoolClosed`, `ErrPoolTimeout`, `ErrPoolExhausted` | Pool conditions. |
 
-Match timeouts with `net.Error.Timeout()`. A handshake failure has no single error value, and `ErrTimeout`, `ErrHandshakeFailed` and `ErrRekeyRequired` are exported but the library does not return them. Until the tests in [#238](https://github.com/sara-star-quant/Quantum-Go/issues/238) pin down which errors leave a tunnel usable, treat any error from `Send` or `Receive` as the end of that tunnel: close it and dial again. That is guidance, not a guarantee.
+Match timeouts with `net.Error.Timeout()`. A handshake failure has no single error value, and `ErrTimeout`, `ErrHandshakeFailed` and `ErrRekeyRequired` are exported but the library does not return them. A received record that fails a check closes the tunnel: `Receive` returns the cause once, then `ErrTunnelClosed` (in 0.0.37 and earlier it stayed open). Until the tests in [#238](https://github.com/sara-star-quant/Quantum-Go/issues/238) pin down which other errors leave a tunnel usable, treat any error from `Send` or `Receive` as the end of that tunnel: close it and dial again. That part is guidance, not a guarantee.
 
 ## Authentication default
 
