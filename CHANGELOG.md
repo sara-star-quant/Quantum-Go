@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### Upgrade notes
+
+- A stream tunnel closes on the first received record that fails a check (authentication, replay, format, rekey or a peer alert other than close notify). `Receive` returns the cause once, then `ErrTunnelClosed`. Affected: code that kept reading after such an error; dial again instead. A read timeout between records does not close the tunnel. A timeout partway through a record loses the position in the stream, so dial again.
+
+### Fixed
+
+- Up to 0.0.37 a stream tunnel stayed open after a refused record and delivered the records that followed, although the threat model said it ended. It counted no forgeries.
+- A stream rekey record takes its sequence number under the write lock. A large concurrent `SendBatch` could overtake it and push it out of the peer's replay window.
+
 ### CI
 
 - Release notes link every repository path to the release tag (`scripts/release-notes.py`), so the page shows the files as the release shipped them; the newest section is rendered in CI and fails on a relative link.

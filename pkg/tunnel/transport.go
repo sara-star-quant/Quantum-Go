@@ -481,6 +481,10 @@ func (t *Transport) ReceiveInto(dst []byte) ([]byte, error) {
 
 		msg, msgType, err := t.readMessage()
 		if err != nil {
+			// A timeout or a transport error is not a bad record; an impossible length is.
+			if errors.Is(err, qerrors.ErrMessageTooLarge) || errors.Is(err, qerrors.ErrInvalidMessage) {
+				t.abort()
+			}
 			return dst, err
 		}
 
@@ -488,8 +492,7 @@ func (t *Transport) ReceiveInto(dst []byte) ([]byte, error) {
 		case protocol.MessageTypeData:
 			data, err := t.handleDataTo(dst, msg)
 			if err != nil {
-				t.recordProtocolError(err)
-				return dst, err
+				return dst, t.failRecord(err)
 			}
 			return data, nil
 		case protocol.MessageTypePing:
@@ -504,16 +507,14 @@ func (t *Transport) ReceiveInto(dst []byte) ([]byte, error) {
 			return dst, qerrors.ErrTunnelClosed
 		case protocol.MessageTypeRekey:
 			if err := t.handleRekey(msg); err != nil {
-				t.recordProtocolError(err)
-				return dst, err
+				return dst, t.failRecord(err)
 			}
 			continue
 		case protocol.MessageTypeAlert:
 			_, err := t.handleAlert(msg)
 			return dst, err
 		default:
-			t.recordProtocolError(qerrors.ErrInvalidMessage)
-			return dst, qerrors.ErrInvalidMessage
+			return dst, t.failRecord(qerrors.ErrInvalidMessage)
 		}
 	}
 }
@@ -563,8 +564,23 @@ func (t *Transport) handleAlert(msg []byte) ([]byte, error) {
 		return nil, qerrors.ErrTunnelClosed
 	}
 	err := qerrors.NewProtocolError("alert", &alertError{level: level, code: code, desc: desc})
+	return nil, t.failRecord(err)
+}
+
+// failRecord reports why a received record was refused and ends the tunnel. A stream delivers
+// records in order, so a refused one means tampering or a broken peer. Ending at the first one
+// also leaves an attacker one forgery attempt per tunnel.
+func (t *Transport) failRecord(err error) error {
 	t.recordProtocolError(err)
-	return nil, err
+	t.abort()
+	return err
+}
+
+// abort closes the tunnel without sending a close notice, so this end does not report a refused
+// record to the peer as a graceful close.
+func (t *Transport) abort() {
+	t.markClosed()
+	_ = t.Close()
 }
 
 // markClosed marks the transport as closed.
@@ -770,19 +786,7 @@ func (t *Transport) SendRekey() error {
 			return err
 		}
 
-		// Encrypt with current session keys
-		ciphertext, seq, err := t.session.Encrypt(innerPayload)
-		if err != nil {
-			return err
-		}
-
-		// Encode outer message
-		msg, err := t.codec.EncodeRekey(seq, ciphertext)
-		if err != nil {
-			return err
-		}
-
-		return t.writeFrame(msg)
+		return t.sealAndWriteRekey(innerPayload)
 	}()
 	if err != nil && begun {
 		t.failRekey()
@@ -812,19 +816,25 @@ func (t *Transport) sendRekeyResponse(responseCT []byte, activationSeq uint64) e
 		return err
 	}
 
-	// Encrypt with current session keys
+	return t.sealAndWriteRekey(innerPayload)
+}
+
+// sealAndWriteRekey seals a rekey payload under the current keys and writes it. The sequence number
+// is taken under the write lock, as for data records: taken outside it, a large batch could
+// overtake the record and push it out of the peer's replay window.
+func (t *Transport) sealAndWriteRekey(innerPayload []byte) error {
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
+
 	ciphertext, seq, err := t.session.Encrypt(innerPayload)
 	if err != nil {
 		return err
 	}
-
-	// Encode outer message
 	msg, err := t.codec.EncodeRekey(seq, ciphertext)
 	if err != nil {
 		return err
 	}
-
-	return t.writeFrame(msg)
+	return t.writeLocked(msg)
 }
 
 // CheckAndRekey checks if rekey is needed and initiates it if so.

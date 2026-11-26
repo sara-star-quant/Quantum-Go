@@ -6,7 +6,8 @@ import (
 )
 
 // Observer provides hooks for tunnel lifecycle, metrics, and tracing.
-// Implementations should be lightweight; callbacks may run on hot paths.
+// Implementations should be lightweight; callbacks may run on hot paths. A callback must not call
+// back into its tunnel: it can run while a record is still being processed.
 type Observer interface {
 	OnSessionStart()
 	OnSessionEnd()
