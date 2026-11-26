@@ -41,6 +41,11 @@ type dgramHandshake struct {
 	// prev is the most recently processed inbound type; a repeat of it is a
 	// retransmit and replays cached.
 	prev protocol.MessageType
+	// prevBody is the body of prev. A retransmit replays cached only when it carries the same bytes,
+	// because a message of the same type with other bytes is unauthenticated input, not a repeat.
+	prevBody []byte
+	// processing is the body advance is working on; commit moves it into prevBody.
+	processing []byte
 	// cached is the last outbound flight produced, replayed on a retransmit.
 	cached []hsMessage
 	// earlyFinished holds a ServerFinished that arrived before its ServerHello
@@ -103,6 +108,9 @@ func (d *dgramHandshake) onMessage(typ protocol.MessageType, body []byte) (out [
 		// here would answer every flight replay with another ClientHello.
 		return nil, false
 	case typ != 0 && typ == d.prev && d.cached != nil:
+		if !bytes.Equal(body, d.prevBody) {
+			return nil, false // same type, other bytes: not a retransmit, drop
+		}
 		return d.cached, false // retransmit: replay last flight, no re-invocation
 	default:
 		return nil, false // stray / out-of-order / post-complete: drop
@@ -114,6 +122,7 @@ func (d *dgramHandshake) onMessage(typ protocol.MessageType, body []byte) (out [
 // builder error it leaves all FSM state untouched and drops, so a later genuine
 // retransmit retries the same transition.
 func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out []hsMessage, complete bool) {
+	d.processing = body
 	switch {
 	case d.role == RoleInitiator && typ == protocol.MessageTypeServerHello:
 		// No reply yet: ServerFinished follows in the same flight. The cached flight
@@ -122,6 +131,7 @@ func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out []h
 			return nil, false
 		}
 		d.prev = typ
+		d.prevBody = bytes.Clone(body)
 		d.expecting = protocol.MessageTypeServerFinished
 		if early := d.earlyFinished; early != nil {
 			d.earlyFinished = nil
@@ -192,6 +202,7 @@ func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out []h
 			return nil, false
 		}
 		d.prev = typ
+		d.prevBody = bytes.Clone(body)
 		d.expecting = 0
 		return nil, true
 
@@ -204,6 +215,7 @@ func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out []h
 // new outbound to cache and replay, and the next inbound to expect.
 func (d *dgramHandshake) commit(processed protocol.MessageType, out []hsMessage, next protocol.MessageType) {
 	d.prev = processed
+	d.prevBody = bytes.Clone(d.processing)
 	d.cached = out
 	d.expecting = next
 }
