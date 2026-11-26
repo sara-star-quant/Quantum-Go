@@ -856,6 +856,11 @@ func (s *Session) PrepareRekeyResponse(newPublicKeyBytes []byte, activationSeq u
 	if s.State() != SessionStateEstablished && s.State() != SessionStateRekeying {
 		return nil, qerrors.ErrInvalidState
 	}
+	// A second request before the first one is activated would replace the pending keys and
+	// drop the first pending secret unscrubbed.
+	if s.rekeyInProgress {
+		return nil, qerrors.ErrRekeyInProgress
+	}
 
 	// Parse the new public key
 	newPublicKey, err := s.kemSuite.ParsePublicKey(newPublicKeyBytes)
@@ -868,16 +873,24 @@ func (s *Session) PrepareRekeyResponse(newPublicKeyBytes []byte, activationSeq u
 	if err != nil {
 		return nil, err
 	}
+	var newSecret, initiatorKey, responderKey []byte
+	committed := false
+	defer func() {
+		// Scrub the intermediates on every exit; the new master secret stays only once stored.
+		crypto.ZeroizeMultiple(freshSecret, initiatorKey, responderKey)
+		if !committed {
+			crypto.Zeroize(newSecret)
+		}
+	}()
 
 	// Ratchet: mix current master secret with fresh KEM secret for forward secrecy
-	newSecret, err := crypto.DeriveRekeySecret(s.masterSecret, freshSecret)
+	newSecret, err = crypto.DeriveRekeySecret(s.masterSecret, freshSecret)
 	if err != nil {
 		return nil, err
 	}
-	crypto.Zeroize(freshSecret)
 
 	// Derive new traffic keys
-	initiatorKey, responderKey, err := crypto.DeriveTrafficKeys(newSecret)
+	initiatorKey, responderKey, err = crypto.DeriveTrafficKeys(newSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -900,9 +913,7 @@ func (s *Session) PrepareRekeyResponse(newPublicKeyBytes []byte, activationSeq u
 	s.pendingRecvCipher = newRecvCipher
 	s.pendingSendCipher = newSendCipher
 	s.pendingRekeySecret = newSecret
-
-	// Zeroize temporary keys
-	crypto.ZeroizeMultiple(initiatorKey, responderKey)
+	committed = true
 
 	s.SetState(SessionStateRekeying)
 
@@ -929,16 +940,24 @@ func (s *Session) ProcessRekeyResponse(ciphertextBytes []byte) error {
 	if err != nil {
 		return err
 	}
+	var newSecret, initiatorKey, responderKey []byte
+	committed := false
+	defer func() {
+		// Scrub the intermediates on every exit; the new master secret stays only once stored.
+		crypto.ZeroizeMultiple(freshSecret, initiatorKey, responderKey)
+		if !committed {
+			crypto.Zeroize(newSecret)
+		}
+	}()
 
 	// Ratchet: mix current master secret with fresh KEM secret for forward secrecy
-	newSecret, err := crypto.DeriveRekeySecret(s.masterSecret, freshSecret)
+	newSecret, err = crypto.DeriveRekeySecret(s.masterSecret, freshSecret)
 	if err != nil {
 		return err
 	}
-	crypto.Zeroize(freshSecret)
 
 	// Derive new traffic keys
-	initiatorKey, responderKey, err := crypto.DeriveTrafficKeys(newSecret)
+	initiatorKey, responderKey, err = crypto.DeriveTrafficKeys(newSecret)
 	if err != nil {
 		return err
 	}
@@ -962,13 +981,11 @@ func (s *Session) ProcessRekeyResponse(ciphertextBytes []byte) error {
 	s.sendEpochStartSeq.Store(s.sendSeq.Load())
 	s.pendingRecvCipher = newRecvCipher
 	s.pendingRekeySecret = newSecret
+	committed = true
 
 	// Clean up pending keypair
 	s.pendingRekeyKeyPair.Zeroize()
 	s.pendingRekeyKeyPair = nil
-
-	// Zeroize temporary keys
-	crypto.ZeroizeMultiple(initiatorKey, responderKey)
 
 	// The send direction has switched, so the rekey handshake is complete for this
 	// side: adopt the new master secret and clear rekey state. The receive cipher is
