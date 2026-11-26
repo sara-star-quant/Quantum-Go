@@ -25,8 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Docs
 
+- Remaining statements that the hybrid is secure if either component holds now say it is argued, not proven (code comments in `chkem` and `doc.go`, the CLI text, PROTOCOL.md section 8, MATHEMATICAL_FOUNDATION.md), and DESIGN_INFLUENCES.md no longer calls X-Wing a standard or contradicts the decision that CH-KEM-v1 stays the default. The threat model records the forged ServerHello wedge as accepted.
 - Code comments and docs no longer call X-Wing standardized or its implementation certified (it is an Internet-Draft wrapped from circl), and the design notes and roadmap say the default stays CH-KEM-v1 instead of promising to align it with X-Wing.
-- docs/technical/THREAT_MODEL.md is current as of v0.0.36: four new threats (half-open exhaustion from one valid address, forgery attempts against one AEAD key, the static pinned-key signal, rekey failure), the findings of the pre-release reads with their status, one table of every threat before and after mitigation, and rendering fixes (scenario lines, table alignment, the data-flow diagram).
+- docs/technical/THREAT_MODEL.md reflects v0.0.36 and the unreleased changes after it (those are marked): four new threats (half-open exhaustion from one valid address, forgery attempts against one AEAD key, the static pinned-key signal, rekey failure), the findings of the pre-release reads with their status, one table of every threat before and after mitigation, and rendering fixes (scenario lines, table alignment, the data-flow diagram).
 
 ## [0.0.36][] - 2026-11-25
 

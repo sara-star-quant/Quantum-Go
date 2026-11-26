@@ -2,7 +2,7 @@
 
 This is a self-authored threat model, informed by the NIST SP 800-30 risk methodology. It is NOT an independent third-party security audit; a third-party audit is tracked separately on the roadmap. Risk ratings reflect the authors' analysis of the design as of the dates noted.
 
-**Last Updated:** 2026-11-26 (v0.0.36, wire protocol 6.0)
+**Last Updated:** 2026-11-26 (release v0.0.36, wire protocol 6.0, plus the changes on main after it; those are marked "after 0.0.36" or "unreleased")
 
 Revised after two independent code reads before v0.0.36. T12 to T15 are new (half-open slot exhaustion from one valid address, forgery attempts against one AEAD key, the static pinned-key accept or reject signal, rekey failure and desync); T8 and the protocol vulnerabilities in 5.3 were updated, and 5.3 now lists what the reads found, fixed or open. The scores for T1 to T5 are unchanged from the January assessment. Section 6 is a table of every threat before and after mitigation, replacing the two grids that predated the November revision. Each security claim this document relies on is in the [claims register](CLAIMS.md) with its status and evidence.
 
@@ -303,7 +303,7 @@ Likelihood (L) and impact (I) use the scales in 2.3. Scores for T1 to T11 come f
 | T9     | 2 x 4 = 8 (Moderate)   | 1 x 4 = 4 (Low)         | Negotiation path has tests, no separate formal model                                                     |
 | T10    | 4 x 2 = 8 (Moderate)   | 4 x 2 = 8 (Moderate)    | No control removes it; padding is opt-in and does not hide the header                                    |
 | T11    | 2 x 5 = 10 (High)      | 2 x 5 = 10 (High)       | An in-process suite cannot be sandboxed                                                                  |
-| T12    | 3 x 3 = 9 (Moderate)   | 3 x 3 = 9 (Moderate)    | With WithMaxHalfOpenPerIP set; unchanged while it is off, which is the default                           |
+| T12    | 3 x 3 = 9 (Moderate)   | 2 x 3 = 6 (Moderate)    | With WithMaxHalfOpenPerIP set; 3 x 3 = 9 while it is off, which is the default                           |
 | T13    | 2 x 4 = 8 (Moderate)   | 1 x 4 = 4 (Low)         | Datagram: close at 2^36 failures (C-21); stream: first failure ends the session                          |
 | T14    | 2 x 4 = 8 (Moderate)   | 2 x 4 = 8 (Moderate)    | Unchanged until an authenticated key exchange model is chosen and applied                                |
 | T15    | 3 x 3 = 9 (Moderate)   | 2 x 3 = 6 (Moderate)    | Stream failure closes the session (0.0.36); the datagram lost-response stall is fixed after 0.0.36 (V22) |
@@ -359,7 +359,7 @@ Keys rotate by a rekey that the initiator starts before a key reaches its wear l
 | T8 (DoS)                | Per-IP and handshake rate limits, handshake timeout, `MaxPendingHandshakes`; on UDP a load-gated stateless cookie and a de-amplifying RETRY                  | Medium to High under load; Medium otherwise                                                         |
 | T9 (Downgrade)          | Offered suites bound into the Finished transcript; HelloRetryRequest synthetic transcript hash; offer list enforced on both sides, including the FIPS filter | High, tested; not separately modeled                                                                |
 | T10 (Fingerprinting)    | Optional fixed-size handshake padding                                                                                                                        | Low                                                                                                 |
-| T12 (One valid address) | Global half-open ceiling; load-gated cookie; optional per-address cap (WithMaxHalfOpenPerIP, IPv6 per /64), default off                                      | Medium with the cap set; Low against a single host without it                                       |
+| T12 (One valid address) | Global half-open ceiling; load-gated cookie; optional per-address cap (WithMaxHalfOpenPerIP, IPv6 per /64), default off                                      | Medium with the cap set; none while it is off (the ceiling bounds memory, not availability)                                       |
 | T13 (Forgery attempts)  | Datagram session closes after 2^36 failed authentications; the stream ends on the first failed record; usage limits tested                                   | High                                                                                                |
 | T14 (Static-key signal) | Implicit rejection; the full ciphertext compared by the standard library and circl, tested at every byte; rate limits bound attempts                         | Medium; the model is open                                                                           |
 | T15 (Rekey failure)     | A failed stream rekey closes the session; within one datagram rekey attempt the same init is retransmitted until a response arrives                          | Medium; the datagram lost-response case is fixed after 0.0.36                                       |
@@ -444,4 +444,4 @@ Keys rotate by a rekey that the initiator starts before a key reaches its wear l
 
 ## Appendix B: Document Control
 
-**Last Updated:** 2026-11-26 (v0.0.36)
+**Last Updated:** 2026-11-26 (v0.0.36 and the unreleased changes after it)

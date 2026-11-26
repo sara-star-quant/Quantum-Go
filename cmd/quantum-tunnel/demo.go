@@ -46,7 +46,7 @@ func runDemoServer(addr string, verbose bool, obsAddr string, collector *metrics
 		fmt.Println("Security Properties:")
 		fmt.Println("  • Post-Quantum: ML-KEM-1024 (NIST Category 5)")
 		fmt.Println("  • Classical: X25519 (128-bit)")
-		fmt.Println("  • Hybrid: Secure if EITHER algorithm is secure")
+		fmt.Println("  • Hybrid: both algorithms protect the key (the either-one claim is argued, not proven)")
 		fmt.Println("  • Encryption: AES-256-GCM")
 		fmt.Println()
 	}

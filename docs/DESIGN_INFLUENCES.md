@@ -90,7 +90,7 @@ The protocol draws on published post-quantum cryptography research and public st
 
 **Our adaptation:** X-Wing ships as an opt-in KEM suite (since v0.0.15). The default stays CH-KEM-v1 by the owner's decision of 2026-11-19: it is ML-KEM-1024 based, its wire format is stable, and its combiner hashes both public keys and both ciphertexts. Its security argument is our own and is written up in the claims register (C-03) and the security-argument draft; a published proof for the default is the proof track (#277).
 
-**Difference and accuracy note:** X-Wing is fixed to ML-KEM-768 + X25519 (NIST Category 1). Quantum-Go uses ML-KEM-1024 (Category 5), so adopting X-Wing verbatim would downgrade the KEM. The direction is therefore one of two honest options: (a) adapt the combiner *construction* (its labeled SHA3 binding of the ML-KEM ciphertext and X25519 share) to our ML-KEM-1024 instantiation, keeping Category 5; and/or (b) offer an X-Wing-conformant Category-1 profile as an explicit interop option. Our current combiner, `SHAKE-256(K_x25519 || K_mlkem || transcript)`, is already sound and already binds the public keys and ciphertext through the transcript; aligning buys conformance and proof reuse, not a fix for a defect.
+**Difference and accuracy note:** X-Wing is fixed to ML-KEM-768 + X25519 and targets 128-bit security (NIST level 1 in its draft). Quantum-Go uses ML-KEM-1024 (Category 5), so adopting X-Wing verbatim as the default would lower the KEM level. We therefore keep CH-KEM-v1 as the default and offer X-Wing as an opt-in interop suite. Our combiner, `SHAKE-256(K_x25519 || K_mlkem || transcript)`, already binds both public keys and both ciphertexts through the transcript. Its security argument is our own; the proof track is #277.
 
 ---
 
@@ -106,7 +106,7 @@ We do not implement the ratcheted KEM constructions (RKEM, Rebar) from the post-
 
 ### 3.3 Non-standardized KEMs
 
-We use only NIST-standardized ML-KEM-1024 (FIPS 203) and, as an opt-in suite, X-Wing (ML-KEM-768 plus X25519). We do not use KEMs that NIST has not standardized.
+We use NIST-standardized ML-KEM-1024 (FIPS 203) and, as an opt-in suite, X-Wing (ML-KEM-768 plus X25519), which is an Internet-Draft and not a standard. We do not use other KEMs that NIST has not standardized.
 
 ---
 

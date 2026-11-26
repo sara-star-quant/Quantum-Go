@@ -1,6 +1,7 @@
 // Package chkem implements the Cascaded Hybrid Key Encapsulation Mechanism (CH-KEM):
-// ML-KEM-1024 and X25519 combined into one key exchange that stays secure if either
-// algorithm holds, with pluggable suites (CH-KEM-v1 and X-Wing) and static-key identities.
+// ML-KEM-1024 and X25519 combined into one key exchange in which both algorithms feed the
+// key (that it stays secure if either one holds is argued, not proven; see the claims
+// register, C-03), with pluggable suites (CH-KEM-v1 and X-Wing) and static-key identities.
 //
 // CH-KEM is a novel defense-in-depth key encapsulation mechanism that combines:
 //   - X25519 (classical elliptic curve Diffie-Hellman)
@@ -46,11 +47,13 @@
 // encapsulating (responder) party. Both endpoints bind the responder role, so a
 // legit exchange matches while a reflected/same-role exchange does not.
 //
-// # Security Theorem
+// # Security argument (not proven)
 //
-// Theorem: CH-KEM is IND-CCA2 secure if either X25519 satisfies the
-// Computational Diffie-Hellman (CDH) assumption on Curve25519, OR ML-KEM-1024
-// is IND-CCA2 secure (based on the Module Learning With Errors problem).
+// Claim, argued and not proven (docs/math/MATHEMATICAL_FOUNDATION.md section 7 and the
+// claims register, C-03): CH-KEM is IND-CCA2 secure if either X25519 satisfies a
+// Diffie-Hellman assumption on Curve25519 (the draft argument uses strong Diffie-Hellman in
+// the random oracle model), OR ML-KEM-1024 is IND-CCA2 secure (based on the Module Learning
+// With Errors problem).
 //
 // Proof sketch: An adversary breaking CH-KEM must extract information about
 // BOTH K_x AND K_m from the ciphertext. If X25519 is secure, K_x is

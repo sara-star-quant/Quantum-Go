@@ -48,7 +48,7 @@
 //
 //   - Post-quantum security: ML-KEM-1024 (NIST Category 5, ~256-bit security)
 //   - Classical security: X25519 ECDH (128-bit security)
-//   - Hybrid guarantee: Secure if EITHER algorithm is secure
+//   - Hybrid design: both algorithms feed the key; that it holds if EITHER does is argued, not proven (docs/technical/CLAIMS.md, C-03)
 //   - Forward secrecy: Ephemeral keys generated for each session
 //   - Authenticated encryption: AES-256-GCM or ChaCha20-Poly1305
 //   - Replay protection: Sliding window with sequence numbers

@@ -112,7 +112,7 @@ PROJECT:
     https://github.com/sara-star-quant/quantum-go
 
     Security: ML-KEM-1024 (NIST FIPS 203) + X25519 (RFC 7748)
-    Defense-in-depth: Secure if EITHER algorithm is secure`)
+    Defense-in-depth: both algorithms feed the key (the either-one claim is argued, not proven)`)
 }
 
 func demoCommand() {

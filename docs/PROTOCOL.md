@@ -328,8 +328,8 @@ is level `0x01`, code `0x08`, text `connection closed`; a failed handshake is le
 ## 8. Rekey (key rotation with forward secrecy)
 
 A long-lived session rotates keys before the per-epoch limit. A rekey is a fresh KEM exchange ratcheted
-into the current master secret, so it is forward-secret and stays secure if either the old master or the
-fresh KEM holds.
+into the current master secret, so it is forward-secret in the symbolic model (claims register, C-09). That it
+stays secure if either the old master or the fresh KEM holds is argued, not proven.
 
 Stream rekey:
 

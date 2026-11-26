@@ -28,7 +28,7 @@ This document provides the mathematical foundation for the Cascaded Hybrid Key E
 
 1. **IND-CCA2 Security**: Indistinguishability under adaptive chosen-ciphertext attacks
 2. **Quantum Resistance**: Security against quantum computer attacks (Shor's algorithm)
-3. **Hybrid Security**: System remains secure if either classical or post-quantum component is broken
+3. **Hybrid Security**: The system is meant to remain secure if either the classical or the post-quantum component is broken (argued, not proven; see section 7.1)
 4. **Forward Secrecy**: Compromise of long-term keys does not compromise past sessions
 
 ### 1.2 Notation
@@ -346,7 +346,7 @@ CH-KEM.Decaps(sk, ct):
 >
 > The computational proof is tracked in [#277](https://github.com/sara-star-quant/Quantum-Go/issues/277).
 
-**Theorem:** CH-KEM is IND-CCA2 secure if either:
+**Claim (argued, not proven; see the status note above):** CH-KEM is IND-CCA2 secure if either:
 1. X25519 is CDH-secure on Curve25519, OR
 2. ML-KEM-1024 is IND-CCA2 secure (MLWE assumption)
 
