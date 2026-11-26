@@ -2,7 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
+	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -86,4 +89,23 @@ func (l *assuranceLog) record(role string, t *tunnel.Tunnel, start time.Time, ps
 	if err != nil && l.failed.CompareAndSwap(false, true) {
 		l.logf("assurance log: cannot write: %v (forwarding continues; this is logged once)", err)
 	}
+}
+
+// openAssuranceLog opens the assurance log for append with mode 0600. The mode passed to OpenFile
+// applies only when the file is created, so an existing file keeps whatever mode it had, and the
+// log can carry PSK identities with --assurance-identity. Fix the mode after opening, and refuse a
+// path that is not a regular file (a symlink or a directory).
+func openAssuranceLog(path string) (*os.File, error) {
+	if fi, err := os.Lstat(path); err == nil && !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304 -- operator-supplied CLI path
+	if err != nil {
+		return nil, err
+	}
+	if err := f.Chmod(0o600); err != nil && runtime.GOOS != "windows" {
+		_ = f.Close()
+		return nil, err
+	}
+	return f, nil
 }

@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"github.com/sara-star-quant/quantum-go/pkg/crypto"
+	"os"
+	"path/filepath"
+	"runtime"
 )
 
 // syncBuffer is a bytes.Buffer safe for the forwarder's goroutines and the test to share.
@@ -165,5 +168,97 @@ func TestAssuranceSchemaKeys(t *testing.T) {
 	want := []string{"authentication", "commit", "duration_ms", "fips_build_mode", "identity", "kem_suite", "role", "schema_version", "time", "version"}
 	if !slices.Equal(got, want) || assuranceSchema != 1 {
 		t.Fatalf("record keys %v (schema %d), want %v at schema 1: bump assuranceSchema if a field changed", got, assuranceSchema, want)
+	}
+}
+
+// The client's record describes how that connection authenticated, not what the config says when
+// the connection ends. A reload that drops the PSK mid-connection must not erase it from the
+// record, and the reverse mistake, claiming authentication a connection never had, is the same
+// bug. The log feeds audit packs, so its flags come from the config the connection was dialed with.
+func TestAssuranceClientRecordUsesTheConfigItDialedWith(t *testing.T) {
+	var buf syncBuffer
+	lim := testLimits
+	lim.assurance = newAssuranceLog(&buf, buildInventory(), false, nopLog)
+	up, _ := startUpstream(t, echoHandler)
+
+	p := writeSecret(t, "psk.hex", randomPSK(t)+"\n", 0o600)
+	a := forwardAuth{pskFile: p}
+	srvCfg, err := buildForwardConfig(true, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cliCfg, err := buildForwardConfig(false, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, err := startForwardServer("127.0.0.1:0", up, srvCfg, lim, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = srv.Close() })
+	cli, err := startForwardClient("127.0.0.1:0", srv.Addr().String(), cliCfg, lim, nopLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cli.Close() })
+
+	conn := dial(t, cli.Addr().String())
+	if _, err := conn.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Read(make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	}
+	// A reload while the connection is open replaces the client's config with one that has no PSK.
+	noPSK := cliCfg
+	noPSK.PSK = nil
+	noPSK.PSKIdentity = nil
+	cli.cfg.Store(&noPSK)
+	_ = conn.Close()
+
+	for _, l := range buf.waitLines(t, 2) {
+		var rec assuranceRecord
+		if err := json.Unmarshal([]byte(l), &rec); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Role == "client" && !slices.Equal(rec.Authentication, []string{"psk"}) {
+			t.Fatalf("client record says authentication %v after a reload, want [psk]", rec.Authentication)
+		}
+	}
+}
+
+// The mode given to OpenFile applies only when the file is created. An assurance log that
+// already exists with looser permissions must still end up 0600, and a path that is not a regular
+// file is refused.
+func TestOpenAssuranceLogEnforcesMode0600(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX modes")
+	}
+	dir := t.TempDir()
+
+	loose := filepath.Join(dir, "loose.log")
+	if err := os.WriteFile(loose, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := openAssuranceLog(loose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	if fi, _ := os.Stat(loose); fi.Mode().Perm() != 0o600 {
+		t.Fatalf("existing log mode = %v, want 0600", fi.Mode().Perm())
+	}
+
+	link := filepath.Join(dir, "link.log")
+	if err := os.Symlink(loose, link); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := openAssuranceLog(link); err == nil {
+		_ = f.Close()
+		t.Fatal("a symlink was accepted as the assurance log")
+	}
+	if f, err := openAssuranceLog(dir); err == nil {
+		_ = f.Close()
+		t.Fatal("a directory was accepted as the assurance log")
 	}
 }

@@ -377,7 +377,10 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 				defer func() { <-sem }()
 				defer func() { _ = conn.Close() }()
 				start := time.Now()
-				t, err := tunnel.DialWithConfig("tcp", connect, *f.cfg.Load())
+				// One snapshot for the dial and the record: the assurance record describes how this
+				// connection authenticated, not what a later reload changed the config to.
+				cc := f.cfg.Load()
+				t, err := tunnel.DialWithConfig("tcp", connect, *cc)
 				if err != nil {
 					f.ops.dialFailed.Add(1)
 					logf("tunnel to %s: %v", connect, err)
@@ -387,7 +390,6 @@ func startForwardClient(listen, connect string, cfg tunnel.TransportConfig, lim 
 				defer capLifetime(lim.maxLifetime, func() { _ = conn.Close(); _ = t.Close() })()
 				sent, recv := pipe(conn, t, lim.idleTimeout)
 				f.ops.bytes(sent, recv)
-				cc := f.cfg.Load()
 				lim.assurance.record("client", t, start, len(cc.PSK) > 0, cc.PinnedServerKey != nil)
 				logf("closed %s after %s: %d bytes sent, %d received", connLabel(conn), time.Since(start).Round(time.Millisecond), sent, recv)
 			}()
@@ -877,7 +879,7 @@ EXAMPLES:
 		os.Exit(2)
 	}
 	if *assuranceLogPath != "" {
-		file, ferr := os.OpenFile(*assuranceLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304 -- operator-supplied CLI path
+		file, ferr := openAssuranceLog(*assuranceLogPath)
 		if ferr != nil {
 			fmt.Fprintf(os.Stderr, "Error: --assurance-log: %v\n", ferr)
 			os.Exit(2)
