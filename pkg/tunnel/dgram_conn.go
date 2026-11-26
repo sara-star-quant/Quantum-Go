@@ -214,7 +214,13 @@ func (c *DatagramConn) Recv() ([]byte, error) {
 			return nil, qerrors.ErrTunnelClosed
 		}
 	case <-c.ep.done:
-		return nil, errEndpointClosed
+		// Same rule as a close: a buffered payload wins over the shutdown.
+		select {
+		case b := <-c.ds.recvCh:
+			return b, nil
+		default:
+			return nil, errEndpointClosed
+		}
 	}
 }
 

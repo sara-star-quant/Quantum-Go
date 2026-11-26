@@ -11,6 +11,7 @@ func closedConnWithBuffered(t *testing.T, payloads ...string) (*DatagramConn, *c
 	t.Helper()
 	conn := &captureConn{}
 	e := mustEndpoint(t, conn)
+	t.Cleanup(func() { _ = e.Close() })
 	_, _, ds := registerEstablished(t, e, udp("198.51.100.1", 4000))
 	c := &DatagramConn{ep: e, ds: ds}
 	for _, p := range payloads {
@@ -58,5 +59,30 @@ func TestRekeyOnAClosedSessionWritesNothing(t *testing.T) {
 	defer conn.mu.Unlock()
 	if len(conn.written) != 0 {
 		t.Fatalf("Rekey on a closed session wrote %d datagrams", len(conn.written))
+	}
+}
+
+// The endpoint shutting down is the other way Recv ends. The same rule holds: buffered payloads
+// first, in order, then the shutdown error every time.
+func TestRecvAfterEndpointShutdownDrainsTheBufferThenFails(t *testing.T) {
+	for trial := range 200 {
+		e := mustEndpoint(t, &captureConn{})
+		_, _, ds := registerEstablished(t, e, udp("198.51.100.1", 4000))
+		c := &DatagramConn{ep: e, ds: ds}
+		ds.recvCh <- []byte("one")
+		ds.recvCh <- []byte("two")
+		_ = e.Close()
+
+		for i, want := range []string{"one", "two"} {
+			got, err := c.Recv()
+			if err != nil || string(got) != want {
+				t.Fatalf("trial %d, call %d: got %q, %v; want %q", trial, i+1, got, err, want)
+			}
+		}
+		for i := range 3 {
+			if _, err := c.Recv(); !errors.Is(err, errEndpointClosed) {
+				t.Fatalf("trial %d, call %d after the buffer: got %v, want errEndpointClosed", trial, i+3, err)
+			}
+		}
 	}
 }

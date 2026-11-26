@@ -9,13 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The datagram handshake replays its cached flight only for a byte-identical repeat of the message it last processed. A message of the same type with other bytes used to draw the whole flight again (about 3 KB from the responder), including from a source that only needed to match the half-open entry.
+- The datagram handshake replays its cached flight only for a byte-identical repeat of the message it last processed. A message of the same type with other bytes used to draw the whole flight again (about 3 KB from the responder), including from a source that only needed to match the half-open entry. A retransmit whose bytes differ is now dropped; genuine retransmits are byte-identical.
 - A datagram initiator restarts its retransmit schedule when the first HelloRetryRequest arrives. The request proves the peer answers, but the driver saw no change of state across it and carried the backoff and retry count over, so a retried ClientHello that followed a lossy start gave up sooner than the schedule promises.
-- `DatagramConn.Recv` after a close hands over the payloads already buffered, in order, and then returns `ErrTunnelClosed` every time. It used to pick between a buffered payload and the close at random, so a reader could see a payload, then the error, then another payload.
+- `DatagramConn.Recv` after a close or after the endpoint shuts down hands over the payloads already buffered, in order, and then returns the close error (`ErrTunnelClosed`, or the endpoint-closed error) every time. It used to pick between a buffered payload and the close at random, so a reader could see a payload, then the error, then another payload.
 - A datagram rekey recovers after every response of an earlier attempt was lost. The responder had already moved to the next epoch and cached its response, and the initiator's next attempt built a fresh init that the responder could not match to it, so the pair could not rekey again until the session ended. The initiator now resends the same init for as long as it has no answer in that epoch.
 
 ### Changed
 
+- A datagram initiator keeps its unanswered RekeyInit and the secret key behind it for up to ten minutes so a retry can resend the same init; the key pair is zeroized when the rekey succeeds, when the init expires, or at teardown, and a rekey that races with teardown no longer leaves it behind.
 - `Session.PrepareRekeyResponse` returns `ErrRekeyInProgress` when a rekey is already pending instead of replacing the pending keys. The transport already avoided the second call; code that called it directly twice before activating gets the error. It also scrubs the secrets it derived on every error path, and `ProcessRekeyResponse` does the same.
 
 ### Added

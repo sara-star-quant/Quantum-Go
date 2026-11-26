@@ -92,8 +92,10 @@ type datagramSession struct {
 	// its frames. A later attempt in the same epoch resends the same frames, so the responder can
 	// match them to the response it cached, which matters when every response of an earlier attempt was
 	// lost. See Rekey.
-	rekeyPendMu sync.Mutex
-	rekeyPend   *pendingRekeyInit
+	rekeyPendMu    sync.Mutex
+	rekeyPend      *pendingRekeyInit
+	rekeyPendTTL   time.Duration // zero means pendingRekeyTTL
+	rekeyPendTimer *time.Timer
 
 	// retryCh delivers a server anti-DoS cookie (from a RETRY frame) to an
 	// initiator handshake goroutine so it can re-send its ClientHello carrying the
@@ -135,6 +137,13 @@ type pendingRekeyInit struct {
 	frames [][]byte
 }
 
+// pendingRekeyTTL bounds how long an unanswered init, and the secret key behind it, stays in memory.
+// It is long enough to ride out a network outage that outlasts one rekey attempt, and short enough
+// that a dead link does not keep the key for the life of the session. If an outage outlasts it with
+// every response lost, the next attempt builds a fresh init, which the responder cannot match to
+// its cached response; that case is the stall this reuse exists to avoid, so keep the bound generous.
+const pendingRekeyTTL = 10 * time.Minute
+
 // pendingRekeyFor returns the unanswered init sealed under epoch, or nil. An init sealed under another
 // epoch is stale and is dropped.
 func (ds *datagramSession) pendingRekeyFor(epoch uint8) *pendingRekeyInit {
@@ -154,16 +163,46 @@ func (ds *datagramSession) pendingRekeyFor(epoch uint8) *pendingRekeyInit {
 func (ds *datagramSession) setPendingRekey(p *pendingRekeyInit) {
 	ds.rekeyPendMu.Lock()
 	defer ds.rekeyPendMu.Unlock()
+	// A Rekey racing with teardown can arrive here after the slot was cleared. Do not keep a
+	// secret key on a session that is gone. teardown closes the session before it clears.
+	select {
+	case <-ds.closed:
+		p.kp.Zeroize()
+		return
+	default:
+	}
 	if ds.rekeyPend != nil && ds.rekeyPend != p {
 		ds.rekeyPend.kp.Zeroize()
 	}
 	ds.rekeyPend = p
+	if ds.rekeyPendTimer != nil {
+		ds.rekeyPendTimer.Stop()
+	}
+	ttl := ds.rekeyPendTTL
+	if ttl <= 0 {
+		ttl = pendingRekeyTTL
+	}
+	ds.rekeyPendTimer = time.AfterFunc(ttl, func() { ds.expirePendingRekey(p) })
+}
+
+// expirePendingRekey drops p if it is still the pending init.
+func (ds *datagramSession) expirePendingRekey(p *pendingRekeyInit) {
+	ds.rekeyPendMu.Lock()
+	defer ds.rekeyPendMu.Unlock()
+	if ds.rekeyPend == p {
+		p.kp.Zeroize()
+		ds.rekeyPend = nil
+	}
 }
 
 // clearPendingRekey drops the unanswered init and zeroizes its key pair.
 func (ds *datagramSession) clearPendingRekey() {
 	ds.rekeyPendMu.Lock()
 	defer ds.rekeyPendMu.Unlock()
+	if ds.rekeyPendTimer != nil {
+		ds.rekeyPendTimer.Stop()
+		ds.rekeyPendTimer = nil
+	}
 	if ds.rekeyPend != nil {
 		ds.rekeyPend.kp.Zeroize()
 		ds.rekeyPend = nil
@@ -236,12 +275,14 @@ const datagramRecvBuffer = 4 << 20
 // is idempotent and must be called WITHOUT holding the registry lock.
 func (ds *datagramSession) teardown(r *connRegistry) {
 	r.remove(ds.index)
-	ds.clearPendingRekey()
 	ds.closeOnce.Do(func() {
 		if ds.closed != nil {
 			close(ds.closed)
 		}
 	})
+	// After the close, so a racing setPendingRekey either sees it and drops its key pair, or has
+	// stored it already and is cleared here.
+	ds.clearPendingRekey()
 }
 
 // connRegistry maps the random connection indices we assign to their sessions

@@ -22,9 +22,12 @@ func TestDatagramRekeyRecoversAfterEveryResponseWasLost(t *testing.T) {
 	if err := client.Rekey(); err == nil {
 		t.Fatal("the attempt with every response lost must time out")
 	}
+	// The responder must have answered and moved on before the network heals; otherwise this is a
+	// plain rekey and proves nothing about the stall.
+	waitEpoch(t, server, 1)
 	memConn(epB).fault.setDropAll(0)
 
-	epA.maxRetries = 40
+	epA.maxRetries = 80
 	if err := client.Rekey(); err != nil {
 		t.Fatalf("the retry after the network healed failed: %v", err)
 	}

@@ -216,6 +216,7 @@ func (d *dgramHandshake) advance(typ protocol.MessageType, body []byte) (out []h
 func (d *dgramHandshake) commit(processed protocol.MessageType, out []hsMessage, next protocol.MessageType) {
 	d.prev = processed
 	d.prevBody = bytes.Clone(d.processing)
+	d.processing = nil // do not keep a reference to the caller's reassembly buffer
 	d.cached = out
 	d.expecting = next
 }
