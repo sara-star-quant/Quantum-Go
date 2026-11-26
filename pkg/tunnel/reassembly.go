@@ -104,7 +104,7 @@ func (r *Reassembler) Add(source string, h protocol.DatagramHandshakeHeader, fra
 		// holds the cap; if we are still at it, drop this new source rather than grow
 		// without bound (UDP sources are spoofable). Legit peers retry.
 		if len(r.bySource) >= r.maxSources {
-			r.sweepLocked(true)
+			r.sweepAtCapLocked()
 			if len(r.bySource) >= r.maxSources {
 				return nil, false, errReassemblerFull
 			}
@@ -196,6 +196,17 @@ func (r *Reassembler) sweepLocked(force bool) {
 			delete(r.bySource, src)
 		}
 	}
+}
+
+// sweepAtCapLocked frees expired state when the source table is full, so stale entries never hold
+// the cap. It runs at most once per fortieth of the timeout: a forced sweep scans every source and
+// buffer under the lock, and an attacker that keeps the table full would otherwise make every
+// further packet from a new source pay for one.
+func (r *Reassembler) sweepAtCapLocked() {
+	if r.now().Sub(r.lastSweep) < r.timeout/40 {
+		return
+	}
+	r.sweepLocked(true)
 }
 
 func (r *Reassembler) evictOldestLocked(bufs map[reasmKey]*fragmentBuffer) {

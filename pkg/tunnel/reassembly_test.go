@@ -2,6 +2,8 @@ package tunnel
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -253,5 +255,38 @@ func TestReassembler_SourceCountDoesNotSweepPerCall(t *testing.T) {
 	}
 	if sweeps > 1 {
 		t.Fatalf("sourceCount swept %d times in 1000 calls over one second, want at most 1", sweeps)
+	}
+}
+
+// At the source cap every packet from a new source used to force a full sweep, and the throttle
+// did not apply to a forced sweep. An attacker that holds the table full with spoofed sources then
+// made each further packet scan every source and buffer under the lock, exactly when the
+// reassembler is under attack. The forced sweep keeps its purpose, expired state must not hold the
+// cap, but it runs at most once per fortieth of the timeout.
+func TestReassembler_ForcedSweepAtTheCapIsThrottled(t *testing.T) {
+	r := NewReassembler(4, 4096, 10*time.Second)
+	clock := time.Unix(1_000, 0)
+	r.now = func() time.Time { clock = clock.Add(time.Millisecond); return clock }
+	a := []byte{1}
+	for i := range r.maxSources {
+		if _, _, err := r.Add(fmt.Sprintf("held-%d:1", i), frag(1, 0, 16, a), a); err != nil {
+			t.Fatalf("filling the table, source %d: %v", i, err)
+		}
+	}
+
+	sweeps, last := 0, r.lastSweep
+	for i := range 1000 {
+		if _, _, err := r.Add(fmt.Sprintf("new-%d:1", i), frag(1, 0, 16, a), a); !errors.Is(err, errReassemblerFull) {
+			t.Fatalf("call %d at the cap: got %v, want errReassemblerFull", i, err)
+		}
+		if !r.lastSweep.Equal(last) {
+			sweeps++
+			last = r.lastSweep
+		}
+	}
+	// The clock advanced about two seconds over the calls (each Add reads it twice); one sweep per
+	// 250 ms allows about eight.
+	if sweeps > 10 {
+		t.Fatalf("1000 packets from new sources at the cap forced %d sweeps, want at most 10", sweeps)
 	}
 }
