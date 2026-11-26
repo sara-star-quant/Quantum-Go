@@ -7,33 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+## [0.0.37][] - 2026-11-26
+
+**Theme:** The datagram handshake and rekey state machines were read twice by independent reviewers before this release, and the last five releases got a security review. Everything they confirmed is fixed here, each with a test that failed first. No advisory applies: nothing in this range is a remote crash or a key exposure. Three behaviors change, listed first.
+
+### Upgrade notes
+
+- The datagram forgery limit follows the session's AEAD: 2^36 failed authentications with ChaCha20-Poly1305 and 2^52 with AES-GCM. 0.0.36 used 2^36 for both. Affected: AES-GCM datagram sessions, which now tolerate more forgeries before closing; nothing to do.
+- The datagram handshake replays its cached flight only for a byte-identical repeat of the last message. Genuine retransmits are byte-identical, so recovery from a lost flight is unchanged; a same-type message with other bytes is dropped.
+- `Session.PrepareRekeyResponse` returns `ErrRekeyInProgress` when a rekey is already pending instead of replacing the pending keys. The transport never made the second call; code that called it twice before activation gets the error.
+
+### Security hardening
+
+- `scripts/release-verify.sh` no longer runs the downloaded binary after a check failed, and runs only the binary named for the platform. It used to run whatever matched `quantum-tunnel*` even after the checksum or attestation failed, so verifying a tampered release executed the tampered binary.
+- The reassembler throttles the forced sweep it runs when the source table is full, to once per fortieth of its timeout. A spoofed-source flood that held the table full made every further handshake frame pay for a full scan under the lock.
+- A forged rekey message that reaches the forgery limit releases the connection on both sides; a waiting initiator `Rekey` returns `ErrTunnelClosed` at once.
+- `--assurance-log` ends up mode 0600 even when the file existed with looser permissions, and refuses a symlink or a directory as the path. The client record takes its authentication flags from the config that dialed the connection, so a reload mid-connection can no longer make it claim or erase authentication.
+- `WithMaxHalfOpenPerIP(n)` caps the half-open handshakes one address may hold (IPv6 per /64). The cookie proves an address but does not limit how many handshakes it holds. Off by default, because users behind one NAT share an address; see docs/datagram-dos.md.
+
 ### Fixed
 
-- `scripts/release-verify.sh` no longer runs the downloaded binary after a check failed, and it runs only the binary named for the platform. It used to run whatever matched `quantum-tunnel*` even when the checksum or attestation had failed, so verifying a tampered release executed the tampered binary first.
-- A forged rekey message that reaches the forgery limit now releases the connection on both sides: the responder removes it from the registry, and a waiting initiator `Rekey` returns `ErrTunnelClosed` at once instead of timing out on a closed session.
-- The reassembler throttles the forced sweep it runs when the source table is full, to once per fortieth of its timeout. Every packet from a new source used to force a full scan of all sources and buffers under the lock, so an attacker holding the table full with spoofed sources made each further handshake frame pay for it.
-- The client assurance record (`--assurance-log`) takes its authentication flags from the config the connection was dialed with. It read the config in force when the connection ended, so a reload that added or dropped a PSK or pin mid-connection made the record claim authentication the connection never had, or erase what it did have.
-- `--assurance-log` ends up mode 0600 even when the file already existed with looser permissions (the mode given at open applies only on creation), and refuses a symlink or a directory as the log path.
-- The datagram handshake replays its cached flight only for a byte-identical repeat of the message it last processed. A message of the same type with other bytes used to draw the whole flight again (about 3 KB from the responder), including from a source that only needed to match the half-open entry. A retransmit whose bytes differ is now dropped; genuine retransmits are byte-identical.
-- A datagram initiator restarts its retransmit schedule when the first HelloRetryRequest arrives. The request proves the peer answers, but the driver saw no change of state across it and carried the backoff and retry count over, so a retried ClientHello that followed a lossy start gave up sooner than the schedule promises.
-- `DatagramConn.Recv` after a close or after the endpoint shuts down hands over the payloads already buffered, in order, and then returns the close error (`ErrTunnelClosed`, or the endpoint-closed error) every time. It used to pick between a buffered payload and the close at random, so a reader could see a payload, then the error, then another payload.
-- A datagram rekey recovers after every response of an earlier attempt was lost. The responder had already moved to the next epoch and cached its response, and the initiator's next attempt built a fresh init that the responder could not match to it, so the pair could not rekey again until the session ended. The initiator now resends the same init for as long as it has no answer in that epoch.
-
-### Changed
-
-- The datagram forgery limit follows the session's AEAD, as RFC 9001 section 6.6 does: a session closes after 2^36 failed authentications with ChaCha20-Poly1305 and after 2^52 with AES-GCM. 0.0.36 used 2^36 for both, which gave an attacker who can reach an AES-GCM session a lower bar for closing it and no cryptographic margin.
-- A datagram initiator keeps its unanswered RekeyInit and the secret key behind it for up to ten minutes so a retry can resend the same init; the key pair is zeroized when the rekey succeeds, when the init expires, or at teardown, and a rekey that races with teardown no longer leaves it behind.
-- `Session.PrepareRekeyResponse` returns `ErrRekeyInProgress` when a rekey is already pending instead of replacing the pending keys. The transport already avoided the second call; code that called it directly twice before activating gets the error. It also scrubs the secrets it derived on every error path, and `ProcessRekeyResponse` does the same.
-
-### Added
-
-- `WithMaxHalfOpenPerIP(n)` caps how many half-open handshakes one address may hold (an IPv6 address counts per /64). The cookie proves an address but does not limit how many handshakes it holds, so one host could take a slot per source port until the global ceiling was full. The default is no cap, because users behind one NAT share an address; see docs/datagram-dos.md.
+- A datagram rekey recovers after every response of an earlier attempt was lost. The initiator resends the same init for as long as it has no answer in that epoch; before, the pair could not rekey again until the session ended. The unanswered init and its secret key stay for up to ten minutes, and are zeroized on success, at expiry and at teardown.
+- A datagram initiator restarts its retransmit schedule when the first HelloRetryRequest arrives; before, a retried ClientHello after a lossy start gave up sooner than the schedule promises.
+- `DatagramConn.Recv` after a close or an endpoint shutdown hands over the buffered payloads in order and then returns the close error every time; before, it chose between a payload and the close at random.
+- `PrepareRekeyResponse` and `ProcessRekeyResponse` scrub the secrets they derived on every error path.
 
 ### Docs
 
-- Remaining statements that the hybrid is secure if either component holds now say it is argued, not proven (code comments in `chkem` and `doc.go`, the CLI text, PROTOCOL.md section 8, MATHEMATICAL_FOUNDATION.md), and DESIGN_INFLUENCES.md no longer calls X-Wing a standard or contradicts the decision that CH-KEM-v1 stays the default. The threat model records the forged ServerHello wedge as accepted.
-- Code comments and docs no longer call X-Wing standardized or its implementation certified (it is an Internet-Draft wrapped from circl), and the design notes and roadmap say the default stays CH-KEM-v1 instead of promising to align it with X-Wing.
-- docs/technical/THREAT_MODEL.md reflects v0.0.36 and the unreleased changes after it (those are marked): four new threats (half-open exhaustion from one valid address, forgery attempts against one AEAD key, the static pinned-key signal, rekey failure), the findings of the pre-release reads with their status, one table of every threat before and after mitigation, and rendering fixes (scenario lines, table alignment, the data-flow diagram).
+- Every statement that the hybrid stays secure if either component holds says it is argued, not proven (code comments, CLI text, PROTOCOL.md, MATHEMATICAL_FOUNDATION.md). X-Wing is called an Internet-Draft, not a standard, and the design notes say the default stays CH-KEM-v1.
+- docs/technical/THREAT_MODEL.md covers T12 to T15 and V17 to V27, with one table of every threat before and after mitigation; docs/datagram-dos.md explains the per-address cap and how to size it.
+
+### CI
+
+- The coverage-floors job downloads its two coverage profiles by name instead of matching `coverage*`, so a future artifact with that prefix cannot replace a real profile.
 
 ## [0.0.36][] - 2026-11-25
 
@@ -748,7 +754,8 @@ Benchmark results (Apple Silicon M1 Pro, Go 1.26):
 - Basic tunnel API
 - Unit tests for crypto primitives
 
-[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.36...HEAD
+[Unreleased]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.37...HEAD
+[0.0.37]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.36...v0.0.37
 [0.0.36]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.35...v0.0.36
 [0.0.35]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.34...v0.0.35
 [0.0.34]: https://github.com/sara-star-quant/quantum-go/compare/v0.0.33...v0.0.34

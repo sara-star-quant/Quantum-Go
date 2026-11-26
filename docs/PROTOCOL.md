@@ -2,7 +2,7 @@
 
 **Status:** Interop profile, descriptive of the current implementation.
 **Wire protocol version:** 6.0
-**Describes:** release v0.0.36
+**Describes:** release v0.0.37
 **Last updated:** 2026-11-25
 
 This document specifies the Quantum-Go tunnel handshake and KEM negotiation on the wire, so that an

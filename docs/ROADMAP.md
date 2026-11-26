@@ -5,7 +5,7 @@
 
 ---
 
-## Current Status: v0.0.36
+## Current Status: v0.0.37
 
 Pre-1.0 and unaudited. The goal now is a smaller, better evidenced core, not more features: reduce what a reviewer has to trust, then widen adoption. Every item below has a GitHub issue or is a documented decision; items without an issue yet are marked "to file".
 
