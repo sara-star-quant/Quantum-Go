@@ -5,6 +5,7 @@ Quantum-Go uses the `TransportConfig` struct to tune performance, security, and 
 ## TransportConfig
 
 ```go
+// Excerpt: not every field is listed.
 type TransportConfig struct {
     ReadTimeout  time.Duration
     WriteTimeout time.Duration
@@ -27,7 +28,7 @@ config.WriteTimeout = 30 * time.Second
 
 ### Endpoint Authentication (v0.0.12+)
 
-Authentication is required since v0.0.29. Set a PSK, a static or pinned key, or `AllowUnauthenticated` (on both sides, for tests and demos); without one, `Dial`, `Accept`, `NewDatagramEndpoint` and `NewPool` return `ErrAuthenticationRequired`. Generate static keys with `quantum-tunnel keygen` (see the [CLI reference](CLI.md)). See [SECURITY.md](../../SECURITY.md#authentication-modes) for the threat properties.
+Authentication is required since v0.0.29. Set a PSK, a static or pinned key, or `AllowUnauthenticated` (on both sides, for tests and demos); without one, `DialWithConfig`, `Accept`, `NewDatagramEndpoint` and `NewPool` return `ErrAuthenticationRequired`. Generate static keys with `quantum-tunnel keygen` (see the [CLI reference](CLI.md)). See [SECURITY.md](../../SECURITY.md#authentication-modes) for the threat properties.
 
 ```go
 // Static-key server pinning: the server proves possession of a long-term key,
@@ -91,7 +92,7 @@ ep, err := tunnel.NewDatagramEndpoint(conn, tunnel.WithKEMSuite(chkem.SuiteXWing
 
 - The zero value means CH-KEM-v1. A suite the peer would not offer (not registered, or not FIPS approved in a FIPS build) fails before any packet is sent with `tunnel.ErrUnsupportedKEMSuite`; on the datagram transport that is at endpoint construction.
 - A server that does not support the first-offered suite steers the client to a mutually supported one with a single HelloRetryRequest. The offered list is bound into the Finished transcript, so stripping a suite from it fails the handshake.
-- To restrict the suites an endpoint will use, set `TransportConfig.AllowedKEMSuites` (or `WithAllowedKEMSuites` on a datagram endpoint, or `forward --allow-suite`). A server then refuses a suite outside the list and steers the client to an allowed one with a HelloRetryRequest, and a client offers only allowed suites. For example, `AllowedKEMSuites: []chkem.SuiteID{chkem.SuiteCHKEMv1}` keeps every session on ML-KEM-1024 and refuses the smaller X-Wing suite. An empty list allows every supported suite, and a list that allows none fails with `ErrUnsupportedKEMSuite` in `Dial`, `NewDatagramEndpoint`, `TransportConfig.Validate` and a listener's first `Accept` (call `Validate` at startup to fail early). A pinned or static key keeps its own suite: the list governs the ephemeral exchange only.
+- To restrict the suites an endpoint will use, set `TransportConfig.AllowedKEMSuites` (or `WithAllowedKEMSuites` on a datagram endpoint, or `forward --allow-suite`). A server then refuses a suite outside the list and steers the client to an allowed one with a HelloRetryRequest, and a client offers only allowed suites. For example, `AllowedKEMSuites: []chkem.SuiteID{chkem.SuiteCHKEMv1}` keeps every session on ML-KEM-1024 and refuses the smaller X-Wing suite. An empty list allows every supported suite, and a list that allows none fails with `ErrUnsupportedKEMSuite` in `DialWithConfig`, `NewDatagramEndpoint`, `TransportConfig.Validate` and a listener's first `Accept` (call `Validate` at startup to fail early). A pinned or static key keeps its own suite: the list governs the ephemeral exchange only.
 - Pool connections still start on the default suite; `PoolConfig` has no suite option.
 
 #### Registering your own suite

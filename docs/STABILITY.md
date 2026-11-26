@@ -6,7 +6,7 @@ Pre-1.0 and unaudited. This page says which parts of Quantum-Go change only with
 
 | Package | Status | Notes |
 |---|---|---|
-| `pkg/tunnel`: `Dial`, `DialWithConfig`, `Listen`, `Listener`, `Tunnel` (`Send`, `Receive`, `ReceiveInto`, `Close`, `Peer`, `RemoteAddr`), `TransportConfig`, `Pool`, `DatagramEndpoint`, `DatagramConn` and their options, the error values | Settled | A change needs a changelog entry. While the version is 0.x, a breaking change also needs a minor-version bump. |
+| `pkg/tunnel`: `DialWithConfig`, `DialInsecure`, `Listen`, `Listener`, `Tunnel` (`Send`, `Receive`, `ReceiveInto`, `Close`, `Peer`, `RemoteAddr`), `TransportConfig`, `Pool`, `DatagramEndpoint`, `DatagramConn` and their options, the error values | Settled | A change needs a changelog entry. While the version is 0.x, a breaking change also needs a minor-version bump. |
 | `pkg/tunnel`: observers (`Observer`, `RateLimitObserver`, `HandshakeLoadObserver`), `PeerInfo`, the rate-limit types | Evolving | Added recently and may gain fields or methods. |
 | `pkg/chkem`: the suite registry (`RegisterSuite`, `Suite`), key pairs and pins | Evolving | Needed for custom suites; the interface may grow. |
 | `pkg/tunnel`: `Handshake`, `InitiatorHandshake`, `ResponderHandshake`, `Session` internals, `Reassembler`, the replay windows, the limiters | Internal | Exported because Go packages need it, not because they are an API. They change without notice and are candidates to move under `internal/`. |
@@ -39,20 +39,18 @@ Every error below is an exported value of `pkg/tunnel` that you can match with `
 
 | Error | Meaning |
 |---|---|
-| `ErrHandshakeFailed` | The handshake did not complete: wrong key, wrong pin, a refused suite or a malformed message. The cause is deliberately not distinguished on the wire. |
 | `ErrAuthenticationFailed` | A record or Finished failed its AEAD or MAC check. |
 | `ErrReplayDetected` | A record repeated or fell behind the replay window. |
 | `ErrServerKeyMismatch`, `ErrStaticAuthRequired` | The pinned server key did not match, or static authentication was required and not offered. |
 | `ErrUnsupportedVersion`, `ErrUnsupportedCipherSuite`, `ErrUnsupportedKEMSuite` | Negotiation found no common version or suite. |
 | `ErrInvalidPSK`, `ErrPSKMisconfigured`, `ErrStaticAuthMisconfigured` | A configuration error caught before any packet is sent. |
 | `ErrTunnelClosed` | The tunnel is closed, locally or by the peer's close notice. |
-| `ErrTimeout` | A read or write deadline passed. |
-| `ErrRekeyRequired`, `ErrRekeyInProgress` | Key-lifetime limits; rekey, or close and redial. |
+| `ErrRekeyInProgress` | A rekey is already running. |
 | `ErrMessageTooLarge`, `ErrInvalidState` | A message was oversized, or arrived out of sequence. |
 | `ErrPoolClosed`, `ErrPoolTimeout`, `ErrPoolExhausted` | Pool conditions. |
 
-Until the failure-behavior tests listed in [#238](https://github.com/sara-star-quant/Quantum-Go/issues/238) pin down which errors leave a tunnel usable, treat any error from `Send` or `Receive` other than `ErrTimeout` as the end of that tunnel: close it and dial again. That is guidance, not a guarantee.
+Match timeouts with `net.Error.Timeout()`. A handshake failure has no single error value, and `ErrTimeout`, `ErrHandshakeFailed` and `ErrRekeyRequired` are exported but the library does not return them. Until the tests in [#238](https://github.com/sara-star-quant/Quantum-Go/issues/238) pin down which errors leave a tunnel usable, treat any error from `Send` or `Receive` as the end of that tunnel: close it and dial again. That is guidance, not a guarantee.
 
 ## Authentication default
 
-The library requires authentication since the next release. An endpoint needs a PSK or lookup, a static key (server) or a pinned server key (client), or an explicit `AllowUnauthenticated`; otherwise `Dial`, `Accept`, `NewDatagramEndpoint` and `NewPool` return `ErrAuthenticationRequired`. Both sides opt in to run unauthenticated, which an active attacker can sit in the middle of. `DialInsecure` and `ListenInsecure` exist for tests, demos and benchmarks.
+The library requires authentication since v0.0.29. An endpoint needs a PSK or lookup, a static key (server) or a pinned server key (client), or an explicit `AllowUnauthenticated`; otherwise `DialWithConfig`, `Accept`, `NewDatagramEndpoint` and `NewPool` return `ErrAuthenticationRequired`. Both sides opt in to run unauthenticated, which an active attacker can sit in the middle of. `DialInsecure` and `ListenInsecure` exist for tests, demos and benchmarks.

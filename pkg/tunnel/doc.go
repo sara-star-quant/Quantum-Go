@@ -30,14 +30,15 @@
 // several datagrams at once; with WithDatagramOffload on Linux, runs of equal-size
 // datagrams go out in a single system call.
 //
-//	ep, _ := tunnel.ListenDatagram("udp", ":51820", tunnel.WithDatagramOffload())
+//	ep, _ := tunnel.ListenDatagram("udp", ":51820", tunnel.WithDatagramOffload(),
+//		tunnel.WithPSK([]byte("client-1"), psk))
 //	go ep.Serve()
 //	conn, _ := ep.Accept()
 //	pkt, _ := conn.Recv()
 //
 // # Authentication
 //
-// Endpoint authentication is opt in: pin a server's static key
+// Authentication is required since v0.0.29: pin a server's static key
 // (TransportConfig.PinnedServerKey, WithPinnedServerKey), require it on the server
 // (RequireStaticAuth), or give each client its own pre-shared key (PSKLookup,
 // RequirePSK). The cryptography is fixed at NIST Category 5; a build with the fips

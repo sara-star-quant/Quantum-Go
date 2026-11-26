@@ -16,7 +16,7 @@ route operating-system network traffic.
 **What the library does NOT do (the integrating application's responsibility):**
 
 - **Reconnect after a full disconnect** - the library has no auto-redial loop;
-  re-establishing with `Dial` / `DialDatagram` is the caller's responsibility.
+  re-establishing with `DialWithConfig` / `DialDatagram` is the caller's responsibility.
 - **DNS leak prevention** - the library does not control the operating-system resolver.
 - **Kill-switch** - the library does not block non-tunnel traffic when the tunnel is down.
 - **TUN device and system routing** - the library does not capture or route host traffic
@@ -44,7 +44,8 @@ Read this table before describing what Quantum-Go can or cannot do. "Shipped" na
 | UDP forwarding (QUIC, HTTP/3, CoAP) | not planned: low impact, TLS already covers QUIC |
 | Traffic profiles and workload labels | planned ([#222](https://github.com/sara-star-quant/Quantum-Go/issues/222)) |
 | Authenticated peer identity on the server session (`Peer()`) | shipped in v0.0.28 |
-| Authorize hook, client device keys, live-session revocation | planned ([#196](https://github.com/sara-star-quant/Quantum-Go/issues/196)) |
+| Authorize hook on stream listeners | shipped in v0.0.32 |
+| Client device keys, live-session revocation in the library | planned ([#196](https://github.com/sara-star-quant/Quantum-Go/issues/196)) |
 | Path-MTU discovery for datagrams | planned ([#144](https://github.com/sara-star-quant/Quantum-Go/issues/144)) |
 | Faster single stream flow by splitting reads from decryption | under evaluation ([#193](https://github.com/sara-star-quant/Quantum-Go/issues/193)) |
 | Second independent implementation checked against the conformance vectors | planned, help wanted ([#145](https://github.com/sara-star-quant/Quantum-Go/issues/145)) |
@@ -55,7 +56,7 @@ Read this table before describing what Quantum-Go can or cannot do. "Shipped" na
 
 - **Not an AI-security product.** Transport encryption protects model weights, training data and prompts *in transit*. It does nothing about prompt injection, model poisoning, data leakage or supply-chain attacks. See [AI and cloud workloads](usage/AI_AND_CLOUD.md).
 - **Not a replacement for TLS between Go services.** Go's `crypto/tls` already offers hybrid post-quantum key exchange by default (from Go 1.24, with a Category 5 option from Go 1.26). Quantum-Go adds value where TLS does not fit; the library cannot serve `net/http` or gRPC directly until #219 lands, but the [forward mode](usage/FORWARD.md) protects any TCP service, HTTP and gRPC included, without code changes.
-- **Not a zero-trust broker or policy engine.** For ZTA, ZTNA and zero-trust edge designs it can be the encrypted, authenticated data plane. Policy decisions, posture checks and user identity belong in a product built on top. Today the server cannot tell which authenticated identity a session belongs to; that is #196. A workload label (#222) will be operator-supplied telemetry, never a security attribute, and must not drive an allow or deny decision.
+- **Not a zero-trust broker or policy engine.** For ZTA, ZTNA and zero-trust edge designs it can be the encrypted, authenticated data plane. Policy decisions, posture checks and user identity belong in a product built on top. A server learns which PSK identity a client proved (`Peer()`) and can refuse it with the `Authorize` hook. That identifies a key, not a person; the rest of the identity work is #196. A workload label (#222) will be operator-supplied telemetry, never a security attribute, and must not drive an allow or deny decision.
 - **Not for GPU fabrics.** Line rates of tens or hundreds of Gbps over RDMA or InfiniBand need hardware offload that a Go userspace tunnel cannot match.
 
 These properties belong to a VPN client built around the library, not to the library

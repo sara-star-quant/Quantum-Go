@@ -340,8 +340,8 @@ Stream rekey:
 2. The responder encapsulates to the fresh public key, derives
    `new_master = KDF("CH-KEM-Tunnel-Rekey", [ old_master, fresh_kem_secret ], 32)`, derives new traffic
    keys, and returns the KEM ciphertext sealed under the current key.
-3. The initiator decapsulates and computes the same `new_master`. Each side switches its send cipher at
-   its own activation sequence.
+3. The initiator decapsulates and computes the same `new_master`. The responder switches its send cipher
+   after sending the response; the initiator switches on processing it.
 
 The receiver promotes keys by trial decryption: it keeps the current and the pending cipher and accepts a
 record under whichever opens it, so a record straddling the activation boundary is not lost. The replay
@@ -356,7 +356,7 @@ per-frame AAD binds the epoch, so a cross-epoch replay fails.
 One key must not seal or reject too much. The limits come from the CFRG AEAD usage-limits draft (draft-irtf-cfrg-aead-limits) and RFC 9001 section 6.6.
 
 - Confidentiality of AES-GCM: the advantage is at most (s + q + 1)^2 / 2^129, with s the 16-byte blocks of plaintext and associated data and q the messages under one key. TLS 1.3 aims for 2^-60, which holds while s + q + 1 is at most 2^34.5. A datagram key at its hard cap of 2^28 packets of at most 1,200 bytes reaches about 2^34.27 (advantage about 2^-60.5). A stream key at its cap of 2^36 bytes reaches about 2^32.17 (about 2^-64.7). A test fails if a cap or the datagram size grows past the bound (C-22).
-- Integrity: a forged datagram that fails authentication is a forgery attempt. A datagram session counts failures across all epochs, data frames and rekey control messages alike, and closes at the RFC 9001 integrity limit of the session's AEAD: 2^36 for ChaCha20-Poly1305, 2^52 for AES-GCM (C-21). The stream transport ends the session on the first failed record.
+- Integrity: a forged datagram that fails authentication is a forgery attempt. A datagram session counts failures across all epochs, data frames and rekey control messages alike, and closes at the RFC 9001 integrity limit of the session's AEAD: 2^36 for ChaCha20-Poly1305, 2^52 for AES-GCM (C-21). The stream transport counts no forgeries: `Receive` returns the error and leaves the tunnel open, so the caller must close it.
 - ChaCha20-Poly1305 confidentiality needs no packet limit at these sizes (RFC 9001 gives 2^62).
 
 ## 9. Datagram transport

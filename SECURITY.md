@@ -70,7 +70,7 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 3. **Hybrid security guarantee**:
    - Intended property: the session key stays secret if **EITHER** algorithm holds. Checked in the symbolic model (`docs/formal/chkem_hybrid.pv`, claim C-04); the computational argument is a self-authored sketch (C-03, see the table below)
    - Defense-in-depth against cryptanalytic breakthroughs
-   - Combined secret: `K = SHAKE-256(K_x || K_m || transcript || domain)`
+   - Combined secret: SHAKE-256 over the domain string, then the length-prefixed `K_x`, `K_m` and transcript hash; the transcript also binds version and role
 
 4. **Authenticated encryption**:
    - AES-256-GCM (a FIPS-approved algorithm; this library is not a validated module)
@@ -79,7 +79,7 @@ Quantum-Go implements a **Cascaded Hybrid KEM (CH-KEM)** providing:
 
 5. **Forward secrecy**:
    - Ephemeral keys per session
-   - Automatic rekeying (1 hour, 1GB, or 2^28 packets)
+   - Automatic rekeying (1 hour, 64 GiB, or 2^28 packets)
    - Old keys zeroized after use
 
 ### Security properties
@@ -196,7 +196,7 @@ The client advertises the identity label so the server selects the matching key,
 4. **Timing side-channels**:
    - ML-KEM-1024 comes from cloudflare/circl (Go's `crypto/mlkem` in `-tags fips` builds) and the X-Wing suite from circl; both document constant-time implementations; this project has not tested that (see [#276](https://github.com/sara-star-quant/Quantum-Go/issues/276))
    - X25519 from Go stdlib is constant-time
-   - **AES-GCM requires hardware AES-NI** for constant-time (CPU flags checked)
+   - AES-GCM timing depends on Go's implementation and the hardware; the library checks no CPU flags
    - ChaCha20-Poly1305 is software-constant-time
 
 5. **Memory safety**:
@@ -257,12 +257,10 @@ The client advertises the identity label so the server selects the matching key,
 
 2. **Configuration**:
    ```go
-   config := tunnel.TransportConfig{
-       MaxMessageSize: 1024 * 1024, // 1MB max
-       // Add timeouts, buffer limits
-   }
+   cfg := tunnel.DefaultTransportConfig()
+   cfg.RateLimit.MaxConnectionsPerIP = 100
    ```
-   - Set conservative message size limits
+   - Set connection and handshake limits
    - Configure timeouts for handshake/data operations
    - Enable connection-level rate limiting
 
@@ -299,9 +297,9 @@ The client advertises the identity label so the server selects the matching key,
 
 | Dependency            | Version | Purpose                  | Audit Status                           |
 |-----------------------|---------|--------------------------|----------------------------------------|
-| cloudflare/circl      | v1.6.3+ | ML-KEM-1024 (default build), X-Wing | Audit status not verified by us; advisories tracked by govulncheck in CI |
-| golang.org/x/crypto   | v0.49.0+| ChaCha20, SHAKE-256     | Go Security Team maintained            |
-| Go stdlib crypto      | 1.26+   | ML-KEM-1024 (`-tags fips`), AES-GCM, X25519, crypto/rand, runtime/secret | Trail of Bits audit of the Go cryptography packages, May 2025, covering ECDH, ML-KEM, AES-GCM and the random number generator ([Go blog](https://go.dev/blog/tob-crypto-audit)) |
+| cloudflare/circl      | see go.mod | ML-KEM-1024 (default build), X-Wing | Audit status not verified by us; advisories tracked by govulncheck in CI |
+| golang.org/x/crypto   | see go.mod | ChaCha20-Poly1305                 | Go Security Team maintained            |
+| Go stdlib crypto      | 1.26+   | ML-KEM-1024 (`-tags fips`), AES-GCM, X25519, SHAKE-256, crypto/rand | Trail of Bits audit of the Go cryptography packages, May 2025, covering ECDH, ML-KEM, AES-GCM and the random number generator ([Go blog](https://go.dev/blog/tob-crypto-audit)) |
 
 **Dependency update policy**:
 - Monitor security advisories
@@ -368,7 +366,7 @@ When a security issue is confirmed:
 We acknowledge security researchers who responsibly disclose vulnerabilities:
 
 <!-- Reserved for future contributors -->
-*No vulnerabilities reported yet. Be the first to help improve Quantum-Go's security!*
+Published advisories are listed on the [security advisories page](https://github.com/sara-star-quant/Quantum-Go/security/advisories).
 
 ---
 

@@ -93,10 +93,10 @@ The Cascaded Hybrid KEM combines X25519 and ML-KEM-1024.
 kp, err := chkem.GenerateKeyPair()
 
 // Encapsulate (sender side)
-ciphertext, sharedSecret, err := chkem.Encapsulate(recipientPublicKey)
+ciphertext, sharedSecret, err := chkem.Encapsulate(recipientPublicKey, chkem.RoleResponder)
 
 // Decapsulate (recipient side)
-sharedSecret, err := chkem.Decapsulate(ciphertext, keyPair)
+sharedSecret, err = chkem.Decapsulate(ciphertext, keyPair, chkem.RoleInitiator)
 ```
 
 **Data Flow:**
@@ -111,7 +111,7 @@ Encapsulation:
 │                                                             │
 │  Recipient's ML-KEM Key ──────> ML-KEM Encaps ──> K_m      │
 │                                                             │
-│  Transcript = H(pk || ct)                                  │
+│  Transcript = H(pk_x, pk_m, ct_x, ct_m, version, role)     │
 │                                                             │
 │  K_final = SHAKE-256(K_x || K_m || transcript)             │
 │                                                             │
@@ -242,7 +242,7 @@ Master Secret (32B)
 ### 5.1 Key Hierarchy
 
 ```
-CH-KEM Key Pair (Long-term)
+CH-KEM Key Pair (ephemeral, per session)
         │
         └──> Session Master Secret (per session)
                     │
@@ -255,8 +255,8 @@ CH-KEM Key Pair (Long-term)
 ### 5.2 Key Rotation
 
 Sessions automatically rekey when:
-1. Nonce counter approaches 2^28 (90% of 2^28)
-2. Bytes transmitted exceed 1 GB
+1. Records under the current key reach 90% of 2^28
+2. Bytes transmitted exceed 64 GiB
 3. Session duration exceeds 1 hour
 
 The rekey protocol performs a fresh CH-KEM exchange and **ratchets** the new secret
@@ -311,28 +311,15 @@ func (s *Session) Close() {
 
 ### 6.2 Replay Protection
 
-```
-┌─────────────────────────────────────────────────────┐
-│ Replay Window (64 packets)                         │
-│                                                     │
-│ HighSeq: 150                                       │
-│ Window:  [87-150]                                  │
-│ Bitmap:  0b11111111...1111 (packets 87-150 seen)  │
-│                                                     │
-│ Seq 85:  REJECT (too old)                         │
-│ Seq 120: REJECT (already seen)                    │
-│ Seq 151: ACCEPT (new highest)                     │
-│ Seq 145: ACCEPT (in window, not seen)             │
-└─────────────────────────────────────────────────────┘
-```
+Both transports keep a 1024-packet sliding window. A record is rejected when its sequence number was already seen or has fallen behind the window.
 
 ### 6.3 Error Handling
 
 Errors are designed to prevent information leakage:
 
-- Decryption failures return generic `ErrAuthenticationFailed`
+- A failed AEAD tag returns `ErrAuthenticationFailed`; other failures, such as a replay or a closed session, return their own local errors
 - Invalid ciphertexts trigger implicit rejection in ML-KEM
-- Timing is constant regardless of error type
+- Error paths are not constant-time and the project makes no timing guarantee ([claims register](CLAIMS.md), C-16)
 
 ---
 
@@ -349,7 +336,7 @@ Measured figures, with the machine and method for each, are in [PERFORMANCE.md](
 | CH-KEM public key | 1600 bytes |
 | CH-KEM ciphertext | 1600 bytes |
 | Session state | ~10 KB |
-| Per-packet overhead | ~40 bytes |
+| Per-record overhead | 29 bytes (stream), 30 bytes (datagram) |
 
 ### 7.3 Tuning
 
@@ -361,43 +348,7 @@ See [Tuning](../PERFORMANCE.md#tuning). Handshake keys are ephemeral: every sess
 
 ### 8.1 Quick Start
 
-```go
-package main
-
-import (
-    "github.com/sara-star-quant/quantum-go/pkg/tunnel"
-)
-
-func main() {
-    // Server
-    listener, _ := tunnel.Listen("tcp", ":8443")
-    defer listener.Close()
-
-    go func() {
-        for {
-            conn, _ := listener.Accept()
-            go handleClient(conn)
-        }
-    }()
-
-    // Client
-    client, _ := tunnel.DialInsecure("tcp", "localhost:8443") // demo only: use DialWithConfig with a PSK
-    defer client.Close()
-
-    client.Send([]byte("Hello, quantum-resistant world!"))
-}
-
-func handleClient(t *tunnel.Tunnel) {
-    defer t.Close()
-    for {
-        data, err := t.Receive()
-        if err != nil {
-            return
-        }
-        // Process data...
-    }
-}
-```
+See the [Quick Start guide](../usage/QUICKSTART.md) for a server and a client with authentication.
 
 ### 8.2 Session Management
 

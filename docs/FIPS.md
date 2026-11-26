@@ -4,7 +4,7 @@ This document describes how to build and deploy Quantum-Go in FIPS 140-3 complia
 
 ## Overview
 
-FIPS (Federal Information Processing Standards) 140-3 is a U.S. government security standard for cryptographic modules. When built in FIPS mode, Quantum-Go restricts cryptographic operations to FIPS-approved algorithms only.
+FIPS (Federal Information Processing Standards) 140-3 is a U.S. government security standard for cryptographic modules. The `fips` build tag disables ChaCha20-Poly1305 and uses the Go standard library for ML-KEM. The hybrid still uses X25519, and a FIPS build is not a validated module.
 
 ### FIPS Mode Restrictions
 
@@ -66,7 +66,7 @@ fmt.Printf("Cipher Suite: %s\n", stats.CipherSuite)
 
 ### 1. Build Environment
 
-- Use Go 1.21 or later
+- Use the Go version in `go.mod` or later
 - Build with `-tags fips` flag
 - Ensure consistent build tags across all components
 
@@ -87,10 +87,10 @@ suites := protocol.SupportedCipherSuites()
 FIPS mode introduces a new error type:
 
 ```go
-import qerrors "github.com/sara-star-quant/quantum-go/internal/errors"
+import "github.com/sara-star-quant/quantum-go/pkg/tunnel"
 
 // Check for FIPS-related errors
-if errors.Is(err, qerrors.ErrCipherSuiteNotFIPSApproved) {
+if errors.Is(err, tunnel.ErrCipherSuiteNotFIPSApproved) {
     // Handle non-FIPS cipher suite rejection
 }
 ```
@@ -212,7 +212,7 @@ fmt.Printf("KDF: %v, AES: %v, ML-KEM: %v\n",
 | Mode | Behavior on POST Failure |
 |------|--------------------------|
 | FIPS Mode | **Panic** - prevents use of compromised crypto |
-| Standard Mode | Log error - continues operation |
+| Standard Mode | Continues without logging; check `crypto.POSTPassed()` |
 
 ### Module Integrity Check
 
@@ -229,7 +229,7 @@ comparison.
 
 ## Conditional Self-Tests (CST)
 
-In addition to POST, FIPS 140-3 requires Conditional Self-Tests that run during specific cryptographic operations.
+In addition to POST, FIPS 140-3 requires Conditional Self-Tests that run during specific cryptographic operations. Here they run only through the `*WithCST` functions; normal key generation does not call them.
 
 ### Pairwise Consistency Test
 

@@ -1,6 +1,6 @@
 // Package protocol defines the wire protocol for the CH-KEM tunnel.
 //
-// Protocol Version: 2.0
+// Protocol Version: 6.0
 //
 // The protocol provides:
 //   - Authenticated key exchange using CH-KEM

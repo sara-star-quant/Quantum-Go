@@ -4,5 +4,6 @@
 //
 // Most programs use package tunnel or package chkem instead of calling these
 // directly. A build with the fips tag restricts the package to FIPS-approved
-// algorithms and runs power-on and conditional self-tests.
+// algorithms. Power-on self-tests run in every build; conditional self-tests run only
+// through the *WithCST functions.
 package crypto
