@@ -212,6 +212,15 @@ func (s *Session) DatagramOpen(epoch uint8, seq uint64, ciphertext, aad []byte) 
 	return pt, nil
 }
 
+// authFailureBudget is the number of failed authentications a key tolerates, by AEAD (RFC 9001
+// section 6.6).
+func authFailureBudget(cs constants.CipherSuite) uint64 {
+	if cs == constants.CipherSuiteChaCha20Poly1305 {
+		return constants.MaxAuthFailuresChaCha20Poly1305
+	}
+	return constants.MaxAuthFailuresAESGCM
+}
+
 // noteDatagramAuthFailure counts a failed AEAD open and closes the session at the limit. Only
 // a real decryption attempt counts: a frame for an epoch the session does not hold never reaches
 // the AEAD. The caller holds no session lock.
@@ -221,7 +230,7 @@ func (s *Session) noteDatagramAuthFailure(err error) {
 	}
 	limit := s.authFailureLimit
 	if limit == 0 {
-		limit = constants.MaxAuthFailuresPerSession
+		limit = authFailureBudget(s.CipherSuite)
 	}
 	if s.dgramAuthFailures.Add(1) >= limit {
 		s.Close()

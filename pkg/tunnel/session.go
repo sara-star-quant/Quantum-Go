@@ -205,7 +205,7 @@ type Session struct {
 	lastActivityNanos atomic.Int64
 
 	// dgramAuthFailures counts datagrams whose AEAD open failed, across every epoch. At
-	// authFailureLimit (zero means constants.MaxAuthFailuresPerSession) the session closes: an
+	// authFailureLimit (zero means the AEAD's budget, see authFailureBudget) the session closes: an
 	// AEAD key tolerates only a bounded number of forgery attempts. See noteDatagramAuthFailure.
 	dgramAuthFailures atomic.Uint64
 	authFailureLimit  uint64

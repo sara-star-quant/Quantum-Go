@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `scripts/release-verify.sh` no longer runs the downloaded binary after a check failed, and it runs only the binary named for the platform. It used to run whatever matched `quantum-tunnel*` even when the checksum or attestation had failed, so verifying a tampered release executed the tampered binary first.
+- A forged rekey message that reaches the forgery limit now releases the connection on both sides: the responder removes it from the registry, and a waiting initiator `Rekey` returns `ErrTunnelClosed` at once instead of timing out on a closed session.
 - The datagram handshake replays its cached flight only for a byte-identical repeat of the message it last processed. A message of the same type with other bytes used to draw the whole flight again (about 3 KB from the responder), including from a source that only needed to match the half-open entry. A retransmit whose bytes differ is now dropped; genuine retransmits are byte-identical.
 - A datagram initiator restarts its retransmit schedule when the first HelloRetryRequest arrives. The request proves the peer answers, but the driver saw no change of state across it and carried the backoff and retry count over, so a retried ClientHello that followed a lossy start gave up sooner than the schedule promises.
 - `DatagramConn.Recv` after a close or after the endpoint shuts down hands over the payloads already buffered, in order, and then returns the close error (`ErrTunnelClosed`, or the endpoint-closed error) every time. It used to pick between a buffered payload and the close at random, so a reader could see a payload, then the error, then another payload.
@@ -17,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The datagram forgery limit follows the session's AEAD, as RFC 9001 section 6.6 does: a session closes after 2^36 failed authentications with ChaCha20-Poly1305 and after 2^52 with AES-GCM. 0.0.36 used 2^36 for both, which gave an attacker who can reach an AES-GCM session a lower bar for closing it and no cryptographic margin.
 - A datagram initiator keeps its unanswered RekeyInit and the secret key behind it for up to ten minutes so a retry can resend the same init; the key pair is zeroized when the rekey succeeds, when the init expires, or at teardown, and a rekey that races with teardown no longer leaves it behind.
 - `Session.PrepareRekeyResponse` returns `ErrRekeyInProgress` when a rekey is already pending instead of replacing the pending keys. The transport already avoided the second call; code that called it directly twice before activating gets the error. It also scrubs the secrets it derived on every error path, and `ProcessRekeyResponse` does the same.
 

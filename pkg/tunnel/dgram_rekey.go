@@ -273,6 +273,12 @@ func (c *DatagramConn) Rekey() error {
 				c.ds.clearPendingRekey()
 				return nil
 			}
+			// A forged response that reaches the forgery limit closes the session; end the wait and
+			// release the connection instead of timing out on a dead session.
+			if s.State() == SessionStateClosed {
+				c.ds.teardown(c.ep.registry)
+				return qerrors.ErrTunnelClosed
+			}
 			// A response that fails to authenticate is ignored; keep waiting.
 		case <-c.ds.closed:
 			return qerrors.ErrTunnelClosed
@@ -294,6 +300,11 @@ func (e *DatagramEndpoint) handleRekey(h protocol.DatagramHandshakeHeader, body 
 	switch h.MsgType {
 	case protocol.MessageTypeDatagramRekeyInit:
 		e.handleRekeyInit(ds, h.Epoch, body)
+		// A forged init that reaches the forgery limit closes the session; release the connection too,
+		// as the data path does.
+		if s := ds.getSession(); s != nil && s.State() == SessionStateClosed {
+			ds.teardown(e.registry)
+		}
 	case protocol.MessageTypeDatagramRekeyResponse:
 		if ds.rekeyInbox != nil {
 			select {

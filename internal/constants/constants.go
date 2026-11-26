@@ -138,11 +138,13 @@ const (
 	// This prevents nonce exhaustion in AES-GCM (2^32 limit with 96-bit nonce)
 	MaxPacketsBeforeRekey = 1 << 28
 
-	// MaxAuthFailuresPerSession is the number of datagrams that may fail authentication, across
-	// all epochs, before a datagram session closes. RFC 9001 section 6.6 sets the integrity limit
-	// for ChaCha20-Poly1305 at 2^36 invalid packets, the tightest of the AEADs here (AES-GCM allows
-	// 2^52), and one limit keeps the rule simple.
-	MaxAuthFailuresPerSession uint64 = 1 << 36
+	// MaxAuthFailuresChaCha20Poly1305 and MaxAuthFailuresAESGCM are the numbers of datagrams that may
+	// fail authentication, across all epochs, before a datagram session closes. They are the
+	// integrity limits of RFC 9001 section 6.6: 2^36 invalid packets for ChaCha20-Poly1305 and 2^52 for
+	// AES-GCM. One limit for both would let an attacker who reaches an AES-GCM session close it with
+	// 2^36 forgeries and buy no cryptographic margin.
+	MaxAuthFailuresChaCha20Poly1305 uint64 = 1 << 36
+	MaxAuthFailuresAESGCM           uint64 = 1 << 52
 
 	// SessionIDSize is the size of session identifiers in bytes
 	SessionIDSize = 16
