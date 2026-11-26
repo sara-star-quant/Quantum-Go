@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased][]
 
+### CI
+
+- Release notes link every repository path to the release tag (`scripts/release-notes.py`), so the page shows the files as the release shipped them; the newest section is rendered in CI and fails on a relative link.
+
 ## [0.0.37][] - 2026-11-26
 
 **Theme:** The datagram handshake and rekey state machines were read twice by independent reviewers before this release, and the last five releases got a security review. Everything they confirmed is fixed here, each with a test that failed first. No advisory applies: nothing in this range is a remote crash or a key exposure. Three behaviors change, listed first.

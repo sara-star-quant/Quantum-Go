@@ -29,6 +29,17 @@ A tag goes on a commit only when all of these hold:
    It downloads the assets into a fresh directory and checks them: every asset against `checksums-sha256.txt`, a build attestation per archive that names `release.yml` at the tag, the SBOM, the Go proxy answer (the tag resolves to the tagged commit), the license files in the archive, and the binary's own report of the tag and commit. It exits non-zero on any failure. `go.dev` and `pkg.go.dev` can lag the proxy by a few minutes; a 404 there at first is a queue, not a failure.
 7. Report the version, tag, workflow result and the verifier output.
 
+## Release notes standard
+
+The notes are the CHANGELOG section for the version, published verbatim on the release page. Write them for the person deciding whether to upgrade.
+
+- **Theme first:** two or three sentences, the outcome for an operator before the mechanism, and whether they must act. A breaking change leads.
+- **Order:** Upgrade notes, Security, then Fixed, Changed, Added, Docs, CI. Upgrade notes say who is affected, what stops working and the fix.
+- **One line per entry:** the outcome, then the cause in a clause. No process narration (who reviewed what stays out of the entries), and a number only with a saved measurement behind it.
+- **Advisories:** name the GHSA id. Never link a draft advisory: it returns 404.
+- **File references:** write the full repository path, such as `docs/PROTOCOL.md`, in backticks or plain text. `scripts/release-notes.py` links every path that exists at the tag to that tag's copy (`blob/vX.Y.Z/...`), so a reader sees the file as the release shipped it. A bare name like PROTOCOL.md is not linked. CI renders the newest section on every change and fails on a surviving relative link.
+- **The release PR** is titled `cut vX.Y.Z` and has a two-line body; the theme and the upgrade notes live in the CHANGELOG, not in the PR text.
+
 ## Releases that are not routine
 
 - **Security fix.** Tag first, then publish the draft advisory. Never link a draft advisory from the CHANGELOG: it returns 404. Release notes state the affected version, the fixed version, the impact in one line and a workaround, with no trigger steps.

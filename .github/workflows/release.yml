@@ -111,12 +111,13 @@ jobs:
         REPO: ${{ github.repository }}
       run: |
         set -euo pipefail
-        # Pull this version's section from CHANGELOG.md (the highlights for the release).
-        notes=$(sed -n "/^## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | sed '1d;$d')
+        # This version's CHANGELOG section, with every file reference linked to this tag, so the
+        # notes point at the code the release shipped and not at the default branch.
+        notes=$(python3 -I scripts/release-notes.py "$VERSION" "$REPO" . || true)
         {
           echo "## Quantum-Go v$VERSION"
           echo
-          if [ -n "$notes" ]; then echo "$notes"; else echo "See the [CHANGELOG](https://github.com/$REPO/blob/main/CHANGELOG.md)."; fi
+          if [ -n "$notes" ]; then echo "$notes"; else echo "See the [CHANGELOG](https://github.com/$REPO/blob/v$VERSION/CHANGELOG.md)."; fi
           echo
           echo "### Installation"
           echo
@@ -141,7 +142,10 @@ jobs:
           echo "gh attestation verify quantum-tunnel-$VERSION-linux-amd64.tar.gz --repo $REPO"
           echo '```'
           echo
-          echo "[Repository](https://github.com/$REPO) - [Security Policy](https://github.com/$REPO/blob/main/SECURITY.md) - [Protocol Spec](https://github.com/$REPO/blob/main/docs/PROTOCOL.md)"
+          echo "[Repository](https://github.com/$REPO/tree/v$VERSION) - [Security Policy](https://github.com/$REPO/blob/v$VERSION/SECURITY.md) - [Protocol Spec](https://github.com/$REPO/blob/v$VERSION/docs/PROTOCOL.md) - [Threat model](https://github.com/$REPO/blob/v$VERSION/docs/technical/THREAT_MODEL.md)"
+          # The previous tag, when the checkout has it, for the compare link.
+          PREV=$(git describe --tags --abbrev=0 "v$VERSION^" 2>/dev/null || true)
+          if [ -n "$PREV" ]; then echo; echo "[Full changelog](https://github.com/$REPO/compare/$PREV...v$VERSION)"; fi
         } > release_notes.md
         echo "--- generated release notes ---"; cat release_notes.md
 
