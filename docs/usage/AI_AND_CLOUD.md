@@ -6,18 +6,21 @@ Quantum-Go protects data in transit against an attacker who records traffic toda
 
 - **Long-lived secrets on point-to-point links.** Checkpoint replication between regions or clouds, data pipelines into a training cluster, federated-learning exchanges and links to a sensitive backend. The key exchange is ML-KEM-1024 plus X25519, so recorded traffic stays confidential even if one of the two later breaks.
 - **Where standard TLS does not fit.** A PSK-authenticated link instead of certificates, a FIPS-mode build, a UDP transport, or ML-KEM-1024 from an implementation independent of the Go standard library's.
-- **Moving big files quickly.** On two 8 vCPU Google Cloud VMs with a 20 Gbps link, one tunnel flow carried 9.7 to 11.2 Gbps with 8 KB records and 14.2 to 17.6 Gbps with 60 KB across three runs (single-flow figures swing by up to about 20% from run to run), and four or more flows filled the link at 20.2 to 20.7 Gbps, the same as plain TCP. A 10 GB checkpoint at those rates takes about 4 to 8 seconds (an illustration, not a benchmark of your network). Numbers and caveats are in [Performance](../PERFORMANCE.md#between-two-cloud-hosts).
+- **Moving big files quickly.** Measured on two 8 vCPU Google Cloud VMs with a 20 Gbps link, across three runs:
+  - One tunnel flow: 9.7 to 11.2 Gbps with 8 KB records and 14.2 to 17.6 Gbps with 60 KB. Single-flow figures swing by up to about 20% from run to run.
+  - Four or more flows: 20.2 to 20.7 Gbps, which fills the link and matches plain TCP.
+  - At those rates a 10 GB checkpoint takes about 4 to 8 seconds. This is an illustration, not a benchmark of your network. See [the numbers and caveats](../PERFORMANCE.md#between-two-cloud-hosts).
 
 ## Where it does not
 
 - **HTTPS and gRPC between Go services need nothing from us.** Go's `crypto/tls` offers the `X25519MLKEM768` hybrid by default from Go 1.24, and `SecP256r1MLKEM768` and `SecP384r1MLKEM1024` (the last one at the same security category as ML-KEM-1024) from Go 1.26. Both ends have to support it; `GODEBUG=tlsmlkem=0` turns it off. For other stacks, check that your TLS library and proxies offer a hybrid ML-KEM group. TLS still authenticates with classical certificates, which is a different and less urgent risk than harvest now, decrypt later.
-- **The library cannot serve HTTP or gRPC directly.** The tunnel is message based (`Send` and `Receive`) and does not implement `net.Conn`, so `net/http` and gRPC cannot run over it as a library; a `net.Conn` adapter with a gRPC credential is tracked in [#219](https://github.com/sara-star-quant/Quantum-Go/issues/219). What works today, for any TCP service including HTTP and gRPC, is the [forward mode](FORWARD.md): `quantum-tunnel forward` puts a tunnel in front of the service without code changes, the way a sidecar would (on `main`, in the next release).
+- **The library cannot serve HTTP or gRPC directly.** The tunnel is message based (`Send` and `Receive`) and does not implement `net.Conn`, so `net/http` and gRPC cannot run over it as a library; a `net.Conn` adapter with a gRPC credential is tracked in [#219](https://github.com/sara-star-quant/Quantum-Go/issues/219). What works today, for any TCP service including HTTP and gRPC, is the [forward mode](FORWARD.md): `quantum-tunnel forward` puts a tunnel in front of the service without code changes, the way a sidecar would.
 - **It does not touch AI-specific threats**: prompt injection, model poisoning, data leakage and supply chain. Transport encryption is one layer, not "AI security".
 - **It is not for GPU fabrics.** Tens or hundreds of Gbps over RDMA or InfiniBand needs hardware offload, which a Go userspace tunnel cannot match.
 
 ## What is not done yet
 
-There is no third-party audit and no FIPS 140-3 validation; the FIPS mode is a build with self-tests, not a validated module (see the [FIPS roadmap](../compliance/FIPS_140_3_ROADMAP.md)). The server cannot yet tell which client authenticated after a handshake, which integrators need for policy decisions ([#196](https://github.com/sara-star-quant/Quantum-Go/issues/196)).
+There is no third-party audit and no FIPS 140-3 validation; the FIPS mode is a build with self-tests, not a validated module (see the [FIPS roadmap](../compliance/FIPS_140_3_ROADMAP.md)). A server learns which PSK identity a client proved (`Tunnel.Peer`) and can refuse it with the `Authorize` hook. That identifies a key, not a person; the rest of the identity work is tracked in [#196](https://github.com/sara-star-quant/Quantum-Go/issues/196).
 
 ## Try it
 

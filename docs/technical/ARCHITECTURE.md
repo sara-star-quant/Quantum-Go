@@ -338,20 +338,9 @@ Errors are designed to prevent information leakage:
 
 ## 7. Performance Considerations
 
-### 7.1 Benchmark Results (Typical)
+### 7.1 Benchmark Results
 
-Measured on Apple M1 Pro, Go 1.26, single-threaded:
-
-| Operation | Time | Throughput |
-|-----------|------|------------|
-| CH-KEM KeyGen | ~99us | ~10,100 ops/s |
-| CH-KEM Encapsulate | ~106us | ~9,400 ops/s |
-| CH-KEM Decapsulate | ~84us | ~12,000 ops/s |
-| AES-256-GCM Encrypt (1400B) | ~567ns | ~2.5 GB/s |
-| AES-256-GCM Encrypt (1KB) | ~398ns | ~2.6 GB/s |
-| AES-256-GCM Encrypt (64KB) | ~17.7us | ~3.7 GB/s |
-| Session Encrypt (1400B) | ~652ns | ~2.1 GB/s |
-| Full Handshake (over net.Pipe) | ~487us | ~2,050 handshakes/s |
+Measured figures, with the machine and method for each, are in [PERFORMANCE.md](../PERFORMANCE.md).
 
 ### 7.2 Memory Usage
 
@@ -362,12 +351,9 @@ Measured on Apple M1 Pro, Go 1.26, single-threaded:
 | Session state | ~10 KB |
 | Per-packet overhead | ~40 bytes |
 
-### 7.3 Optimization Tips
+### 7.3 Tuning
 
-1. **Key Reuse:** Generate CH-KEM keys once, use for multiple sessions
-2. **Connection Pooling:** Reuse established sessions when possible
-3. **Cipher Suite:** ChaCha20-Poly1305 may be faster without AES-NI
-4. **Buffer Reuse:** Use sync.Pool for message buffers
+See [Tuning](../PERFORMANCE.md#tuning). Handshake keys are ephemeral: every session and every rekey uses new ones, so do not try to reuse them.
 
 ---
 

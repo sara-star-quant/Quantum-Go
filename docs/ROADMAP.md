@@ -61,7 +61,7 @@ A paid audit and FIPS 140-3 validation wait until the protocol and API settle. U
 - [x] FIPS 140-3 build mode with POST/CST self-tests
 - [x] Regulatory clarity (EU open source exemption, user deployment guidance)
 - [x] UDP/datagram transport (fragmented PQ handshake, encrypted data plane, reliable rekey, stateless cookie/anti-amplification, authenticated roaming, SO_REUSEPORT receive scaling, UDP_GRO offload)
-- [x] Stream handshake timeout on Accept (slow-loris bound); honest KAT-vector module-integrity check
+- [x] Stream handshake timeout on Accept (slow-loris bound); real KAT-vector module-integrity check
 
 ---
 
@@ -253,7 +253,7 @@ composition needs strengthening.
 > (item #6 below, delivered without a new wire message), the boundary-packet replay fix,
 > the 64 GiB rekey-byte threshold, and the stdlib `crypto/sha3` migration. v0.0.11 then
 > shipped the datagram transport plus two of these items - handshake timeout (#4) and an
-> honest KAT-vector module-integrity check (#7, full `.text` integrity still pending). The
+> real KAT-vector module-integrity check (#7, full `.text` integrity still pending). The
 > rest (role binding, ticket server binding, and the stream-path nonce/replay catch-up)
 > carry forward to the stream-security-parity release.
 
@@ -346,7 +346,7 @@ decryption (try current, fall back to pending). Reliable under load and high lat
 **Priority:** Medium | **Effort:** Medium
 
 `CheckModuleIntegrity()` used to unconditionally return `Verified: true` with a placeholder
-hash. v0.0.11 made it honest: a real comparison of the embedded KAT vectors against a pinned
+hash. v0.0.11 replaced it with a real comparison of the embedded KAT vectors against a pinned
 hash, scoped in the docs as KAT-vector integrity, not binary `.text` integrity.
 
 - [x] Pin the real KAT-vector hash and report a real comparison; document the scope (v0.0.11)

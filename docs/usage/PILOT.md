@@ -62,7 +62,7 @@ Stop the forwarders and point the application back at the service's own address.
 
 ## Known limits
 
-TCP only. A single tunnel flow reaches about 10 to 14 Gbps on a 20 Gbps link; several flows fill it ([Performance](../PERFORMANCE.md)). The Kubernetes sidecar example in [Forward mode](FORWARD.md) is an illustration and has not been run in a cluster.
+TCP only. A single tunnel flow reaches about 10 to 18 Gbps on a 20 Gbps link; several flows fill it ([Performance](../PERFORMANCE.md)). The Kubernetes sidecar example in [Forward mode](FORWARD.md) is an illustration and has not been run in a cluster.
 
 ## What we would like to hear
 

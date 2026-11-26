@@ -60,5 +60,5 @@ Read this table before describing what Quantum-Go can or cannot do. "Shipped" na
 
 These properties belong to a VPN client built around the library, not to the library
 itself. This text describes the software, not security or legal advice; Quantum-Go ships
-under the Apache License 2.0, "as is" and without warranty (see [LICENSE](LICENSE) and the
+under the Apache License 2.0, "as is" and without warranty (see [LICENSE](../LICENSE) and the
 [compliance notice](compliance/COMPLIANCE_NOTICE.md)).

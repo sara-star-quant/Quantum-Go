@@ -2,7 +2,7 @@
 
 This document prepares Quantum-Go for a third-party security audit: it states the scope, inventories
 the cryptography, maps each security claim to its evidence, records the supply-chain posture, lists the
-known limitations honestly, and points to everything an auditor needs. It is not an audit and makes no
+known limitations, and points to everything an auditor needs. It is not an audit and makes no
 certification claim; it is the package an auditor (or a buyer's security team) starts from.
 
 Protocol version: 6.0. Last updated: 2026-11-08 (v0.0.20).
@@ -82,7 +82,7 @@ release notes name and `make release VERSION=<version>`. For v0.0.28 a second ma
 (darwin-arm64, Go 1.26.10) and got a binary identical to the released one. The
 binaries inside the archives reproduce; the archives do not, because tar and gzip stamp times.
 
-## 6. Known limitations (honest)
+## 6. Known limitations
 
 - Authentication is required since v0.0.29: a PSK, a pinned or static key, or an explicit `AllowUnauthenticated`
   on both sides. A tunnel that opts out provides encryption and forward secrecy but not peer identity.

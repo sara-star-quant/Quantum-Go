@@ -55,7 +55,7 @@
 //
 // # Testing
 //
-// The library includes comprehensive tests:
+// Tests:
 //
 //	go test ./...                                    # All tests
 //	go test -fuzz=FuzzParsePublicKey ./test/fuzz/  # Fuzz tests
@@ -64,13 +64,7 @@
 //
 // # Performance
 //
-// Typical performance on modern hardware (AMD64):
-//
-//   - CH-KEM key generation: ~800 µs
-//   - CH-KEM encapsulation: ~900 µs
-//   - CH-KEM decapsulation: ~1000 µs
-//   - AES-256-GCM encryption: ~2 GB/s (hardware-accelerated)
-//   - ChaCha20-Poly1305: ~800 MB/s (software)
+// Measured figures, with the machine and method for each, are in docs/PERFORMANCE.md.
 //
 // # References
 //

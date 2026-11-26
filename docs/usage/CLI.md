@@ -72,7 +72,39 @@ go build -tags otel -o quantum-tunnel ./cmd/quantum-tunnel
 
 Test performance on your hardware:
 
-Throughput options: `--size` (bytes to move, for example `10GB`), `--duration` (stop after this long), `--chunk` (record size, default `8KB`; throughput depends strongly on it), and `--baseline` (also run plain TCP with the same records and report the tunnel's throughput share and CPU cost against it). Sizes accept `KB`, `MB`, `GB`, `TB` and the `KiB` forms; an unknown unit is an error. To measure a real link, run `quantum-tunnel bench --serve :9000` on one host and `quantum-tunnel bench --connect host:9000 --size 10GB --duration 5m --chunk 60KB` on another; add `--plain` on both sides for a plain TCP reference. The receiver reports the delivered rate, and each side reports CPU per GiB for its own host. Add `--flows N` on both sides to run N parallel connections: some clouds cap one flow well below the instance limit (about 5 Gbps on AWS in a default placement), so a single flow can understate the link. Add `--datagram` on both sides to test the datagram transport instead: record sizes go up to the datagram payload limit (1170 bytes), `--batch N` sends N datagrams per `SendBatch` call, `--offload` turns on Linux UDP segmentation and receive offload, `--rate Mbps` paces the sender to a fixed offered load (default: as fast as possible), and the receiver reports loss from sequence numbers. UDP has no flow control, so the sender blasts as fast as it can and the loss figure includes the receiver falling behind; `--datagram` does not combine with `--plain` or `--flows`. `scripts/docker-bench.sh` runs the same test between two containers on a bridge network when you have only one machine. `--cipher` accepts only `aes-gcm`, because the tunnel negotiates AES-256-GCM and cannot be asked for another cipher yet. Throughput is reported in decimal MB/s.
+| Throughput option | Meaning |
+|---|---|
+| `--size` | Bytes to move, for example `10GB`. Sizes accept `KB`, `MB`, `GB`, `TB` and the `KiB` forms; an unknown unit is an error. |
+| `--duration` | Stop after this long. |
+| `--chunk` | Record size, default `8KB`. Throughput depends strongly on it. |
+| `--baseline` | Also run plain TCP with the same records and report the tunnel's throughput share and CPU cost against it. |
+| `--cipher` | Accepts only `aes-gcm`: the tunnel negotiates AES-256-GCM and cannot be asked for another cipher yet. |
+
+The tool reports throughput in decimal MB/s. Multiply by 0.008 to get Gbps.
+
+### Between two hosts
+
+To measure a real link, start the server on one host and connect from another:
+
+```bash
+quantum-tunnel bench --serve :9000
+quantum-tunnel bench --connect host:9000 --size 10GB --duration 5m --chunk 60KB
+```
+
+- The receiver reports the delivered rate, and each side reports CPU per GiB for its own host.
+- Add `--plain` on both sides for a plain TCP reference.
+- Add `--flows N` on both sides to run N parallel connections. Some clouds cap one flow well below the instance limit (about 5 Gbps on AWS in a default placement), so a single flow can understate the link.
+- With only one machine, `scripts/docker-bench.sh` runs the same test between two containers on a bridge network.
+
+### Datagram transport
+
+Add `--datagram` on both sides. It does not combine with `--plain` or `--flows`.
+
+- Record sizes go up to the datagram payload limit (1170 bytes).
+- `--batch N` sends N datagrams per `SendBatch` call.
+- `--offload` turns on Linux UDP segmentation and receive offload.
+- `--rate Mbps` paces the sender to a fixed offered load (default: as fast as possible).
+- The receiver reports loss from sequence numbers. UDP has no flow control, so an unpaced sender's loss figure includes the receiver falling behind.
 
 ```bash
 # Benchmark 100 stream (TCP) handshakes
@@ -91,17 +123,7 @@ quantum-tunnel bench --throughput --size 10GB --duration 5m --chunk 60KB --basel
 quantum-tunnel bench --handshakes 100 --throughput --size 500MB
 ```
 
-### Verified Performance (Apple M1 Pro, Go 1.26.3, loopback)
-- **Handshakes (stream/TCP)**: ~1,450/sec (~670us each, full CH-KEM, sequential)
-- **Handshakes (datagram/UDP)**: ~1,300/sec (~760us each, full CH-KEM, sequential)
-- **Cipher throughput**: ~2.5 GB/s AES-256-GCM raw AEAD (ARMv8 Crypto Extensions); ~0.7 GB/s ChaCha20-Poly1305
-- **Single-tunnel throughput (stream/TCP)**: ~2.5 GB/s with 60 KB records and ~1.2 GB/s with 8 KB records, end-to-end over TCP on loopback; it depends on the record size, see [PERFORMANCE.md](../PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp)
-- **Datagram data path (UDP)**: encrypted, zero-alloc send (~3 GB/s isolated on M1 Pro darwin); one-way single-flow delivered goodput ~58 MB/s on macOS loopback (a loopback artifact) and ~280 MB/s (~2.2 Gb/s) on Linux (container arm64, indicative)
-- **Datagram aggregate (UDP, Linux `SO_REUSEPORT`)**: a single receive goroutine tops out ~365 MB/s aggregate; spreading receive across 8 sockets lifts it ~1.6x to ~565 MB/s on an 8-core container, scaling further on a many-core host
-
-> The datagram data path is syscall-bound, not crypto-bound; macOS loopback has a slow
-> per-datagram socket path, so its single-flow number is a loopback artifact rather than a
-> transport limit. See the README Performance section for the platform breakdown.
+Measured handshake CPU time and throughput are in [PERFORMANCE.md](../PERFORMANCE.md).
 
 ## Keygen Mode (v0.0.12+)
 

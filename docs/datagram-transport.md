@@ -3,7 +3,7 @@
 This document describes the connectionless datagram transport that complements
 the existing TCP/stream transport. The two share the crypto core (`pkg/chkem`,
 `pkg/crypto`, and the `Session` key/rekey secret derivation) but have **separate
-wire formats**. There is no TCP↔UDP interop, by design.
+wire formats**. There is no TCP-to-UDP interop, by design.
 
 The transport is being built incrementally. This document tracks the design and
 is updated as pieces land.
@@ -38,14 +38,14 @@ Common 14-byte header (all frame types):
 [FrameType:1][Epoch:1][RecvIndex:4 BE][Seq:8 BE]
 ```
 
-- **FrameType** — DATA, HANDSHAKE, CLOSE, or RETRY (RETRY reserved for a future stateless-retry exchange).
-- **Epoch** — selects the receive cipher for DATA frames (see *Rekey*). Carried
+- **FrameType**: DATA, HANDSHAKE, CLOSE, or RETRY (RETRY reserved for a future stateless-retry exchange).
+- **Epoch**: selects the receive cipher for DATA frames (see *Rekey*). Carried
   in the clear but authenticated: the AEAD AAD is the entire 14-byte header, so a
   flipped epoch is rejected, not merely mis-routed.
-- **RecvIndex** — the random connection index the *receiver* assigned to this
+- **RecvIndex**: the random connection index the *receiver* assigned to this
   session. The sender echoes it; the receiver demultiplexes by index, **not by
   source address**. `0` means "unknown" (the first ClientHello).
-- **Seq** — a globally monotonic, **never-reset** 64-bit counter. It is both the
+- **Seq**: a globally monotonic, **never-reset** 64-bit counter. It is both the
   replay counter and the low 8 bytes of the AEAD nonce.
 
 DATA frame: `[header] || AEAD ciphertext(incl. tag)`.
@@ -74,7 +74,7 @@ needs no wire change.
   (authenticated-rebinding enforcement is future work).
 
 - **Epoch-based rekey (reorder-safe).** The stream transport promotes the new
-  receive cipher on the first new-key packet and discards the old one — correct
+  receive cipher on the first new-key packet and discards the old one, which is correct
   only for in-order delivery. The datagram path instead carries a 1-byte epoch
   per frame (in the AAD); the receiver selects the cipher by epoch and retains
   the previous epoch's receive cipher for a bounded window (by sequence distance
@@ -96,7 +96,7 @@ needs no wire change.
 
 - **Single, wide, never-reset replay window.** A multi-word sliding bitmap
   (`DatagramReplayWindowBits`, default 1024) over the monotonic sequence,
-  tolerant of datagram reordering. It is never reset on rekey — resetting it
+  tolerant of datagram reordering. It is never reset on rekey: resetting it
   would re-arm a fresh window that re-opens a one-packet replay at the rekey
   boundary (the same hazard the stream path guards against).
 
@@ -150,13 +150,15 @@ per socket, so demux and AEAD-open spread across cores. On platforms without
 `SO_REUSEPORT` it transparently degrades to one socket. `NewDatagramEndpoint`
 (single socket) is unchanged.
 
-Measured on an 8-core arm64 Linux container (loopback, indicative): a single receive
-goroutine tops out around 365 MB/s aggregate delivered goodput; spreading receive
-across sockets lifts it about 1.6x, from ~355 MB/s (1 socket) to ~565 MB/s (8
-sockets). The scaling is sublinear here because the loopback path and the benchmark's
-own senders share the same 8 cores; a many-core host with real NIC receive queues has
-more headroom. The single-flow path remains syscall-bound (~280 MB/s, ~2.2 Gb/s), so
-the per-flow lever is `UDP_SEGMENT`/`UDP_GRO` offload (`WithDatagramOffload` with `SendBatch`).
+Measured on an 8-core arm64 Linux container (loopback, indicative):
+
+| What | Delivered goodput |
+|---|---|
+| One receive goroutine, aggregate | about 2.9 Gbps |
+| Spread across sockets, 1 to 8 | about 2.8 to 4.5 Gbps (about 1.6x) |
+| Single flow | about 2.2 Gbps |
+
+The scaling is sublinear because the loopback path and the benchmark's own senders share the same 8 cores. A many-core host with real NIC receive queues has more headroom. The single-flow path stays syscall-bound, so the per-flow lever is `UDP_SEGMENT`/`UDP_GRO` offload (`WithDatagramOffload` with `SendBatch`).
 
 ```go
 ep, err := tunnel.ListenDatagram("udp", "0.0.0.0:51820")
@@ -176,7 +178,8 @@ go ep.Serve()
   datagrams' worth of bytes and the receive loop re-splits them, cutting receive
   syscalls on a busy flow. Off by default and Linux-only; a no-op on other platforms,
   non-UDP conns, or kernels without `UDP_GRO`. It grows the per-socket receive buffers
-  (each must hold a coalesced burst). With the option on, `DatagramConn.SendBatch` also uses send-side `UDP_SEGMENT` (GSO): runs of equal-size datagrams go out in one syscall, with a fallback to plain sends if the kernel or NIC refuses. Measured gains are in [PERFORMANCE.md](PERFORMANCE.md).
+  (each must hold a coalesced burst).
+  With the option on, `DatagramConn.SendBatch` also uses send-side `UDP_SEGMENT` (GSO): runs of equal-size datagrams go out in one syscall, with a fallback to plain sends if the kernel or NIC refuses. Measured gains are in [PERFORMANCE.md](PERFORMANCE.md).
 
 ### High-assurance deployment example
 

@@ -1,10 +1,10 @@
 # How Quantum-Go compares
 
-As of 2026-10-31. Quantum-Go numbers are measured (see [PERFORMANCE.md](PERFORMANCE.md)); every number or claim about another project carries a source. Where a source did not settle a point, this page says so instead of guessing. Check each project's own documentation before relying on a row, because all of these move quickly.
+As of 2026-10-31. Quantum-Go numbers are measured (see [PERFORMANCE.md](PERFORMANCE.md)); every number or claim about another project carries a source. Where a source did not settle a point, this page says so. Check each project's own documentation before relying on a row, because all of these move quickly.
 
 ## Pick the right tool first
 
-Quantum-Go is a **library**: you embed it in a Go program to encrypt a `net.Conn` or a UDP socket. WireGuard, Rosenpass, strongSwan and OpenVPN are **protocols and daemons** you run next to your application. NordVPN and Mullvad are **commercial services** that ship a client. Those are three different jobs, so the useful question is not "which is fastest" but "which job do I have".
+Quantum-Go is a **library**: you embed it in a Go program to encrypt a `net.Conn` or a UDP socket. WireGuard, Rosenpass, strongSwan and OpenVPN are **protocols and daemons** you run next to your application. NordVPN and Mullvad are **commercial services** that ship a client. Those are three different jobs, so start from the job you have.
 
 | You want | Reach for |
 |----------|-----------|
@@ -16,12 +16,14 @@ Quantum-Go is a **library**: you embed it in a Go program to encrypt a `net.Conn
 ## What you get with Quantum-Go
 
 - **A post-quantum handshake in one round trip.** The client can send data after 1 RTT on both transports. Measured: 21 ms on a 20 ms link, 101 ms on a 100 ms link.
-- **Hybrid security.** ML-KEM-1024 (NIST security level 5) combined with X25519, designed so that an attacker has to break both (symbolic model; no computational proof for the default combiner yet). Traffic recorded today and protected by the tunnel stays confidential against a future quantum computer.
+- **Hybrid security.** ML-KEM-1024 (NIST security level 5) combined with X25519, designed so that an attacker has to break both (symbolic model; no computational proof for the default combiner yet). The goal is that traffic recorded today stays confidential against a future quantum computer.
 - **Two transports from one API.** Stream (TCP) and a connectionless datagram (UDP) transport with a fragmented handshake, retransmission, reliable rekey, anti-DoS cookies and roaming across IP or port changes.
-- **Throughput that scales with your kernel.** About 2.5 GB/s on one stream tunnel with 60 KB records on a laptop, and about 1.2 GB/s with 8 KB records, which depends on the record size ([PERFORMANCE.md](PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp)). On datagrams, `SendBatch` with UDP offload reached 701 MB/s on a Linux x86-64 CI runner and 528 MB/s on arm64, against 196 and 304 MB/s for one send per datagram.
+- **Throughput.** Record size, per-core crypto and syscall cost set the rate ([PERFORMANCE.md](PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp)).
+  - Stream, one tunnel, laptop loopback: about 20 Gbps at 60 KB records and 9.6 Gbps at 8 KB.
+  - Datagram, Linux CI, `SendBatch` with UDP offload: 5.6 Gbps on x86-64 and 4.2 Gbps on arm64. One send per datagram gives 1.6 and 2.4 Gbps.
 - **Authentication by default.** Unauthenticated use needs an explicit opt-out. Pin a server's static key, require it on the server, or give each client its own pre-shared key. By design, an unknown client is indistinguishable from one with a wrong key; this is not yet modelled.
-- **Evidence, not adjectives.** ProVerif models (symbolic, checked in CI) of secrecy, hybrid security, forward secrecy and authentication (including PSK), published conformance vectors, fuzz targets on every parser that sees unauthenticated bytes, a wire specification, and releases signed with cosign and attested.
-- **A license you can ship.** Apache-2.0, with an express patent grant, a license scan on every release and full third-party notices.
+- **Checkable evidence.** ProVerif models (symbolic, checked in CI) of secrecy, hybrid security, forward secrecy and authentication (including PSK), published conformance vectors, fuzz targets on every parser that sees unauthenticated bytes, a wire specification, and releases signed with cosign and attested.
+- **License.** Apache-2.0, with an express patent grant, a license scan on every release and full third-party notices.
 
 ## At a glance
 
@@ -52,9 +54,7 @@ Quantum-Go is a **library**: you embed it in a Go program to encrypt a `net.Conn
 
 ## Where Quantum-Go is behind
 
-Saying this plainly is part of being useful.
-
-- **Bigger handshake.** ML-KEM-1024 carries 1,568-byte keys and ciphertexts each way, so the handshake is roughly ten times WireGuard's. The X-Wing suite (ML-KEM-768 + X25519) cuts that roughly in half.
+- **Bigger handshake.** ML-KEM-1024 carries 1,568-byte keys and ciphertexts each way, so the handshake is roughly ten times WireGuard's. The X-Wing suite (ML-KEM-768 + X25519) cuts the key share and ciphertext by about a quarter, at NIST level 3.
 - **Not a VPN client.** No TUN device, routing, DNS handling or kill-switch. See [Scope](SCOPE.md).
 - **Young.** It is pre-1.0, has no third-party audit yet, and is not a FIPS 140-3 validated module. WireGuard and strongSwan have years of deployment and review behind them.
 - **Smaller ecosystem.** No mobile apps, no management plane, one language.
@@ -70,7 +70,7 @@ Saying this plainly is part of being useful.
 
 ## A fair performance comparison
 
-The speed figures in this repository come from our own benchmark workflow on GitHub-hosted runners over loopback ([PERFORMANCE.md](PERFORMANCE.md)). They are not a head-to-head. A fair one would run `wireguard-go` and Quantum-Go on the same runners with the same method, measuring handshake time to first byte, single-flow goodput and CPU per megabyte. That comparison is on the list; until it exists, rely on protocol-level facts (round trips and bytes) in the table above, which do not depend on hardware.
+The speed figures in this repository come from our own runs on cloud hosts, CI runners and a laptop ([PERFORMANCE.md](PERFORMANCE.md)). None is a head-to-head against another project. A fair comparison would run `wireguard-go` and Quantum-Go on the same runners with the same method, measuring handshake time to first byte, single-flow goodput and CPU per megabyte. That comparison is on the list; until it exists, rely on protocol-level facts (round trips and bytes) in the table above, which do not depend on hardware.
 
 ## Reproduce
 

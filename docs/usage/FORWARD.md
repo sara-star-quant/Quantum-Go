@@ -41,15 +41,30 @@ Point the application at `127.0.0.1:8080`. It speaks plain TCP to its local forw
 
 ## What it protects, and what it does not
 
-- **Protected:** the bytes between the two forwarders are confidential, integrity-protected and forward-secret, with a hybrid post-quantum key exchange. The two forwarders authenticate each other with the PSK, and optionally the server's pinned key.
-- **A Unix socket guards the plain hop better than a port.** With `--listen unix:/run/app/qt.sock` the operating system's file permissions decide who may use the tunnel, where a loopback port admits every local user. The socket is bound in a private staging directory and moved into place with its mode already set, so it never exists with looser permissions. A stale socket left by a crash is replaced only when connecting to it is refused; a live socket, a socket that cannot be probed and a regular file at the path are left alone. A directory that another user owns, or that group or others can write to (sticky or not), is refused. Only the socket's own directory is checked, not its ancestors, so keep it in a directory the service owns. Paths over 100 bytes are refused with a clear message. Unix sockets are not available on Windows.
-- **Not protected:** the plain hop between the application and its local forwarder, and between the server forwarder and the service. Keep both on loopback or inside one pod or host. A bare `--listen :8080` binds `127.0.0.1`, not every interface.
+| | |
+|---|---|
+| **Protected** | The bytes between the two forwarders: confidential, integrity-protected and forward-secret, with a hybrid post-quantum key exchange. The forwarders authenticate each other with the PSK, and optionally the server's pinned key. |
+| **Not protected** | The plain hop between the application and its local forwarder, and between the server forwarder and the service. Keep both on loopback or inside one pod or host. A bare `--listen :8080` binds `127.0.0.1`, not every interface. |
+| **Not hidden** | Record sizes, timing and the number of connections are visible on the wire. |
+
 - **The PSK identifies the forwarder pair, not a person.** Anyone who can reach the client's local port uses the tunnel, so guard that port with loopback, OS permissions or network policy. Authenticated per-user identity is not available yet ([#196](https://github.com/sara-star-quant/Quantum-Go/issues/196)).
-- **Not hidden:** record sizes, timing and the number of connections are visible on the wire.
-- **No open relay:** the server forwards only to its one `--upstream`. A peer cannot choose a destination.
-- **A stranger can make the server do work.** A peer that has not authenticated yet still costs the server one ML-KEM-1024 operation per handshake, about 0.1 to 0.2 ms of CPU. The per-address and global rate limits bound that. They do not remove it: an attacker can use up the global handshake budget and keep real clients out until it stops, and sources behind one NAT share one per-address limit. Refused handshakes are logged at most once a second with a count of the rest. For anything reachable from the internet, put an allowlist or firewall in front of the server port as well.
-- **A bad frame ends the connection.** After the handshake the only frame types are data and end-of-stream; any other value closes the connection and nothing reaches the upstream.
+- **No open relay.** The server forwards only to its one `--upstream`. A peer cannot choose a destination.
+- **A stranger can make the server do work.** Each handshake from a peer that has not authenticated yet still costs the server one ML-KEM-1024 operation, about 0.1 to 0.2 ms of CPU.
+  - The per-address and global rate limits bound that cost but do not remove it. An attacker can use up the global handshake budget and keep real clients out until the attack stops.
+  - Sources behind one NAT share one per-address limit.
+  - The server logs refused handshakes at most once a second, with a count of the rest.
+  - For anything reachable from the internet, also put an allowlist or firewall in front of the server port.
+- **A bad frame ends the connection.** After the handshake the only frame types are data and end-of-stream. Any other value closes the connection and nothing reaches the upstream.
 - **Logs** carry addresses, byte counts, durations and error classes, never payloads or keys.
+
+### Unix sockets for the plain hop
+
+A Unix socket guards the plain hop better than a port. With `--listen unix:/run/app/qt.sock` the operating system's file permissions decide who may use the tunnel, where a loopback port admits every local user.
+
+- **Created private.** The forwarder binds the socket in a private staging directory and moves it into place with its mode already set, so it never exists with looser permissions.
+- **Leftover sockets.** The forwarder replaces a socket left by a crash only when connecting to it is refused. It leaves alone a live socket, a socket it cannot probe and a regular file at the path.
+- **Directory checks.** It refuses a directory that another user owns, or that group or others can write to (sticky or not). It checks only the socket's own directory, not its ancestors, so keep the socket in a directory the service owns.
+- **Limits.** It refuses paths over 100 bytes with a clear message. Unix sockets are not available on Windows.
 
 ## Authentication
 
@@ -93,12 +108,47 @@ A key file is refused when its group can write it or when others can touch it. U
 - **One tunnel per TCP connection.** Each connection costs one handshake and one round trip. That suits long-lived connections (HTTP/2 and gRPC, pooled database connections, bulk transfers). Short-lived HTTP/1.1 connections pay it every time, so keep connections alive.
 - **Half-close works.** A client that finishes sending and then waits for the reply gets it. The EOF travels inside the tunnel as a one-byte frame, with no change to the wire protocol.
 - **TCP only.** UDP is not forwarded, so HTTP/3, QUIC, CoAP and syslog over UDP are not covered. Modern HTTP/3 stacks negotiate hybrid post-quantum key exchange in TLS 1.3 already.
-- **Limits:** `--max-conns` (default 1024), `--idle-timeout` (default 5 minutes, counted only when neither direction moves data; 0 disables it), a 10 second dial to the upstream and a 30 second client dial plus handshake. The server also caps handshakes in flight at 1024, connections per source address at `--max-conns-per-ip` (default 256) and handshakes per second across all sources at `--handshake-rate` (default 1000); 0 disables either. A client forwarder opens one tunnel per local connection, so one client can need as many connections as its own `--max-conns`: raise the per-address cap above the busiest client, or its extra connections are refused. The address is the full source address, so an attacker holding an IPv6 prefix can rotate addresses and sidestep the per-address cap. A connection over `--max-conns` still pays its handshake before it is refused.
-- **Rotating keys:** write the new key file and send SIGHUP (`kill -HUP <pid>`) to each side. New connections use the new keys. A server cuts the open connections whose key is no longer in its table (an identity you removed, or a key you replaced) and logs how many; `--keep-sessions-on-reload` keeps them, for routine rotation. A client's open connections keep the keys they started with. A server reloads its PSKs only, so a change to `--server-key` needs a restart; a client reloads its PSK and pinned key. A file that fails to parse or has loose permissions keeps the current keys and logs the error. SIGHUP no longer ends the process, so run it under systemd, a container runtime or `nohup`, not a bare terminal.
-- **Rotating without refusing anyone:** a server holds one key per identity, so reloading the server and the clients at different moments leaves a gap in which not-yet-reloaded clients are refused. To avoid it, add the new key under a new identity in `--clients-file`, reload the server, point each client at the new key and `--identity`, reload them, then delete the old line and reload the server again.
-- **A compromised key:** remove its line from `--clients-file` (or replace the key) and send SIGHUP to the server. It cuts every open connection that proved that key and refuses new ones; the log line says how many it cut. A connection that proved a key you left in place stays open, so give each client its own identity and key. `--max-session-lifetime` (default off) closes any connection after a fixed time, whatever it is doing, as a backstop for keys nobody removed; a client reconnects and pays one handshake. SIGHUP does not exist on Windows: restart the server there. Reload does not erase the old key from memory.
-- **Shutdown drains:** SIGINT and SIGTERM stop accepting, report not ready, and let open connections finish for `--drain-timeout` (default 30 seconds, 0 cuts at once), then cut what is left. A second signal cuts at once. A drain is bounded so a rollout cannot hang on a stuck connection.
 - **Not yet measured on real hosts.** No throughput or latency numbers are published for this mode, and none should be assumed from the library's. Measure with your own workload.
+
+### Connection limits
+
+| Limit | Default | Notes |
+|---|---|---|
+| `--max-conns` | 1024 | A connection over the limit still pays its handshake before the refusal. |
+| `--max-conns-per-ip` (server) | 256 | Connections per source address; 0 disables it. |
+| `--handshake-rate` (server) | 1000 per second | Across all sources; 0 disables it. |
+| Handshakes in flight (server) | 1024 | Cap. |
+| `--idle-timeout` | 5 minutes | Counts only when neither direction moves data; 0 disables it. |
+| Dial timeouts | 10 s to the upstream; 30 s for client dial plus handshake | |
+
+A client forwarder opens one tunnel per local connection, so one client can need as many connections as its own `--max-conns`. Raise the per-address cap above the busiest client, or the server refuses its extra connections. The cap uses the full source address, so an attacker holding an IPv6 prefix can rotate addresses and sidestep it.
+
+### Rotating keys
+
+Write the new key file and send SIGHUP (`kill -HUP <pid>`) to each side. New connections use the new keys.
+
+- **Server:** cuts the open connections whose key is no longer in its table (an identity you removed, or a key you replaced) and logs how many. `--keep-sessions-on-reload` keeps them, for routine rotation. A server reloads its PSKs only, so a change to `--server-key` needs a restart.
+- **Client:** open connections keep the keys they started with. A client reloads its PSK and pinned key.
+- **Bad file:** a file that fails to parse or has loose permissions keeps the current keys and logs the error.
+- **Process:** SIGHUP no longer ends the process, so run the forwarder under systemd, a container runtime or `nohup`, not a bare terminal.
+
+**To rotate without refusing anyone.** A server holds one key per identity, so reloading the server and the clients at different moments leaves a gap in which it refuses clients that have not reloaded. To avoid the gap:
+
+1. Add the new key under a new identity in `--clients-file` and reload the server.
+2. Point each client at the new key and `--identity`, and reload the clients.
+3. Delete the old line and reload the server again.
+
+### A compromised key
+
+Remove its line from `--clients-file` (or replace the key) and send SIGHUP to the server. It cuts every open connection that proved that key, refuses new ones and logs how many it cut. A connection that proved a key you left in place stays open, so give each client its own identity and key.
+
+- `--max-session-lifetime` (default off) closes any connection after a fixed time, whatever it is doing, as a backstop for keys nobody removed. A client reconnects and pays one handshake.
+- SIGHUP does not exist on Windows: restart the server there.
+- Reload does not erase the old key from memory.
+
+### Shutdown
+
+SIGINT and SIGTERM stop accepting, report not ready and let open connections finish for `--drain-timeout` (default 30 seconds, 0 cuts at once), then cut what is left. A second signal cuts at once. The drain is bounded so a rollout cannot hang on a stuck connection.
 
 ## Running it unattended
 
@@ -110,9 +160,27 @@ A key file is refused when its group can write it or when others can touch it. U
 | `/readyz` | readiness: 200 once the listener is up and the keys are loaded, 503 while draining |
 | `/metrics` | Prometheus text: handshake load, rate-limit and byte counters from the library, plus `quantum_tunnel_forward_*`; the library's session, packet and rekey series stay at zero in forward mode |
 
-The forwarder's own series: `connections_active`, `connections_total`, `handshakes_refused_total` (server side only: wrong key, rate limit or a peer that is not a tunnel client; a rate-limited peer is also in the library's rate-limit counter, so do not add the two), `dial_failures_total` (upstream on a server; on a client, a tunnel peer that refused or did not answer, which is where a client sees a rejected key), `key_reloads_total`, `key_reload_failures_total`, `last_key_reload_ok`, `ready` and `draining`.
+The forwarder's own series:
 
-`--assurance-log FILE` appends one JSON line per finished connection (file mode 0600): the time, the role (`client` or `server`), the KEM suite negotiated, how the peers authenticated (`psk`, `static-key`, both, or `none`), whether the build ran in FIPS build mode, the version and commit, and the duration. It records what this process negotiated and built and says nothing about the network between the peers. It carries no address, and no identity unless you add `--assurance-identity` (server side). Keep it for an audit or a migration inventory: it answers which links ran post-quantum, with which suite. `schema_version` changes when a field changes meaning. A write failure is logged once and never stops forwarding.
+- `connections_active`, `connections_total`
+- `handshakes_refused_total` (server side only): wrong key, rate limit or a peer that is not a tunnel client. A rate-limited peer is also in the library's rate-limit counter, so do not add the two.
+- `dial_failures_total`: on a server, the upstream. On a client, a tunnel peer that refused or did not answer, which is where a client sees a rejected key.
+- `key_reloads_total`, `key_reload_failures_total`, `last_key_reload_ok`
+- `ready`, `draining`
+
+### Assurance log
+
+`--assurance-log FILE` appends one JSON line per finished connection (file mode 0600). Each line holds:
+
+- the time and the role (`client` or `server`)
+- the negotiated KEM suite
+- how the peers authenticated (`psk`, `static-key`, both, or `none`)
+- whether the build ran in FIPS build mode
+- the version, commit and duration
+
+It records what this process negotiated and built and says nothing about the network between the peers. It carries no address, and no identity unless you add `--assurance-identity` (server side). Keep it for an audit or a migration inventory: it answers which links ran post-quantum, with which suite. `schema_version` changes when a field changes meaning. A write failure is logged once and never stops forwarding.
+
+### What to alert on
 
 A failed key reload keeps the previous keys, so the forwarder stays ready; alert on `last_key_reload_ok == 0` or a rising `key_reload_failures_total`. A rising `handshakes_refused_total` means a wrong key, a rate limit or a scanner; the log line says which, throttled to one a second.
 

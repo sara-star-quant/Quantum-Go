@@ -13,41 +13,57 @@
 [![FIPS build mode](https://img.shields.io/badge/FIPS%20build%20mode-not%20validated-orange)](docs/FIPS.md)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
----
-
-
 **Post-quantum encryption for your Go network code. Keyed in one round trip. Familiar `Dial` and `Listen`.**
 
-Traffic an attacker records today can be decrypted later by a quantum computer. Quantum-Go reduces that exposure for traffic its tunnel protects: a **hybrid ML-KEM-1024 + X25519** handshake, designed so that an attacker has to break both algorithms to read a session (checked in a symbolic model; the computational proof for the default combiner is open, see [SECURITY.md](SECURITY.md)). You keep your protocol and your sockets; the library encrypts and authenticates the bytes.
+An attacker can record traffic today and decrypt it later with a quantum computer. Quantum-Go reduces that exposure for the traffic its tunnel protects. Its **hybrid ML-KEM-1024 + X25519** handshake is designed so that an attacker has to break both algorithms to read a session. A symbolic model checks this; the computational proof for the default combiner is open (see [SECURITY.md](SECURITY.md)). You keep your protocol and your sockets, and the library encrypts and authenticates the bytes.
 
-## What you get
+## Status
 
-- **Speed to first byte.** The client sends data after **1 round trip** on both transports: 21 ms on a 20 ms link, 101 ms on a 100 ms link. The handshake costs 340 to 610 µs of CPU for both sides.
-- **Throughput.** Between two cloud hosts, one tunnel flow reaches **10 to 14 Gbps** and four or more flows fill a 20 Gbps link at plain-TCP speed (Google Cloud; AWS reaches its 12.4 Gbps instance limit the same way). Locally, about **2.5 GB/s** on a single stream tunnel with 60 KB records on a laptop and 1.4 to 1.6 GB/s on Linux CI runners (loopback); the record size changes it a lot, see [PERFORMANCE.md](docs/PERFORMANCE.md#throughput-by-record-size-and-cost-against-plain-tcp). `Tunnel.SendBatch` writes a burst of small stream records together, 2 to 3x faster for 256 B records on macOS, Windows and x86-64 Linux ([numbers](docs/PERFORMANCE.md#batching-small-stream-records)). On Linux, batched datagram sends with UDP offload reach **701 MB/s** (x86-64) and **528 MB/s** (arm64) per flow, up to 3.6 times a plain send.
-- **Key establishment at NIST level 5.** ML-KEM-1024 is NIST security level 5, hybridized with X25519. Prefer smaller handshakes? Set `KEMSuite` to the X-Wing suite (ML-KEM-768 + X25519), or register your own suite.
-- **Two transports, one API.** TCP, and a connectionless UDP transport with retransmission, reliable rekey, anti-DoS cookies and roaming across IP changes.
-- **Authentication by default.** Unauthenticated use needs an explicit opt-out. Pin your server's key, or issue each client its own pre-shared key. A client with no key looks the same as one with a wrong key.
-- **Evidence, not promises.** ProVerif models checked in CI (symbolic, so statements about the model), published conformance vectors, fuzzed parsers, a written wire specification, and releases signed with cosign and attested.
-- **A license you can ship.** Apache-2.0 with an express patent grant, a license scan on every release, and full third-party notices.
+- **Pre-1.0 and research-grade.** No third-party audit yet.
+- **Not a validated FIPS 140-3 module.** A FIPS build mode with self-tests ships.
+- **Large handshake.** About ten times the size of WireGuard's, because ML-KEM-1024 keys and ciphertexts are large. The X-Wing suite is the smaller option, at a lower security level.
+- **Reviewable core.** The core is about 9,000 lines of Go outside tests, blank lines and comments (chkem, crypto, protocol, tunnel, internal), small enough for one reviewer to read end to end. `scripts/loc.sh` checks the figure in CI.
 
-How it stacks up against WireGuard, Rosenpass, IKEv2 and hybrid TLS, including where it loses: [docs/COMPARISON.md](docs/COMPARISON.md).
+## Features
 
-## Who it is for
+- **One round trip.** The client sends data after 1 RTT on both transports.
+- **Two transports.** TCP, plus a UDP transport with retransmission, reliable rekey, anti-DoS cookies and roaming across IP changes.
+- **Authentication by default.** Pin the server's key or give each client its own pre-shared key. Unauthenticated use needs an explicit opt-out. A client with no key looks the same as one with a wrong key.
+- **Choice of KEM suite.** The default uses ML-KEM-1024 (NIST security level 5) with X25519. Set `KEMSuite` to X-Wing (ML-KEM-768 + X25519) for smaller handshakes, or register your own suite.
+- **Batched sends.** `SendBatch` speeds up bursts of small stream records on macOS, Windows and x86-64 Linux, and datagrams on Linux with UDP offload.
+- **Checkable evidence.** ProVerif models in CI (symbolic, so their results are statements about the model), conformance vectors, fuzzed parsers, a wire specification, and releases signed with cosign and attested.
+- **Apache-2.0.** Includes an express patent grant. Each release gets a license scan and ships full third-party notices.
 
-- You run a TCP service you cannot change (a database, a broker, an HTTP or gRPC service) and want it behind a post-quantum tunnel: `quantum-tunnel forward`, no code changes. Try it in about 10 minutes with the [Docker Compose demo](examples/forward-demo/README.md).
-- You build a Go service, agent, relay or edge component and want quantum-resistant transport **without running a VPN daemon, a kernel module or root**.
-- You need an auditable protocol: a spec, symbolic models and test vectors you can hand to a reviewer.
+## Performance
 
-## Who it is not for
+Cloud results come first because they cross a real network. [PERFORMANCE.md](docs/PERFORMANCE.md) has the full tables, the method and the steps to reproduce them.
 
-- You want a VPN client with a TUN device, routing, DNS handling and a kill-switch. This is a library; see [Scope](docs/SCOPE.md).
-- You need a FIPS 140-3 *validated* module today. The library ships a FIPS build mode with self-tests, but it is not validated.
+| What | Result |
+|------|--------|
+| **Two Google Cloud hosts** (`c3-standard-8`, 20 Gbps link) | One flow: about 10 to 11 Gbps at 8 KB records, 14 to 18 Gbps at 60 KB (varies between runs). Four or more flows: about 20.4 Gbps, the same as plain TCP. |
+| **Two AWS hosts** (`c7i-flex.large`) | Two or more flows, 8 KB and 60 KB records: 12.4 Gbps, the instance limit, within 0.4% of plain TCP. |
+| **Small records** (1400 B, four flows) | 7.2 to 8.2 Gbps on AWS and 12.9 to 13.5 Gbps on Google Cloud, against 12.4 and 20.6 Gbps for plain TCP. |
+| **Datagram loss**, Google Cloud, 1 to 4 Gbps offered | Under 0.01% with the built-in 256-entry inbox and a 4 MiB receive buffer (raise `rmem_max`). An earlier setup, a 64-entry inbox and the default socket buffer, lost 5 to 7%. A 2 vCPU AWS pair tuned the same way loses 0.2% to 0.5% at 4 Gbps because the receiver runs out of CPU. |
+| **One stream tunnel, loopback** | Laptop (Apple M1 Pro): about 20 Gbps at 60 KB records, 9.6 Gbps at 8 KB. Linux CI runners: about 11 to 13 Gbps at 60 KB. |
+| **Datagram, one flow, loopback** (Linux CI, x86-64 / arm64) | 1.6 / 2.4 Gbps with `Send`; 5.6 / 4.2 Gbps with `SendBatch` and offload. |
+| **`SendBatch`, 256 B stream records** | 2 to 3x on macOS, Windows and x86-64 Linux. From 8 KB up, about 1.0x on Linux and Windows; the macOS runner still gains 1.4 to 1.8x. |
+| **Time until the client can send** | 1 RTT plus about 1 ms or less: 21 ms on a 20 ms link, 101 ms on a 100 ms link. |
+| **Handshake CPU, both sides** | 340 to 610 µs on Linux, macOS and Windows CI runners. Static-key authentication adds about 35 to 50%. |
+| **Raw AES-256-GCM, one core** | About 2.5 GB/s (Apple M1 Pro). |
+| **Wire cost** | 29 B per stream record; about 1.7 KB for the client's handshake flight (ML-KEM-1024). |
 
-## The honest part
+## Is it for you?
 
-Quantum-Go is **pre-1.0 and research-grade**, and it has **not had a third-party audit**. Its handshake is about ten times larger than WireGuard's because ML-KEM-1024 is large. That is the price of security level 5, and the reason the smaller X-Wing suite exists.
+**A good fit if you:**
+- run a TCP service you cannot change (a database, a broker, an HTTP or gRPC service) and want it behind a post-quantum tunnel. `quantum-tunnel forward` needs no code changes; try the [Docker Compose demo](examples/forward-demo/README.md) in about 10 minutes.
+- build a Go service, agent, relay or edge component and want quantum-resistant transport **without a VPN daemon, a kernel module or root**.
+- need a protocol you can hand to a reviewer, with a spec, symbolic models and test vectors.
 
-The core (chkem, crypto, protocol, tunnel, internal) is about 9,000 lines of Go outside tests, blank lines and comments (`scripts/loc.sh`, checked in CI), small enough for one reviewer to read end to end.
+**Not a fit if you:**
+- want a VPN client with a TUN device, routing, DNS handling and a kill switch. This is a library; see [Scope](docs/SCOPE.md).
+- need a FIPS 140-3 *validated* module today.
+
+[Comparison](docs/COMPARISON.md) sets Quantum-Go next to WireGuard, Rosenpass, IKEv2 and hybrid TLS, including where it loses.
 
 ## Quick start
 
@@ -96,23 +112,6 @@ _ = c.SendBatch([][]byte{p1, p2, p3})
 
 FIPS mode: `go build -tags fips ./...`. More in the [Quick Start guide](docs/usage/QUICKSTART.md).
 
-## Performance
-
-Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a laptop; cloud results come first because they cross a real network. Full tables, methodology and reproduction steps are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md#between-two-cloud-hosts).
-
-| Metric | Result |
-|--------|--------|
-| Stream throughput, two Google Cloud hosts (`c3-standard-8`, 20 Gbps link) | one tunnel flow: about 10 to 11 Gbps at 8 KB records and 14 to 18 Gbps at 60 KB (it varies between runs); four or more flows: about 20.4 Gbps, the same as plain TCP |
-| Stream throughput, two AWS hosts (`c7i-flex.large`) | two or more flows: 12.4 Gbps, the instance limit, within 0.4% of plain TCP |
-| Datagram loss, two Google Cloud hosts, 1 to 4 Gbps offered | under 0.01% with the 256-entry inbox and 4 MiB receive buffer (raise `rmem_max`); 5 to 7% on a stock host. A 2 vCPU AWS pair loses 0.2% to 0.5% at 4 Gbps, because the receiver runs out of CPU first |
-| Client can send data after | 1 RTT (stream and datagram), under 1 ms of crypto |
-| Handshake CPU, both sides | 340 to 610 µs (Linux, macOS, Windows runners); static-key auth adds about 35 to 50% |
-| Stream throughput, single tunnel | about 2.5 GB/s at 60 KB records, about 1.2 GB/s at 8 KB (laptop, loopback); depends on record size |
-| Stream `SendBatch`, small records | 2 to 3x at 256 B on macOS, Windows and x86-64 Linux; about 1.0x from 8 KB up |
-| Datagram goodput, single flow, Linux | 196 / 304 MB/s per datagram (x86 / arm64), 701 / 528 MB/s with `SendBatch` and offload |
-| AES-256-GCM, raw, one core | about 2.5 GB/s |
-| Wire cost | 29 B per stream record; about 1.7 KB handshake flight (ML-KEM-1024) |
-
 ## Security properties
 
 | Property | Status |
@@ -127,30 +126,42 @@ Measured between two cloud VMs (AWS and Google Cloud), on CI runners and on a la
 
 ## Documentation
 
-| Guide | Description |
-|-------|-------------|
+**Use it**
+
+| Guide | What it covers |
+|-------|----------------|
 | [Quick Start](docs/usage/QUICKSTART.md) | Installation and basic usage |
 | [Configuration](docs/usage/CONFIGURATION.md) | Timeouts, rate limiting, sessions, authentication |
-| [CLI reference](docs/usage/CLI.md) | `quantum-tunnel` demos, key generation and benchmarks |
-| [Scope and status](docs/SCOPE.md) | What is shipped, planned or out of scope, and what the project is not |
-| [Stability](docs/STABILITY.md) | What you can rely on, what may change, the enforced bounds and what each error means |
-| [Performance](docs/PERFORMANCE.md) | Measured latency, handshake cost and throughput |
+| [Forward mode](docs/usage/FORWARD.md) | Protect any TCP service without code changes |
+| [Trying forward mode](docs/usage/PILOT.md) | Running it on a real link, what to expect and how to send feedback |
+| [CLI reference](docs/usage/CLI.md) | Demos, key generation and benchmarks |
+| [Security events](docs/usage/SECURITY_EVENTS.md) | Signals for pin mismatch, downgrade and replay, with benign causes |
 | [Try it on AWS or Google Cloud](docs/usage/CLOUD_BENCH.md) | One script, two VMs, about ten minutes, torn down for you |
-| [Trying forward mode](docs/usage/PILOT.md) | A one-page guide to running it on a real link, what to expect and how to tell us how it went |
-| [Forward mode](docs/usage/FORWARD.md) | Protect any TCP service (HTTP, gRPC, a database) with the tunnel, without code changes |
-| [AI and cloud workloads](docs/usage/AI_AND_CLOUD.md) | Where post-quantum transport fits for model and data movement, and where TLS already covers you |
-| [Comparison](docs/COMPARISON.md) | Quantum-Go next to WireGuard, Rosenpass, IKEv2 and hybrid TLS |
-| [Datagram transport](docs/datagram-transport.md) and [DoS defences](docs/datagram-dos.md) | UDP transport design and limits |
-| [Datagram fault model](docs/technical/FAULT_MODEL.md) | The lossy, duplicating, reordering test network, what each test checks and how to re-run it |
-| [Security events](docs/usage/SECURITY_EVENTS.md) | Local signals for pin mismatch, downgrade and replay, with their benign causes |
+| [AI and cloud workloads](docs/usage/AI_AND_CLOUD.md) | Where post-quantum transport fits and where TLS already covers you |
+
+**Evaluate it**
+
+| Guide | What it covers |
+|-------|----------------|
+| [Scope and status](docs/SCOPE.md) | Shipped, planned and out of scope |
+| [Comparison](docs/COMPARISON.md) | WireGuard, Rosenpass, IKEv2 and hybrid TLS |
+| [Performance](docs/PERFORMANCE.md) | Latency, handshake cost and throughput |
+| [Stability](docs/STABILITY.md) | What may change, enforced bounds and what each error means |
+| [Threat model](docs/technical/THREAT_MODEL.md) | Threat and risk analysis (NIST SP 800-30) |
+| [Claims register](docs/technical/CLAIMS.md) | Each security claim, its status and evidence |
+| [Formal verification](docs/formal/README.md) | ProVerif models checked in CI |
+| [Audit readiness](docs/compliance/AUDIT_READINESS.md) | Crypto inventory, claims-to-evidence map, supply chain |
+| [FIPS build mode](docs/FIPS.md) | FIPS 140-3 build mode and self-tests |
+
+**Design and history**
+
+| Guide | What it covers |
+|-------|----------------|
 | [Architecture](docs/technical/ARCHITECTURE.md) | CH-KEM protocol and security design |
 | [Protocol specification](docs/PROTOCOL.md) | Wire handshake, KEM negotiation, key schedule |
-| [Formal verification](docs/formal/README.md) | ProVerif models checked in CI |
-| [Threat model](docs/technical/THREAT_MODEL.md) | Threat and risk analysis (NIST SP 800-30) |
-| [FIPS compliance](docs/FIPS.md) | FIPS 140-3 build mode and self-tests |
-| [Scope](docs/SCOPE.md) | What the library does and does not do |
-| [Audit readiness](docs/compliance/AUDIT_READINESS.md) | Crypto inventory, claims-to-evidence map, supply chain |
-| [Roadmap](docs/ROADMAP.md) | Development roadmap and compliance plans |
+| [Datagram transport](docs/datagram-transport.md) and [DoS defences](docs/datagram-dos.md) | UDP transport design and limits |
+| [Datagram fault model](docs/technical/FAULT_MODEL.md) | The lossy test network, what each test checks and how to re-run it |
+| [Roadmap](docs/ROADMAP.md) | Development and compliance plans |
 | [Changelog](CHANGELOG.md) | Release history |
 
 ## Contributing

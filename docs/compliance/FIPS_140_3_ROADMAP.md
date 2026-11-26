@@ -31,11 +31,11 @@ This document outlines the roadmap for achieving FIPS 140-3 compliance for the Q
 
 | Component | Standard | Status |
 |-----------|----------|--------|
-| ML-KEM-1024 | FIPS 203 | ✅ FIPS Approved (Aug 2024) |
-| AES-256-GCM | FIPS 197 + SP 800-38D | ✅ FIPS Approved |
-| SHA-3/SHAKE-256 | FIPS 202 | ✅ FIPS Approved |
-| X25519 | RFC 7748 | ⚠️ Non-FIPS (hybrid mode allowed) |
-| ChaCha20-Poly1305 | RFC 8439 | ⚠️ Non-FIPS (optional) |
+| ML-KEM-1024 | FIPS 203 | FIPS Approved (Aug 2024) |
+| AES-256-GCM | FIPS 197 + SP 800-38D | FIPS Approved |
+| SHA-3/SHAKE-256 | FIPS 202 | FIPS Approved |
+| X25519 | RFC 7748 | Non-FIPS (hybrid mode allowed) |
+| ChaCha20-Poly1305 | RFC 8439 | Non-FIPS (optional) |
 
 ### 1.2 Target Security Level
 
@@ -85,14 +85,14 @@ NIST explicitly permits hybrid key establishment combining:
 |-----------|----------|----------------|---------------------------|
 | ML-KEM-512 | FIPS 203 | Category 1 | Not implemented |
 | ML-KEM-768 | FIPS 203 | Category 3 | Available for future |
-| ML-KEM-1024 | FIPS 203 | Category 5 | ✅ Primary implementation |
+| ML-KEM-1024 | FIPS 203 | Category 5 | Primary implementation |
 
 ### 3.2 Symmetric Encryption
 
 | Algorithm | Standard | Key Size | Status |
 |-----------|----------|----------|--------|
-| AES-GCM | FIPS 197 + SP 800-38D | 256-bit | ✅ FIPS Approved |
-| ChaCha20-Poly1305 | RFC 8439 | 256-bit | ⚠️ Non-FIPS option |
+| AES-GCM | FIPS 197 + SP 800-38D | 256-bit | FIPS Approved |
+| ChaCha20-Poly1305 | RFC 8439 | 256-bit | Non-FIPS option |
 
 **Recommendation:** Use AES-256-GCM for FIPS-compliant deployments.
 
@@ -100,15 +100,15 @@ NIST explicitly permits hybrid key establishment combining:
 
 | Algorithm | Standard | Output | Status |
 |-----------|----------|--------|--------|
-| SHA3-256 | FIPS 202 | 256-bit | ✅ FIPS Approved |
-| SHAKE-256 | FIPS 202 | Variable | ✅ FIPS Approved |
-| HKDF-SHA256 | SP 800-56C | Variable | ✅ FIPS Approved |
+| SHA3-256 | FIPS 202 | 256-bit | FIPS Approved |
+| SHAKE-256 | FIPS 202 | Variable | FIPS Approved |
+| HKDF-SHA256 | SP 800-56C | Variable | FIPS Approved |
 
 ### 3.4 Random Number Generation
 
 | Source | Standard | Status |
 |--------|----------|--------|
-| crypto/rand (OS CSPRNG) | SP 800-90A/B | ✅ Depends on OS |
+| crypto/rand (OS CSPRNG) | SP 800-90A/B | Depends on OS |
 
 **Note:** FIPS compliance requires the underlying OS DRBG to be FIPS-validated.
 
