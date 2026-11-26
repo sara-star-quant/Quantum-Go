@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `scripts/release-verify.sh` no longer runs the downloaded binary after a check failed, and it runs only the binary named for the platform. It used to run whatever matched `quantum-tunnel*` even when the checksum or attestation had failed, so verifying a tampered release executed the tampered binary first.
 - The datagram handshake replays its cached flight only for a byte-identical repeat of the message it last processed. A message of the same type with other bytes used to draw the whole flight again (about 3 KB from the responder), including from a source that only needed to match the half-open entry. A retransmit whose bytes differ is now dropped; genuine retransmits are byte-identical.
 - A datagram initiator restarts its retransmit schedule when the first HelloRetryRequest arrives. The request proves the peer answers, but the driver saw no change of state across it and carried the backoff and retry count over, so a retried ClientHello that followed a lossy start gave up sooner than the schedule promises.
 - `DatagramConn.Recv` after a close or after the endpoint shuts down hands over the payloads already buffered, in order, and then returns the close error (`ErrTunnelClosed`, or the endpoint-closed error) every time. It used to pick between a buffered payload and the close at random, so a reader could see a payload, then the error, then another payload.

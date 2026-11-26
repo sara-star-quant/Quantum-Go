@@ -115,13 +115,16 @@ if [ "$got" = "$TAG $COMMIT" ]; then pass "Go proxy resolves $TAG to the tagged 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 case "$(uname -m)" in x86_64 | amd64) arch=amd64 ;; arm64 | aarch64) arch=arm64 ;; *) arch=unknown ;; esac
 archive="quantum-tunnel-$VER-$os-$arch.tar.gz"
-if [ -f "$archive" ]; then
+if [ "$failed" -ne 0 ]; then
+	# Never run a binary from a release that already failed a check: the asset may be the tampered one.
+	echo "SKIP  binary not run: $failed check(s) failed above"
+elif [ -f "$archive" ]; then
 	rm -rf unpacked && mkdir unpacked && tar -xzf "$archive" -C unpacked
 	for f in LICENSE NOTICE THIRD_PARTY_NOTICES.md; do
 		if [ -f "unpacked/$f" ]; then pass "$archive carries $f"; else fail "$archive lacks $f"; fi
 	done
-	bin=$(find unpacked -type f -name 'quantum-tunnel*' | head -1)
-	if [ -n "$bin" ]; then
+	bin="unpacked/quantum-tunnel-$os-$arch"
+	if [ -f "$bin" ]; then
 		chmod +x "$bin"
 		report=$("$bin" version 2>&1)
 		case "$report" in *"$TAG"*) pass "binary reports $TAG" ;; *) fail "binary does not report $TAG: $(printf '%s' "$report" | head -1)" ;; esac
